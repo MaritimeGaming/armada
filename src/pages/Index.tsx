@@ -290,59 +290,59 @@ function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, 
 
   return (
     <div className="flex h-full flex-col gap-1.5">
-      <div className="relative flex min-h-8 items-center text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
-        {onGoLeft ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            onClick={onGoLeft}
-            className="absolute left-0 h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-            aria-label="Show my navy"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        ) : null}
+      <div className="flex min-h-8 items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
+        <div className="relative w-2/3 min-w-0">
+          {onGoLeft ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={onGoLeft}
+              className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+              aria-label="Show my navy"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
 
-        <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
+          <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
 
-        <div className="absolute right-0 flex items-center gap-1">
           {onGoRight ? (
             <Button
               type="button"
               variant="secondary"
               size="icon"
               onClick={onGoRight}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+              className="absolute right-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
               aria-label="Show enemy navy"
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </Button>
           ) : null}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                className="h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-                aria-label="Open settings"
-              >
-                <Settings className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuLabel>Difficulty</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={difficulty} onValueChange={onDifficultyChange}>
-                <DropdownMenuRadioItem value="level1">Level 1</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="level2">Level 2</DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+              aria-label="Open settings"
+            >
+              <Settings className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuLabel>Difficulty</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={difficulty} onValueChange={onDifficultyChange}>
+              <DropdownMenuRadioItem value="level1">Level 1</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="level2">Level 2</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="rounded-[18px] border border-cyan-200/10 bg-slate-950/80 shadow-inner shadow-cyan-950/20">
