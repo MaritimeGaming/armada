@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { ChevronLeft, ChevronRight, Waves } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -119,35 +119,7 @@ const Index = () => {
   return (
     <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="relative isolate min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.18),_transparent_40%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]">
-        <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 pb-8 pt-6 sm:px-6">
-          <header className="mb-6 space-y-4 rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl shadow-cyan-950/30 backdrop-blur-md">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
-                <div className="inline-flex items-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-cyan-200">
-                  Fleet Deployment
-                </div>
-                <h1 className="text-4xl font-semibold tracking-tight text-white">Armada</h1>
-                <p className="text-sm leading-6 text-slate-300">
-                  Two navies. Randomized placement. Your fleet is fully visible while the opposing fleet stays hidden.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-cyan-100 shadow-lg shadow-cyan-950/30">
-                <Waves className="h-6 w-6" aria-hidden="true" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs text-slate-300">
-              <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-3">
-                <div className="font-medium text-white">Board</div>
-                <div className="mt-1">10 × 10 cells per navy</div>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-3">
-                <div className="font-medium text-white">Vision</div>
-                <div className="mt-1">Player known, enemy unknown</div>
-              </div>
-            </div>
-          </header>
-
+        <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 pb-8 pt-4 sm:px-6">
           {gameState && activeNavy ? (
             <section className="space-y-4">
               <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/5 shadow-[0_24px_80px_rgba(14,116,144,0.18)] backdrop-blur-md">
@@ -219,17 +191,6 @@ type NavyPanelProps = {
 function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 px-1 pt-1">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.28em] text-cyan-200/80">{navy.side === 'player' ? 'Left Grid' : 'Right Grid'}</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-white">{navy.label}</h2>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-slate-900/40 px-3 py-2 text-right text-xs text-slate-300">
-          <div>{navy.knownCount} known cells</div>
-          <div>{GRID_SIZE * GRID_SIZE - navy.knownCount} unknown cells</div>
-        </div>
-      </div>
-
       <div className="rounded-[28px] border border-cyan-200/10 bg-slate-950/70 p-3 shadow-inner shadow-cyan-950/20">
         <div
           className="grid w-full gap-1"
@@ -276,7 +237,6 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
       </div>
 
       <div className="rounded-[28px] border border-white/10 bg-slate-900/50 p-4">
-        <div className="mb-3 text-xs font-medium uppercase tracking-[0.28em] text-slate-400">Ships in navy</div>
         <div className="space-y-2">
           {SHIPS.map((ship) => (
             <Tooltip key={`${navy.side}-${ship.code}`}>
