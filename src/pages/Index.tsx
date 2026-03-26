@@ -306,7 +306,7 @@ function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, 
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
+              <TooltipContent className="text-[10px] normal-case">
                 <p>Show My Navy</p>
               </TooltipContent>
             </Tooltip>
@@ -328,7 +328,7 @@ function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, 
                   <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
+              <TooltipContent className="text-[10px] normal-case">
                 <p>Show Enemy Navy</p>
               </TooltipContent>
             </Tooltip>
