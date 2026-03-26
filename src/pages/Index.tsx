@@ -199,12 +199,21 @@ const Index = () => {
     setDifficulty(nextDifficulty);
   };
 
-  const concludeGame = (winner: Winner) => {
-    if (winner === 'player') {
-      playAudioCue('wingame');
-    }
+  const concludeGame = (winner: Winner, state: GameState) => {
+    const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
+    const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
-    setGameOver({ isOpen: true, winner });
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(revealedState));
+    setGameState(revealedState);
+    setActiveView(revealSide);
+
+    window.setTimeout(() => {
+      if (winner === 'player') {
+        playAudioCue('wingame');
+      }
+
+      setGameOver({ isOpen: true, winner });
+    }, 600);
   };
 
   const handleTargetEnemyCell = (cellIndex: number) => {
@@ -228,7 +237,7 @@ const Index = () => {
       setActiveView('player');
 
       if (areAllShipsSunk(updatedEnemy)) {
-        concludeGame('player');
+        concludeGame('player', nextState);
       }
 
       return nextState;
@@ -267,7 +276,7 @@ const Index = () => {
         playAudioSequence(audioSequence);
 
         if (areAllShipsSunk(updatedPlayer)) {
-          concludeGame('app');
+          concludeGame('app', nextState);
         } else {
           window.setTimeout(() => {
             setActiveView('player');
@@ -709,6 +718,39 @@ function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): nu
 
 function areAllShipsSunk(navy: NavyState): boolean {
   return SHIPS.every((ship) => navy.cells.filter((cell) => cell.shipCode === ship.code).every((cell) => cell.effect === 'sunk'));
+}
+
+function revealUntargetedShips(navy: NavyState): NavyState {
+  const nextCells = navy.cells.map((cell) => {
+    if (cell.occupied && cell.effect === 'untargeted') {
+      return {
+        ...cell,
+        exposure: 'revealed' as ExposureState,
+      };
+    }
+
+    return cell;
+  });
+
+  return {
+    ...navy,
+    cells: nextCells,
+    knownCount: nextCells.filter((cell) => cell.exposure === 'known' || cell.exposure === 'revealed').length,
+  };
+}
+
+function revealRemainingShipsInWinningNavy(state: GameState, winner: Winner): GameState {
+  if (winner === 'player') {
+    return {
+      ...state,
+      player: revealUntargetedShips(state.player),
+    };
+  }
+
+  return {
+    ...state,
+    enemy: revealUntargetedShips(state.enemy),
+  };
 }
 
 function createGameState(): GameState {
