@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { useRef } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
@@ -54,6 +64,7 @@ type GameState = {
 
 type AudioCue = 'splash' | 'sink' | 'ensign' | 'lifeboat' | 'lowscream' | 'explosion';
 type AudioSequence = AudioCue[];
+type DifficultyLevel = 'level1' | 'level2';
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
@@ -92,6 +103,8 @@ const AUDIO_FILES: Record<AudioCue, string> = {
   explosion: '/audio/Explosion.wav',
 };
 
+const DIFFICULTY_STORAGE_KEY = 'armada:difficulty';
+
 const Index = () => {
   useSeoMeta({
     title: 'Armada',
@@ -100,6 +113,10 @@ const Index = () => {
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>(() => {
+    const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
+    return storedDifficulty === 'level2' ? 'level2' : 'level1';
+  });
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
     splash: null,
     sink: null,
@@ -155,6 +172,19 @@ const Index = () => {
     });
   };
 
+  const handleNewGame = () => {
+    const nextState = createGameState();
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+    setGameState(nextState);
+    setActiveView('player');
+  };
+
+  const handleDifficultyChange = (value: string) => {
+    const nextDifficulty: DifficultyLevel = value === 'level2' ? 'level2' : 'level1';
+    window.localStorage.setItem(DIFFICULTY_STORAGE_KEY, nextDifficulty);
+    setDifficulty(nextDifficulty);
+  };
+
   const handleTargetEnemyCell = (cellIndex: number) => {
     setGameState((currentState) => {
       if (!currentState) return currentState;
@@ -194,6 +224,9 @@ const Index = () => {
                       <div key={side} className="w-1/2 shrink-0 p-2.5">
                         <NavyPanel
                           navy={navy}
+                          difficulty={difficulty}
+                          onDifficultyChange={handleDifficultyChange}
+                          onNewGame={handleNewGame}
                           onGoLeft={canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
                           onGoRight={canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
                           onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
@@ -235,12 +268,15 @@ const Index = () => {
 
 type NavyPanelProps = {
   navy: NavyState;
+  difficulty: DifficultyLevel;
+  onDifficultyChange: (value: string) => void;
+  onNewGame: () => void;
   onGoLeft?: () => void;
   onGoRight?: () => void;
   onTargetCell?: (cellIndex: number) => void;
 };
 
-function NavyPanel({ navy, onGoLeft, onGoRight, onTargetCell }: NavyPanelProps) {
+function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, onGoRight, onTargetCell }: NavyPanelProps) {
   const shipStatusByCode = useMemo(() => {
     return SHIPS.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
       const shipCells = navy.cells.filter((cell) => cell.shipCode === ship.code);
@@ -270,18 +306,43 @@ function NavyPanel({ navy, onGoLeft, onGoRight, onTargetCell }: NavyPanelProps) 
 
         <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
 
-        {onGoRight ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            onClick={onGoRight}
-            className="absolute right-0 h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-            aria-label="Show enemy navy"
-          >
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        ) : null}
+        <div className="absolute right-0 flex items-center gap-1">
+          {onGoRight ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={onGoRight}
+              className="h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+              aria-label="Show enemy navy"
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+                aria-label="Open settings"
+              >
+                <Settings className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuLabel>Difficulty</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={difficulty} onValueChange={onDifficultyChange}>
+                <DropdownMenuRadioItem value="level1">Level 1</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="level2">Level 2</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <div className="rounded-[18px] border border-cyan-200/10 bg-slate-950/80 shadow-inner shadow-cyan-950/20">
