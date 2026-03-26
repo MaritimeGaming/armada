@@ -743,6 +743,10 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
   }
 
   if (cell.effect === 'sunk') {
+    if (cell.shipCode === 'L') {
+      return ['highscream', 'sink'];
+    }
+
     return ['explosion', 'sink'];
   }
 
