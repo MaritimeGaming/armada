@@ -120,6 +120,26 @@ const Index = () => {
     return activeView === 'player' ? gameState.player : gameState.enemy;
   }, [activeView, gameState]);
 
+  const handleTargetEnemyCell = (cellIndex: number) => {
+    setGameState((currentState) => {
+      if (!currentState) return currentState;
+
+      const updatedEnemy = targetCellInNavy(currentState.enemy, cellIndex);
+
+      if (updatedEnemy === currentState.enemy) {
+        return currentState;
+      }
+
+      const nextState: GameState = {
+        ...currentState,
+        enemy: updatedEnemy,
+      };
+
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      return nextState;
+    });
+  };
+
   return (
     <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="relative isolate min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.18),_transparent_40%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]">
@@ -140,6 +160,7 @@ const Index = () => {
                           navy={navy}
                           onGoLeft={canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
                           onGoRight={canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
+                          onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
                         />
                       </div>
                     );
@@ -180,9 +201,10 @@ type NavyPanelProps = {
   navy: NavyState;
   onGoLeft?: () => void;
   onGoRight?: () => void;
+  onTargetCell?: (cellIndex: number) => void;
 };
 
-function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
+function NavyPanel({ navy, onGoLeft, onGoRight, onTargetCell }: NavyPanelProps) {
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="relative flex min-h-8 items-center text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
@@ -222,7 +244,11 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
           aria-label={`${navy.label} grid`}
         >
           {navy.cells.map((cell, index) => (
-            <GridCell key={`${navy.side}-${index}`} cell={cell} />
+            <GridCell
+              key={`${navy.side}-${index}`}
+              cell={cell}
+              onClick={onTargetCell ? () => onTargetCell(index) : undefined}
+            />
           ))}
         </div>
       </div>
@@ -253,9 +279,25 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
   );
 }
 
-function GridCell({ cell }: { cell: CellState }) {
+function GridCell({ cell, onClick }: { cell: CellState; onClick?: () => void }) {
   const exposure = cell.exposure;
   const { className, value, label } = getCellPresentation(cell);
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
+          className
+        )}
+        aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
+      >
+        <div className="flex h-full items-center justify-center text-white">{value}</div>
+      </button>
+    );
+  }
 
   return (
     <div
@@ -339,6 +381,55 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
     value: '',
     label: 'empty and untargeted',
+  };
+}
+
+function targetCellInNavy(navy: NavyState, cellIndex: number): NavyState {
+  const targetCell = navy.cells[cellIndex];
+
+  if (!targetCell || targetCell.effect === 'targeted' || targetCell.effect === 'sunk') {
+    return navy;
+  }
+
+  const nextCells = navy.cells.map((cell, index) => {
+    if (index !== cellIndex) {
+      return cell;
+    }
+
+    return {
+      ...cell,
+      exposure: 'known',
+      effect: 'targeted' as EffectState,
+    };
+  });
+
+  const targetedCell = nextCells[cellIndex];
+
+  if (targetedCell.occupied && targetedCell.shipCode) {
+    const shipIndexes = nextCells.reduce<number[]>((indexes, cell, index) => {
+      if (cell.shipCode === targetedCell.shipCode) {
+        indexes.push(index);
+      }
+      return indexes;
+    }, []);
+
+    const allShipCellsTargeted = shipIndexes.every((index) => nextCells[index].effect === 'targeted' || nextCells[index].effect === 'sunk');
+
+    if (allShipCellsTargeted) {
+      shipIndexes.forEach((index) => {
+        nextCells[index] = {
+          ...nextCells[index],
+          effect: 'sunk',
+          exposure: 'known',
+        };
+      });
+    }
+  }
+
+  return {
+    ...navy,
+    cells: nextCells,
+    knownCount: nextCells.filter((cell) => cell.exposure === 'known').length,
   };
 }
 
