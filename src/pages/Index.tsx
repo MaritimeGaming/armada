@@ -57,13 +57,13 @@ const SHIPS: ShipDefinition[] = [
   { code: 'B', name: 'Battleship', length: 4 },
   { code: 'C', name: 'Cruiser', length: 3 },
   { code: 'D', name: 'Destroyer', length: 3 },
-  { code: 'F', name: 'Frigate', length: 3 },
-  { code: 'O', name: 'Oil Tanker', length: 3 },
-  { code: 'G', name: 'Garbage Scow', length: 2 },
-  { code: 'S', name: 'Submarine', length: 2 },
   { code: 'E', name: 'Ensign', length: 1 },
+  { code: 'F', name: 'Frigate', length: 3 },
+  { code: 'G', name: 'Garbage Scow', length: 2 },
   { code: 'H', name: 'Helicopter', length: 1 },
   { code: 'L', name: 'Lifeboat', length: 1 },
+  { code: 'O', name: 'Oil Tanker', length: 3 },
+  { code: 'S', name: 'Submarine', length: 2 },
 ];
 
 const ORIENTATIONS: Orientation[] = [
