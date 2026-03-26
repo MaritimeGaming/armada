@@ -339,6 +339,14 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     };
   }
 
+  if (!cell.occupied && cell.effect === 'targeted') {
+    return {
+      className: 'border-[#0000FF] bg-[#0000FF] text-white',
+      value,
+      label: 'empty and targeted',
+    };
+  }
+
   if (cell.effect === 'sunk') {
     return {
       className: 'border-[#0000B2] bg-[#0000B2] text-white',
