@@ -240,6 +240,10 @@ const Index = () => {
       return;
     }
 
+    const scrollToEnemyDelay = window.setTimeout(() => {
+      setActiveView('enemy');
+    }, 1000);
+
     const targetSelectionDelay = window.setTimeout(() => {
       setGameState((currentState) => {
         if (!currentState || currentState.currentTurn !== 'app') {
@@ -266,15 +270,16 @@ const Index = () => {
           concludeGame('app');
         } else {
           window.setTimeout(() => {
-            setActiveView('enemy');
+            setActiveView('player');
           }, 1000);
         }
 
         return nextState;
       });
-    }, 1000);
+    }, 1500);
 
     return () => {
+      window.clearTimeout(scrollToEnemyDelay);
       window.clearTimeout(targetSelectionDelay);
     };
   }, [difficulty, gameOver.isOpen, gameState]);
