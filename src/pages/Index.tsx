@@ -313,74 +313,52 @@ function GridCell({ cell, onClick }: { cell: CellState; onClick?: () => void }) 
 }
 
 function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
-  if (cell.exposure === 'unknown') {
-    if (cell.effect === 'oil') {
-      return {
-        className: 'border-slate-700 bg-slate-800 text-white',
-        value: '',
-        label: 'oil',
-      };
-    }
+  const value = cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
+  if (cell.effect === 'oil') {
     return {
-      className: 'border-slate-300/40 bg-slate-200 text-white',
+      className: 'border-slate-700 bg-zinc-700 text-white',
+      value,
+      label: cell.occupied ? 'occupied with oil' : 'empty with oil',
+    };
+  }
+
+  if (cell.exposure === 'unknown') {
+    return {
+      className: 'border-slate-400/50 bg-slate-300 text-white',
       value: '',
       label: cell.effect,
     };
   }
 
-  if (cell.occupied) {
-    if (cell.effect === 'targeted') {
-      return {
-        className: 'border-red-300/30 bg-red-500 text-white shadow-red-950/20',
-        value: cell.shipCode ?? '',
-        label: 'occupied and targeted',
-      };
-    }
-
-    if (cell.effect === 'sunk') {
-      return {
-        className: 'border-blue-300/20 bg-blue-900 text-white shadow-blue-950/20',
-        value: cell.shipCode ?? '',
-        label: 'occupied and sunk',
-      };
-    }
-
-    if (cell.effect === 'oil') {
-      return {
-        className: 'border-slate-700 bg-slate-800 text-white',
-        value: cell.shipCode ?? '',
-        label: 'occupied with oil',
-      };
-    }
-
+  if (!cell.occupied) {
     return {
-      className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
-      value: cell.shipCode ?? '',
-      label: 'occupied and untargeted',
+      className: 'border-blue-300/25 bg-blue-600 text-white shadow-blue-950/20',
+      value,
+      label: cell.effect === 'targeted' ? 'empty and targeted' : 'empty and untargeted',
+    };
+  }
+
+  if (cell.effect === 'sunk') {
+    return {
+      className: 'border-blue-300/20 bg-blue-900 text-white shadow-blue-950/20',
+      value,
+      label: 'occupied and sunk',
     };
   }
 
   if (cell.effect === 'targeted') {
     return {
-      className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
-      value: '–',
-      label: 'empty and targeted',
-    };
-  }
-
-  if (cell.effect === 'oil') {
-    return {
-      className: 'border-slate-700 bg-slate-800 text-white',
-      value: '',
-      label: 'empty with oil',
+      className: 'border-red-300/30 bg-red-500 text-white shadow-red-950/20',
+      value,
+      label: 'occupied and targeted',
     };
   }
 
   return {
-    className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
-    value: '',
-    label: 'empty and untargeted',
+    className: 'border-cyan-100/20 bg-cyan-500 text-white shadow-cyan-950/20',
+    value,
+    label: 'occupied and untargeted',
   };
 }
 
