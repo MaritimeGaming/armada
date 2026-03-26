@@ -273,10 +273,9 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-left transition hover:border-cyan-300/30 hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                  className="flex w-full items-center justify-center rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-center transition hover:border-cyan-300/30 hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                   aria-label={ship.name}
                 >
-                  <span className="text-sm text-slate-300">{ship.name}</span>
                   <span className="font-mono text-sm tracking-[0.42em] text-cyan-100">
                     {Array.from({ length: ship.length }, () => ship.code).join(' ')}
                   </span>
