@@ -235,34 +235,37 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
         </div>
       </div>
 
-      <div className="flex min-h-12 items-center justify-between gap-3 px-1">
-        <div className="text-xs uppercase tracking-[0.24em] text-slate-400">Switch grid</div>
-        <div className="flex items-center gap-2">
-          {onGoLeft ? (
+      <div className="min-h-12 px-1">
+        {onGoLeft ? (
+          <div className="flex items-center justify-center gap-3 text-xs uppercase tracking-[0.24em] text-slate-300">
             <Button
               type="button"
               variant="secondary"
               size="icon"
               onClick={onGoLeft}
               className="h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-              aria-label="Show the player's navy"
+              aria-label="Show my navy"
             >
               <ChevronLeft className="h-5 w-5" aria-hidden="true" />
             </Button>
-          ) : null}
-          {onGoRight ? (
+            <span className="text-center">Show My Navy</span>
+          </div>
+        ) : null}
+        {onGoRight ? (
+          <div className="flex items-center justify-center gap-3 text-xs uppercase tracking-[0.24em] text-slate-300">
+            <span className="text-center">Show Enemy Navy</span>
             <Button
               type="button"
               variant="secondary"
               size="icon"
               onClick={onGoRight}
               className="h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-              aria-label="Show the enemy navy"
+              aria-label="Show enemy navy"
             >
               <ChevronRight className="h-5 w-5" aria-hidden="true" />
             </Button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-[28px] border border-white/10 bg-slate-900/50 p-4">
