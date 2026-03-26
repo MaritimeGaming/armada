@@ -291,7 +291,7 @@ function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, 
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="flex min-h-8 items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
-        <div className="relative w-2/3 min-w-0">
+        <div className="relative w-1/2 min-w-0">
           {onGoLeft ? (
             <Button
               type="button"
