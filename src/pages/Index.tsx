@@ -236,14 +236,14 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
         ) : null}
       </div>
 
-      <div className="rounded-[28px] border border-white/10 bg-slate-900/50 p-4">
-        <div className="space-y-2">
+      <div className="px-1">
+        <div className="space-y-0.5">
           {SHIPS.map((ship) => (
             <Tooltip key={`${navy.side}-${ship.code}`}>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-center rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-center transition hover:border-cyan-300/30 hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                  className="flex w-full items-center justify-center py-1 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                   aria-label={ship.name}
                 >
                   <span className="font-mono text-sm tracking-[0.42em] text-cyan-100">
