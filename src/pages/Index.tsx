@@ -234,7 +234,6 @@ const Index = () => {
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       playAudioSequence(audioSequence);
-      setActiveView('player');
 
       if (areAllShipsSunk(updatedEnemy)) {
         concludeGame('player', nextState);
@@ -249,8 +248,8 @@ const Index = () => {
       return;
     }
 
-    const scrollToEnemyDelay = window.setTimeout(() => {
-      setActiveView('enemy');
+    const scrollToPlayerDelay = window.setTimeout(() => {
+      setActiveView('player');
     }, 1000);
 
     const targetSelectionDelay = window.setTimeout(() => {
@@ -279,7 +278,7 @@ const Index = () => {
           concludeGame('app', nextState);
         } else {
           window.setTimeout(() => {
-            setActiveView('player');
+            setActiveView('enemy');
           }, 1000);
         }
 
@@ -288,7 +287,7 @@ const Index = () => {
     }, 1500);
 
     return () => {
-      window.clearTimeout(scrollToEnemyDelay);
+      window.clearTimeout(scrollToPlayerDelay);
       window.clearTimeout(targetSelectionDelay);
     };
   }, [difficulty, gameOver.isOpen, gameState]);
