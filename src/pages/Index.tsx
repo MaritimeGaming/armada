@@ -27,9 +27,13 @@ type PlacedShip = ShipDefinition & {
   cells: Point[];
 };
 
+type ExposureState = 'known' | 'unknown';
+type EffectState = 'undamaged' | 'hit' | 'sunk' | 'oil';
+
 type CellState = {
-  known: boolean;
-  polluted: boolean;
+  exposure: ExposureState;
+  occupied: boolean;
+  effect: EffectState;
   shipCode?: string;
 };
 
@@ -49,7 +53,7 @@ type GameState = {
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
-const GAME_STATE_VERSION = 2;
+const GAME_STATE_VERSION = 3;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
@@ -267,23 +271,92 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
 }
 
 function GridCell({ cell }: { cell: CellState }) {
-  const displayValue = cell.known && cell.shipCode ? cell.shipCode : '';
+  const exposure = cell.exposure;
+  const { className, value, label } = getCellPresentation(cell);
 
   return (
     <div
       className={cn(
         'aspect-square rounded-[4px] border text-center text-[clamp(0.55rem,2vw,0.85rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
-        cell.known
-          ? 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20'
-          : cell.polluted
-            ? 'border-slate-700 bg-slate-800 text-white'
-            : 'border-slate-300/40 bg-slate-200 text-white'
+        className
       )}
-      aria-label={cell.known ? (cell.shipCode ? `Known cell with ship ${cell.shipCode}` : 'Known empty cell') : 'Unknown cell'}
+      aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
     >
-      <div className="flex h-full items-center justify-center text-white">{displayValue}</div>
+      <div className="flex h-full items-center justify-center text-white">{value}</div>
     </div>
   );
+}
+
+function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
+  if (cell.exposure === 'unknown') {
+    if (cell.effect === 'oil') {
+      return {
+        className: 'border-slate-700 bg-slate-800 text-white',
+        value: '',
+        label: 'oil',
+      };
+    }
+
+    return {
+      className: 'border-slate-300/40 bg-slate-200 text-white',
+      value: '',
+      label: cell.effect,
+    };
+  }
+
+  if (cell.occupied) {
+    if (cell.effect === 'hit') {
+      return {
+        className: 'border-red-300/30 bg-red-500 text-white shadow-red-950/20',
+        value: cell.shipCode ?? '',
+        label: 'occupied and hit',
+      };
+    }
+
+    if (cell.effect === 'sunk') {
+      return {
+        className: 'border-blue-300/20 bg-blue-900 text-white shadow-blue-950/20',
+        value: cell.shipCode ?? '',
+        label: 'occupied and sunk',
+      };
+    }
+
+    if (cell.effect === 'oil') {
+      return {
+        className: 'border-slate-700 bg-slate-800 text-white',
+        value: cell.shipCode ?? '',
+        label: 'occupied with oil',
+      };
+    }
+
+    return {
+      className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
+      value: cell.shipCode ?? '',
+      label: 'occupied and undamaged',
+    };
+  }
+
+  if (cell.effect === 'hit') {
+    return {
+      className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
+      value: '–',
+      label: 'empty and hit',
+    };
+  }
+
+  if (cell.effect === 'oil') {
+    return {
+      className: 'border-slate-700 bg-slate-800 text-white',
+      value: '',
+      label: 'empty with oil',
+    };
+  }
+
+  return {
+    className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
+    value: '',
+    label: 'empty and undamaged',
+  };
 }
 
 function createGameState(): GameState {
@@ -310,8 +383,9 @@ function createNavy(side: NavySide, label: string, known: boolean): NavyState {
     for (let x = 0; x < GRID_SIZE; x += 1) {
       const shipCode = shipMap.get(pointKey({ x, y }));
       cells.push({
-        known,
-        polluted: false,
+        exposure: known ? 'known' : 'unknown',
+        occupied: Boolean(shipCode),
+        effect: 'undamaged',
         shipCode,
       });
     }
