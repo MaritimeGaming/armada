@@ -293,31 +293,45 @@ function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, 
       <div className="flex min-h-8 items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
         <div className="relative w-1/2 min-w-0">
           {onGoLeft ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              onClick={onGoLeft}
-              className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-              aria-label="Show my navy"
-            >
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={onGoLeft}
+                  className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+                  aria-label="Show my navy"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Show My Navy</p>
+              </TooltipContent>
+            </Tooltip>
           ) : null}
 
           <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
 
           {onGoRight ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              onClick={onGoRight}
-              className="absolute right-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-              aria-label="Show enemy navy"
-            >
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={onGoRight}
+                  className="absolute right-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+                  aria-label="Show enemy navy"
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Show Enemy Navy</p>
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
 
