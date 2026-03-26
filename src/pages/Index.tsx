@@ -191,6 +191,10 @@ type NavyPanelProps = {
 function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
   return (
     <div className="space-y-4">
+      <div className="px-1 text-center text-sm font-semibold uppercase tracking-[0.28em] text-cyan-100">
+        {navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}
+      </div>
+
       <div className="rounded-[28px] border border-cyan-200/10 bg-slate-950/70 p-3 shadow-inner shadow-cyan-950/20">
         <div
           className="grid w-full gap-1"
