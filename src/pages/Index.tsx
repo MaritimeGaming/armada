@@ -42,12 +42,14 @@ type NavyState = {
 };
 
 type GameState = {
+  version: number;
   player: NavyState;
   enemy: NavyState;
 };
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
+const GAME_STATE_VERSION = 2;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
@@ -87,9 +89,14 @@ const Index = () => {
 
     if (storedState) {
       try {
-        const parsedState = JSON.parse(storedState) as GameState;
-        setGameState(parsedState);
-        return;
+        const parsedState = JSON.parse(storedState) as Partial<GameState>;
+
+        if (parsedState.version === GAME_STATE_VERSION) {
+          setGameState(parsedState as GameState);
+          return;
+        }
+
+        window.localStorage.removeItem(STORAGE_KEY);
       } catch {
         window.localStorage.removeItem(STORAGE_KEY);
       }
@@ -317,6 +324,7 @@ function GridCell({ cell }: { cell: CellState }) {
 
 function createGameState(): GameState {
   return {
+    version: GAME_STATE_VERSION,
     player: createNavy('player', 'Your Navy', true),
     enemy: createNavy('enemy', 'Enemy Navy', false),
   };
