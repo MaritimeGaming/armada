@@ -46,19 +46,19 @@ type GameState = {
   enemy: NavyState;
 };
 
-const GRID_SIZE = 12;
+const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
-  { code: 'A', name: 'Aircraft Carrier', length: 6 },
-  { code: 'B', name: 'Battleship', length: 5 },
-  { code: 'C', name: 'Cruiser', length: 4 },
-  { code: 'F', name: 'Frigate', length: 4 },
+  { code: 'A', name: 'Aircraft Carrier', length: 5 },
+  { code: 'B', name: 'Battleship', length: 4 },
+  { code: 'C', name: 'Cruiser', length: 3 },
   { code: 'D', name: 'Destroyer', length: 3 },
+  { code: 'F', name: 'Frigate', length: 3 },
   { code: 'O', name: 'Oil Tanker', length: 3 },
-  { code: 'S', name: 'Submarine', length: 3 },
   { code: 'G', name: 'Garbage Scow', length: 2 },
+  { code: 'S', name: 'Submarine', length: 2 },
   { code: 'E', name: 'Ensign', length: 1 },
   { code: 'H', name: 'Helicopter', length: 1 },
   { code: 'L', name: 'Lifeboat', length: 1 },
@@ -132,7 +132,7 @@ const Index = () => {
             <div className="grid grid-cols-2 gap-3 text-xs text-slate-300">
               <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-3">
                 <div className="font-medium text-white">Board</div>
-                <div className="mt-1">12 × 12 cells per navy</div>
+                <div className="mt-1">10 × 10 cells per navy</div>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-3">
                 <div className="font-medium text-white">Vision</div>
@@ -303,14 +303,14 @@ function GridCell({ cell }: { cell: CellState }) {
       className={cn(
         'aspect-square rounded-[4px] border text-center text-[clamp(0.55rem,2vw,0.85rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
         cell.known
-          ? 'border-cyan-100/20 bg-cyan-300 text-slate-950 shadow-cyan-950/10'
+          ? 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20'
           : cell.polluted
-            ? 'border-slate-700 bg-slate-800 text-slate-800'
-            : 'border-slate-300/40 bg-slate-200 text-slate-200'
+            ? 'border-slate-700 bg-slate-800 text-white'
+            : 'border-slate-300/40 bg-slate-200 text-white'
       )}
       aria-label={cell.known ? (cell.shipCode ? `Known cell with ship ${cell.shipCode}` : 'Known empty cell') : 'Unknown cell'}
     >
-      <div className="flex h-full items-center justify-center">{displayValue}</div>
+      <div className="flex h-full items-center justify-center text-white">{displayValue}</div>
     </div>
   );
 }
