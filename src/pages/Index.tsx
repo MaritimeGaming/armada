@@ -241,6 +241,17 @@ type NavyPanelProps = {
 };
 
 function NavyPanel({ navy, onGoLeft, onGoRight, onTargetCell }: NavyPanelProps) {
+  const shipStatusByCode = useMemo(() => {
+    return SHIPS.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
+      const shipCells = navy.cells.filter((cell) => cell.shipCode === ship.code);
+      const targetedCount = shipCells.filter((cell) => cell.effect === 'targeted').length;
+      const isSunk = shipCells.length > 0 && shipCells.every((cell) => cell.effect === 'sunk');
+
+      accumulator[ship.code] = { targetedCount, isSunk };
+      return accumulator;
+    }, {});
+  }, [navy.cells]);
+
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="relative flex min-h-8 items-center text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
@@ -291,24 +302,40 @@ function NavyPanel({ navy, onGoLeft, onGoRight, onTargetCell }: NavyPanelProps) 
 
       <div className="px-1">
         <div className="space-y-0.5">
-          {SHIPS.map((ship) => (
-            <Tooltip key={`${navy.side}-${ship.code}`}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-                  aria-label={ship.name}
-                >
-                  <span className="font-mono text-[12px] tracking-[0.34em] text-cyan-100">
-                    {Array.from({ length: ship.length }, () => ship.code).join(' ')}
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{ship.name}</p>
-              </TooltipContent>
-            </Tooltip>
-          ))}
+          {SHIPS.map((ship) => {
+            const status = shipStatusByCode[ship.code] ?? { targetedCount: 0, isSunk: false };
+
+            return (
+              <Tooltip key={`${navy.side}-${ship.code}`}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="relative flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                    aria-label={ship.name}
+                  >
+                    {status.isSunk ? (
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%-1.75rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
+                    ) : null}
+
+                    <span className="font-mono text-[12px] tracking-[0.34em]">
+                      {Array.from({ length: ship.length }, (_, index) => (
+                        <span
+                          key={`${ship.code}-${index}`}
+                          className={status.isSunk || index < status.targetedCount ? 'text-red-500' : 'text-cyan-100'}
+                        >
+                          {ship.code}
+                          {index < ship.length - 1 ? ' ' : ''}
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{ship.name}</p>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
         </div>
       </div>
     </div>
