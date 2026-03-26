@@ -27,7 +27,7 @@ type PlacedShip = ShipDefinition & {
   cells: Point[];
 };
 
-type ExposureState = 'known' | 'unknown';
+type ExposureState = 'known' | 'unknown' | 'revealed';
 type EffectState = 'untargeted' | 'targeted' | 'sunk' | 'oil';
 
 type CellState = {
@@ -53,7 +53,7 @@ type GameState = {
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
-const GAME_STATE_VERSION = 4;
+const GAME_STATE_VERSION = 5;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
@@ -313,74 +313,60 @@ function GridCell({ cell, onClick }: { cell: CellState; onClick?: () => void }) 
 }
 
 function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
-  if (cell.exposure === 'unknown') {
-    if (cell.effect === 'oil') {
-      return {
-        className: 'border-slate-700 bg-slate-800 text-white',
-        value: '',
-        label: 'oil',
-      };
-    }
+  const value = cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
+  if (cell.effect === 'oil') {
     return {
-      className: 'border-slate-300/40 bg-slate-200 text-white',
+      className: 'border-[#404040] bg-[#404040] text-white',
+      value,
+      label: cell.occupied ? 'occupied with oil' : 'empty with oil',
+    };
+  }
+
+  if (cell.exposure === 'unknown') {
+    return {
+      className: 'border-[#C0C0C0] bg-[#C0C0C0] text-white',
       value: '',
       label: cell.effect,
     };
   }
 
-  if (cell.occupied) {
-    if (cell.effect === 'targeted') {
-      return {
-        className: 'border-red-300/30 bg-red-500 text-white shadow-red-950/20',
-        value: cell.shipCode ?? '',
-        label: 'occupied and targeted',
-      };
-    }
-
-    if (cell.effect === 'sunk') {
-      return {
-        className: 'border-blue-300/20 bg-blue-900 text-white shadow-blue-950/20',
-        value: cell.shipCode ?? '',
-        label: 'occupied and sunk',
-      };
-    }
-
-    if (cell.effect === 'oil') {
-      return {
-        className: 'border-slate-700 bg-slate-800 text-white',
-        value: cell.shipCode ?? '',
-        label: 'occupied with oil',
-      };
-    }
-
+  if (cell.occupied && cell.exposure === 'revealed') {
     return {
-      className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
-      value: cell.shipCode ?? '',
-      label: 'occupied and untargeted',
+      className: 'border-[#00B200] bg-[#00B200] text-white',
+      value,
+      label: 'occupied and revealed',
+    };
+  }
+
+  if (!cell.occupied && cell.effect === 'targeted') {
+    return {
+      className: 'border-[#0000FF] bg-[#0000FF] text-white',
+      value,
+      label: 'empty and targeted',
+    };
+  }
+
+  if (cell.effect === 'sunk') {
+    return {
+      className: 'border-[#0000B2] bg-[#0000B2] text-white',
+      value,
+      label: 'occupied and sunk',
     };
   }
 
   if (cell.effect === 'targeted') {
     return {
-      className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
-      value: '–',
-      label: 'empty and targeted',
-    };
-  }
-
-  if (cell.effect === 'oil') {
-    return {
-      className: 'border-slate-700 bg-slate-800 text-white',
-      value: '',
-      label: 'empty with oil',
+      className: 'border-[#FF0000] bg-[#FF0000] text-white',
+      value,
+      label: 'occupied and targeted',
     };
   }
 
   return {
-    className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
-    value: '',
-    label: 'empty and untargeted',
+    className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
+    value,
+    label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
   };
 }
 
@@ -396,11 +382,11 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): NavyState {
       return cell;
     }
 
-    return {
-      ...cell,
-      exposure: 'known',
-      effect: 'targeted' as EffectState,
-    };
+      return {
+        ...cell,
+        exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
+        effect: 'targeted' as EffectState,
+      };
   });
 
   const targetedCell = nextCells[cellIndex];
