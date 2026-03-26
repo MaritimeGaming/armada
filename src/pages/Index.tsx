@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,19 +57,28 @@ type NavyState = {
   cells: CellState[];
 };
 
+type TurnOwner = 'player' | 'app';
+type Winner = 'player' | 'app';
+
 type GameState = {
   version: number;
+  currentTurn: TurnOwner;
   player: NavyState;
   enemy: NavyState;
 };
 
-type AudioCue = 'splash' | 'sink' | 'ensign' | 'highscream' | 'lowscream' | 'explosion';
+type AudioCue = 'splash' | 'sink' | 'ensign' | 'highscream' | 'lowscream' | 'explosion' | 'wingame';
 type AudioSequence = AudioCue[];
 type DifficultyLevel = 'level1' | 'level2';
 
+type GameOverState = {
+  isOpen: boolean;
+  winner: Winner | null;
+};
+
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
-const GAME_STATE_VERSION = 5;
+const GAME_STATE_VERSION = 6;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
@@ -101,6 +111,7 @@ const AUDIO_FILES: Record<AudioCue, string> = {
   highscream: '/audio/HighScream.wav',
   lowscream: '/audio/LowScream.wav',
   explosion: '/audio/Explosion.wav',
+  wingame: '/audio/WinGame.wav',
 };
 
 const DIFFICULTY_STORAGE_KEY = 'armada:difficulty';
@@ -113,6 +124,7 @@ const Index = () => {
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
+  const [gameOver, setGameOver] = useState<GameOverState>({ isOpen: false, winner: null });
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(() => {
     const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
@@ -124,6 +136,7 @@ const Index = () => {
     highscream: null,
     lowscream: null,
     explosion: null,
+    wingame: null,
   });
 
   useEffect(() => {
@@ -176,7 +189,8 @@ const Index = () => {
     const nextState = createGameState();
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
-    setActiveView('player');
+    setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
+    setGameOver({ isOpen: false, winner: null });
   };
 
   const handleDifficultyChange = (value: string) => {
@@ -185,9 +199,17 @@ const Index = () => {
     setDifficulty(nextDifficulty);
   };
 
+  const concludeGame = (winner: Winner) => {
+    if (winner === 'player') {
+      playAudioCue('wingame');
+    }
+
+    setGameOver({ isOpen: true, winner });
+  };
+
   const handleTargetEnemyCell = (cellIndex: number) => {
     setGameState((currentState) => {
-      if (!currentState) return currentState;
+      if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
 
       const { navy: updatedEnemy, audioSequence } = targetCellInNavy(currentState.enemy, cellIndex);
 
@@ -197,17 +219,69 @@ const Index = () => {
 
       const nextState: GameState = {
         ...currentState,
+        currentTurn: 'app',
         enemy: updatedEnemy,
       };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       playAudioSequence(audioSequence);
+      setActiveView('player');
+
+      if (areAllShipsSunk(updatedEnemy)) {
+        concludeGame('player');
+      }
+
       return nextState;
     });
   };
 
+  useEffect(() => {
+    if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
+      return;
+    }
+
+    const targetSelectionDelay = window.setTimeout(() => {
+      setGameState((currentState) => {
+        if (!currentState || currentState.currentTurn !== 'app') {
+          return currentState;
+        }
+
+        const cellIndex = selectAppTargetIndex(currentState.player, difficulty);
+
+        if (cellIndex === null) {
+          return currentState;
+        }
+
+        const { navy: updatedPlayer, audioSequence } = targetCellInNavy(currentState.player, cellIndex);
+        const nextState: GameState = {
+          ...currentState,
+          currentTurn: 'player',
+          player: updatedPlayer,
+        };
+
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        playAudioSequence(audioSequence);
+
+        if (areAllShipsSunk(updatedPlayer)) {
+          concludeGame('app');
+        } else {
+          window.setTimeout(() => {
+            setActiveView('enemy');
+          }, 1000);
+        }
+
+        return nextState;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearTimeout(targetSelectionDelay);
+    };
+  }, [difficulty, gameOver.isOpen, gameState]);
+
   return (
-    <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
+    <>
+      <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="relative isolate min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.18),_transparent_40%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]">
         <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col px-3 pb-3 pt-2 sm:px-4">
           {gameState && activeNavy ? (
@@ -262,7 +336,26 @@ const Index = () => {
           )}
         </div>
       </div>
-    </main>
+      </main>
+
+      <Dialog open={gameOver.isOpen}>
+        <DialogContent className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>{gameOver.winner === 'player' ? 'Victory' : 'Defeat'}</DialogTitle>
+            <DialogDescription className="text-slate-300">
+              {gameOver.winner === 'player'
+                ? 'Congratulations, you won! Click OK to play again.'
+                : 'You lost! Click OK to play again.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" onClick={handleNewGame} className="w-full sm:w-auto">
+              OK
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
@@ -594,9 +687,31 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
   return ['explosion'];
 }
 
+function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): number | null {
+  const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
+    if (cell.effect === 'untargeted') {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+
+  if (untargetedIndexes.length === 0) {
+    return null;
+  }
+
+  return randomItem(untargetedIndexes);
+}
+
+function areAllShipsSunk(navy: NavyState): boolean {
+  return SHIPS.every((ship) => navy.cells.filter((cell) => cell.shipCode === ship.code).every((cell) => cell.effect === 'sunk'));
+}
+
 function createGameState(): GameState {
+  const currentTurn: TurnOwner = Math.random() < 0.5 ? 'player' : 'app';
+
   return {
     version: GAME_STATE_VERSION,
+    currentTurn,
     player: createNavy('player', 'Your Navy', true),
     enemy: createNavy('enemy', 'Enemy Navy', false),
   };
