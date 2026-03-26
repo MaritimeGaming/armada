@@ -235,36 +235,36 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
         </div>
       </div>
 
-      <div className="min-h-12 px-1">
+      <div className="relative flex min-h-12 items-center px-1 text-xs uppercase tracking-[0.24em] text-slate-300">
         {onGoLeft ? (
-          <div className="flex items-center justify-center gap-3 text-xs uppercase tracking-[0.24em] text-slate-300">
+          <>
             <Button
               type="button"
               variant="secondary"
               size="icon"
               onClick={onGoLeft}
-              className="h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+              className="absolute left-0 h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
               aria-label="Show my navy"
             >
               <ChevronLeft className="h-5 w-5" aria-hidden="true" />
             </Button>
-            <span className="text-center">Show My Navy</span>
-          </div>
+            <span className="w-full text-center">Show My Navy</span>
+          </>
         ) : null}
         {onGoRight ? (
-          <div className="flex items-center justify-center gap-3 text-xs uppercase tracking-[0.24em] text-slate-300">
-            <span className="text-center">Show Enemy Navy</span>
+          <>
+            <span className="w-full text-center">Show Enemy Navy</span>
             <Button
               type="button"
               variant="secondary"
               size="icon"
               onClick={onGoRight}
-              className="h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+              className="absolute right-0 h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
               aria-label="Show enemy navy"
             >
               <ChevronRight className="h-5 w-5" aria-hidden="true" />
             </Button>
-          </div>
+          </>
         ) : null}
       </div>
 
