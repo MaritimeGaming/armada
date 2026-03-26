@@ -125,6 +125,8 @@ const Index = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
   const [gameOver, setGameOver] = useState<GameOverState>({ isOpen: false, winner: null });
+  const [pressedEnemyCellIndex, setPressedEnemyCellIndex] = useState<number | null>(null);
+  const [appPreviewCellIndex, setAppPreviewCellIndex] = useState<number | null>(null);
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(() => {
     const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
@@ -191,6 +193,8 @@ const Index = () => {
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
     setGameOver({ isOpen: false, winner: null });
+    setPressedEnemyCellIndex(null);
+    setAppPreviewCellIndex(null);
   };
 
   const handleDifficultyChange = (value: string) => {
@@ -216,7 +220,18 @@ const Index = () => {
     }, 600);
   };
 
+  const handleEnemyCellPressStart = (cellIndex: number) => {
+    if (activeView === 'enemy') {
+      setPressedEnemyCellIndex(cellIndex);
+    }
+  };
+
+  const clearEnemyCellPress = () => {
+    setPressedEnemyCellIndex(null);
+  };
+
   const handleTargetEnemyCell = (cellIndex: number) => {
+    setPressedEnemyCellIndex(null);
     setGameState((currentState) => {
       if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
 
@@ -248,23 +263,27 @@ const Index = () => {
       return;
     }
 
+    const previewIndex = selectAppTargetIndex(gameState.player, difficulty);
+
+    if (previewIndex === null) {
+      return;
+    }
+
     const scrollToPlayerDelay = window.setTimeout(() => {
       setActiveView('player');
     }, 1000);
 
-    const targetSelectionDelay = window.setTimeout(() => {
+    const previewDelay = window.setTimeout(() => {
+      setAppPreviewCellIndex(previewIndex);
+    }, 1500);
+
+    const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
         if (!currentState || currentState.currentTurn !== 'app') {
           return currentState;
         }
 
-        const cellIndex = selectAppTargetIndex(currentState.player, difficulty);
-
-        if (cellIndex === null) {
-          return currentState;
-        }
-
-        const { navy: updatedPlayer, audioSequence } = targetCellInNavy(currentState.player, cellIndex);
+        const { navy: updatedPlayer, audioSequence } = targetCellInNavy(currentState.player, previewIndex);
         const nextState: GameState = {
           ...currentState,
           currentTurn: 'player',
@@ -273,6 +292,7 @@ const Index = () => {
 
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         playAudioSequence(audioSequence);
+        setAppPreviewCellIndex(null);
 
         if (areAllShipsSunk(updatedPlayer)) {
           concludeGame('app', nextState);
@@ -284,11 +304,13 @@ const Index = () => {
 
         return nextState;
       });
-    }, 1500);
+    }, 2250);
 
     return () => {
       window.clearTimeout(scrollToPlayerDelay);
-      window.clearTimeout(targetSelectionDelay);
+      window.clearTimeout(previewDelay);
+      window.clearTimeout(executeTargetingDelay);
+      setAppPreviewCellIndex(null);
     };
   }, [difficulty, gameOver.isOpen, gameState]);
 
@@ -317,6 +339,9 @@ const Index = () => {
                           onGoLeft={canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
                           onGoRight={canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
                           onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
+                          onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
+                          onCellPressEnd={side === 'enemy' ? clearEnemyCellPress : undefined}
+                          highlightedCellIndex={side === 'enemy' ? pressedEnemyCellIndex : side === 'player' ? appPreviewCellIndex : null}
                         />
                       </div>
                     );
@@ -380,9 +405,23 @@ type NavyPanelProps = {
   onGoLeft?: () => void;
   onGoRight?: () => void;
   onTargetCell?: (cellIndex: number) => void;
+  onCellPressStart?: (cellIndex: number) => void;
+  onCellPressEnd?: () => void;
+  highlightedCellIndex?: number | null;
 };
 
-function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, onGoRight, onTargetCell }: NavyPanelProps) {
+function NavyPanel({
+  navy,
+  difficulty,
+  onDifficultyChange,
+  onNewGame,
+  onGoLeft,
+  onGoRight,
+  onTargetCell,
+  onCellPressStart,
+  onCellPressEnd,
+  highlightedCellIndex,
+}: NavyPanelProps) {
   const shipStatusByCode = useMemo(() => {
     return SHIPS.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
       const shipCells = navy.cells.filter((cell) => cell.shipCode === ship.code);
@@ -475,7 +514,10 @@ function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, 
             <GridCell
               key={`${navy.side}-${index}`}
               cell={cell}
+              isHighlighted={highlightedCellIndex === index}
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
+              onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
+              onPressEnd={onCellPressEnd}
             />
           ))}
         </div>
@@ -523,18 +565,37 @@ function NavyPanel({ navy, difficulty, onDifficultyChange, onNewGame, onGoLeft, 
   );
 }
 
-function GridCell({ cell, onClick }: { cell: CellState; onClick?: () => void }) {
+function GridCell({
+  cell,
+  isHighlighted = false,
+  onClick,
+  onPressStart,
+  onPressEnd,
+}: {
+  cell: CellState;
+  isHighlighted?: boolean;
+  onClick?: () => void;
+  onPressStart?: () => void;
+  onPressEnd?: () => void;
+}) {
   const exposure = cell.exposure;
   const { className, value, label } = getCellPresentation(cell);
+  const highlightClassName = isHighlighted ? 'border-[#00FFFF] bg-[#00FFFF] text-slate-950' : className;
 
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
+        onMouseDown={onPressStart}
+        onMouseUp={onPressEnd}
+        onMouseLeave={onPressEnd}
+        onTouchStart={onPressStart}
+        onTouchEnd={onPressEnd}
+        onTouchCancel={onPressEnd}
         className={cn(
           'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
-          className
+          highlightClassName
         )}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
       >
@@ -547,7 +608,7 @@ function GridCell({ cell, onClick }: { cell: CellState; onClick?: () => void }) 
     <div
       className={cn(
         'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
-        className
+        highlightClassName
       )}
       aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
     >
