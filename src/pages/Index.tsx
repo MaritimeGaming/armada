@@ -356,7 +356,7 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   }
 
   return {
-    className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
+    className: 'border-[#0000FF] bg-[#0000FF] text-white',
     value,
     label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
   };
