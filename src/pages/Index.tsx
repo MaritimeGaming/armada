@@ -28,7 +28,7 @@ type PlacedShip = ShipDefinition & {
 };
 
 type ExposureState = 'known' | 'unknown';
-type EffectState = 'undamaged' | 'hit' | 'sunk' | 'oil';
+type EffectState = 'untargeted' | 'targeted' | 'sunk' | 'oil';
 
 type CellState = {
   exposure: ExposureState;
@@ -53,7 +53,7 @@ type GameState = {
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
-const GAME_STATE_VERSION = 3;
+const GAME_STATE_VERSION = 4;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
@@ -123,10 +123,10 @@ const Index = () => {
   return (
     <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="relative isolate min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.18),_transparent_40%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]">
-        <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 pb-8 pt-4 sm:px-6">
+        <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col px-3 pb-3 pt-2 sm:px-4">
           {gameState && activeNavy ? (
-            <section className="space-y-4">
-              <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/5 shadow-[0_24px_80px_rgba(14,116,144,0.18)] backdrop-blur-md">
+            <section className="flex min-h-0 flex-1 flex-col gap-2">
+              <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
                 <div
                   className="flex w-[200%] transition-transform duration-500 ease-out"
                   style={{ transform: `translateX(-${activeIndex * 50}%)` }}
@@ -135,7 +135,7 @@ const Index = () => {
                     const navy = side === 'player' ? gameState.player : gameState.enemy;
 
                     return (
-                      <div key={side} className="w-1/2 shrink-0 p-4">
+                      <div key={side} className="w-1/2 shrink-0 p-2.5">
                         <NavyPanel
                           navy={navy}
                           onGoLeft={canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
@@ -147,16 +147,6 @@ const Index = () => {
                 </div>
               </div>
 
-              <footer className="px-2 text-center text-xs leading-5 text-slate-400">
-                <a
-                  href="https://shakespeare.diy"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium text-cyan-300 underline decoration-cyan-500/40 underline-offset-4 transition hover:text-cyan-200"
-                >
-                  Vibed with Shakespeare
-                </a>
-              </footer>
             </section>
           ) : (
             <Card className="border-white/10 bg-white/5 text-white shadow-2xl shadow-cyan-950/20 backdrop-blur-md">
@@ -194,14 +184,40 @@ type NavyPanelProps = {
 
 function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
   return (
-    <div className="space-y-4">
-      <div className="px-1 text-center text-sm font-semibold uppercase tracking-[0.28em] text-cyan-100">
-        {navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}
+    <div className="flex h-full flex-col gap-1.5">
+      <div className="relative flex min-h-8 items-center text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
+        {onGoLeft ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            onClick={onGoLeft}
+            className="absolute left-0 h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+            aria-label="Show my navy"
+          >
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        ) : null}
+
+        <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
+
+        {onGoRight ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            onClick={onGoRight}
+            className="absolute right-0 h-8 w-8 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+            aria-label="Show enemy navy"
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        ) : null}
       </div>
 
-      <div className="rounded-[28px] border border-cyan-200/10 bg-slate-950/70 p-3 shadow-inner shadow-cyan-950/20">
+      <div className="rounded-[18px] border border-cyan-200/10 bg-slate-950/80 shadow-inner shadow-cyan-950/20">
         <div
-          className="grid w-full gap-1"
+          className="grid w-full gap-px"
           style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))` }}
           aria-label={`${navy.label} grid`}
         >
@@ -211,39 +227,6 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
         </div>
       </div>
 
-      <div className="relative flex min-h-12 items-center px-1 text-xs uppercase tracking-[0.24em] text-slate-300">
-        {onGoLeft ? (
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              onClick={onGoLeft}
-              className="absolute left-0 h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-              aria-label="Show my navy"
-            >
-              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-            </Button>
-            <span className="w-full text-center">Show My Navy</span>
-          </>
-        ) : null}
-        {onGoRight ? (
-          <>
-            <span className="w-full text-center">Show Enemy Navy</span>
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              onClick={onGoRight}
-              className="absolute right-0 h-11 w-11 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-              aria-label="Show enemy navy"
-            >
-              <ChevronRight className="h-5 w-5" aria-hidden="true" />
-            </Button>
-          </>
-        ) : null}
-      </div>
-
       <div className="px-1">
         <div className="space-y-0.5">
           {SHIPS.map((ship) => (
@@ -251,10 +234,10 @@ function NavyPanel({ navy, onGoLeft, onGoRight }: NavyPanelProps) {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-center py-1 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                  className="flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                   aria-label={ship.name}
                 >
-                  <span className="font-mono text-sm tracking-[0.42em] text-cyan-100">
+                  <span className="font-mono text-[12px] tracking-[0.34em] text-cyan-100">
                     {Array.from({ length: ship.length }, () => ship.code).join(' ')}
                   </span>
                 </button>
@@ -277,7 +260,7 @@ function GridCell({ cell }: { cell: CellState }) {
   return (
     <div
       className={cn(
-        'aspect-square rounded-[4px] border text-center text-[clamp(0.55rem,2vw,0.85rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
+        'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
         className
       )}
       aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
@@ -305,11 +288,11 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   }
 
   if (cell.occupied) {
-    if (cell.effect === 'hit') {
+    if (cell.effect === 'targeted') {
       return {
         className: 'border-red-300/30 bg-red-500 text-white shadow-red-950/20',
         value: cell.shipCode ?? '',
-        label: 'occupied and hit',
+        label: 'occupied and targeted',
       };
     }
 
@@ -332,15 +315,15 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     return {
       className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
       value: cell.shipCode ?? '',
-      label: 'occupied and undamaged',
+      label: 'occupied and untargeted',
     };
   }
 
-  if (cell.effect === 'hit') {
+  if (cell.effect === 'targeted') {
     return {
       className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
       value: '–',
-      label: 'empty and hit',
+      label: 'empty and targeted',
     };
   }
 
@@ -355,7 +338,7 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   return {
     className: 'border-cyan-100/20 bg-cyan-600 text-white shadow-cyan-950/20',
     value: '',
-    label: 'empty and undamaged',
+    label: 'empty and untargeted',
   };
 }
 
@@ -385,7 +368,7 @@ function createNavy(side: NavySide, label: string, known: boolean): NavyState {
       cells.push({
         exposure: known ? 'known' : 'unknown',
         occupied: Boolean(shipCode),
-        effect: 'undamaged',
+        effect: 'untargeted',
         shipCode,
       });
     }
