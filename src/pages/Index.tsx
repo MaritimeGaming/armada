@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
+import { useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,8 @@ type GameState = {
   enemy: NavyState;
 };
 
+type AudioCue = 'splash' | 'sink' | 'ensign' | 'lifeboat' | 'lowscream' | 'explosion';
+
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
 const GAME_STATE_VERSION = 5;
@@ -79,6 +82,15 @@ const ORIENTATIONS: Orientation[] = [
 
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 
+const AUDIO_FILES: Record<AudioCue, string> = {
+  splash: '/audio/Splash.wav',
+  sink: '/audio/Sink.wav',
+  ensign: '/audio/Ensign.wav',
+  lifeboat: '/audio/LifeBoat.wav',
+  lowscream: '/audio/LowScream.wav',
+  explosion: '/audio/Explosion.wav',
+};
+
 const Index = () => {
   useSeoMeta({
     title: 'Armada',
@@ -87,6 +99,14 @@ const Index = () => {
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
+  const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
+    splash: null,
+    sink: null,
+    ensign: null,
+    lifeboat: null,
+    lowscream: null,
+    explosion: null,
+  });
 
   useEffect(() => {
     const storedState = window.localStorage.getItem(STORAGE_KEY);
@@ -120,11 +140,19 @@ const Index = () => {
     return activeView === 'player' ? gameState.player : gameState.enemy;
   }, [activeView, gameState]);
 
+  const playAudioCue = (cue: AudioCue) => {
+    const existingAudio = audioRef.current[cue];
+    const audio = existingAudio ?? new Audio(AUDIO_FILES[cue]);
+    audioRef.current[cue] = audio;
+    audio.currentTime = 0;
+    void audio.play().catch(() => undefined);
+  };
+
   const handleTargetEnemyCell = (cellIndex: number) => {
     setGameState((currentState) => {
       if (!currentState) return currentState;
 
-      const updatedEnemy = targetCellInNavy(currentState.enemy, cellIndex);
+      const { navy: updatedEnemy, audioCue } = targetCellInNavy(currentState.enemy, cellIndex);
 
       if (updatedEnemy === currentState.enemy) {
         return currentState;
@@ -136,6 +164,7 @@ const Index = () => {
       };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      playAudioCue(audioCue);
       return nextState;
     });
   };
@@ -378,11 +407,11 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   };
 }
 
-function targetCellInNavy(navy: NavyState, cellIndex: number): NavyState {
+function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState; audioCue: AudioCue } {
   const targetCell = navy.cells[cellIndex];
 
   if (!targetCell || targetCell.effect === 'targeted' || targetCell.effect === 'sunk') {
-    return navy;
+    return { navy, audioCue: 'splash' };
   }
 
   const nextCells = navy.cells.map((cell, index) => {
@@ -420,11 +449,40 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): NavyState {
     }
   }
 
-  return {
+  const resolvedNavy: NavyState = {
     ...navy,
     cells: nextCells,
     knownCount: nextCells.filter((cell) => cell.exposure === 'known').length,
   };
+
+  return {
+    navy: resolvedNavy,
+    audioCue: resolveAudioCue(nextCells[cellIndex]),
+  };
+}
+
+function resolveAudioCue(cell: CellState): AudioCue {
+  if (!cell.occupied) {
+    return 'splash';
+  }
+
+  if (cell.effect === 'sunk') {
+    return 'sink';
+  }
+
+  if (cell.shipCode === 'E') {
+    return 'ensign';
+  }
+
+  if (cell.shipCode === 'L') {
+    return 'lifeboat';
+  }
+
+  if (cell.shipCode === 'H') {
+    return 'lowscream';
+  }
+
+  return 'explosion';
 }
 
 function createGameState(): GameState {
