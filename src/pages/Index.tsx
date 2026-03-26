@@ -53,6 +53,7 @@ type GameState = {
 };
 
 type AudioCue = 'splash' | 'sink' | 'ensign' | 'lifeboat' | 'lowscream' | 'explosion';
+type AudioSequence = AudioCue[];
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
@@ -148,11 +149,17 @@ const Index = () => {
     void audio.play().catch(() => undefined);
   };
 
+  const playAudioSequence = (sequence: AudioSequence) => {
+    sequence.forEach((cue) => {
+      playAudioCue(cue);
+    });
+  };
+
   const handleTargetEnemyCell = (cellIndex: number) => {
     setGameState((currentState) => {
       if (!currentState) return currentState;
 
-      const { navy: updatedEnemy, audioCue } = targetCellInNavy(currentState.enemy, cellIndex);
+      const { navy: updatedEnemy, audioSequence } = targetCellInNavy(currentState.enemy, cellIndex);
 
       if (updatedEnemy === currentState.enemy) {
         return currentState;
@@ -164,7 +171,7 @@ const Index = () => {
       };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      playAudioCue(audioCue);
+      playAudioSequence(audioSequence);
       return nextState;
     });
   };
@@ -407,11 +414,11 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   };
 }
 
-function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState; audioCue: AudioCue } {
+function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState; audioSequence: AudioSequence } {
   const targetCell = navy.cells[cellIndex];
 
   if (!targetCell || targetCell.effect === 'targeted' || targetCell.effect === 'sunk') {
-    return { navy, audioCue: 'splash' };
+    return { navy, audioSequence: ['splash'] };
   }
 
   const nextCells = navy.cells.map((cell, index) => {
@@ -457,32 +464,32 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState
 
   return {
     navy: resolvedNavy,
-    audioCue: resolveAudioCue(nextCells[cellIndex]),
+    audioSequence: resolveAudioSequence(nextCells[cellIndex]),
   };
 }
 
-function resolveAudioCue(cell: CellState): AudioCue {
+function resolveAudioSequence(cell: CellState): AudioSequence {
   if (!cell.occupied) {
-    return 'splash';
+    return ['splash'];
   }
 
   if (cell.effect === 'sunk') {
-    return 'sink';
+    return ['explosion', 'sink'];
   }
 
   if (cell.shipCode === 'E') {
-    return 'ensign';
+    return ['ensign'];
   }
 
   if (cell.shipCode === 'L') {
-    return 'lifeboat';
+    return ['lifeboat'];
   }
 
   if (cell.shipCode === 'H') {
-    return 'lowscream';
+    return ['lowscream'];
   }
 
-  return 'explosion';
+  return ['explosion'];
 }
 
 function createGameState(): GameState {
