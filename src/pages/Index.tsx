@@ -344,7 +344,7 @@ const Index = () => {
       </main>
 
       <Dialog open={gameOver.isOpen}>
-        <DialogContent className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white">
+        <DialogContent className="top-[75%] max-w-sm translate-y-[-50%] rounded-2xl border-white/10 bg-slate-950 text-white sm:top-[75%]">
           <DialogHeader>
             <DialogTitle>{gameOver.winner === 'player' ? 'Victory' : 'Defeat'}</DialogTitle>
             <DialogDescription className="text-slate-300">
