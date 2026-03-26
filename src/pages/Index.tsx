@@ -347,6 +347,14 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     };
   }
 
+  if (cell.shipCode === 'O' && (cell.effect === 'targeted' || cell.effect === 'sunk')) {
+    return {
+      className: 'border-[#404040] bg-[#404040] text-white',
+      value,
+      label: cell.effect === 'sunk' ? 'oil tanker sunk' : 'oil tanker targeted',
+    };
+  }
+
   if (cell.effect === 'sunk') {
     return {
       className: 'border-[#0000B2] bg-[#0000B2] text-white',
