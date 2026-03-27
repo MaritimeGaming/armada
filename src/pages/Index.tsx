@@ -536,11 +536,10 @@ function NavyPanel({
                     className="relative flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                     aria-label={ship.name}
                   >
-                    {status.isSunk ? (
-                      <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%-1.75rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
-                    ) : null}
-
-                    <span className="font-mono text-[12px] tracking-[0.34em]">
+                    <span className="relative inline-flex items-center justify-center font-mono text-[12px] tracking-[0.34em]">
+                      {status.isSunk ? (
+                        <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%+0.35rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
+                      ) : null}
                       {Array.from({ length: ship.length }, (_, index) => (
                         <span
                           key={`${ship.code}-${index}`}
