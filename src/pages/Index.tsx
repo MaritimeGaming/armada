@@ -309,6 +309,10 @@ const Index = () => {
       return;
     }
 
+    if (gameState.player.cells.some((cell) => cell.targeting)) {
+      return;
+    }
+
     const previewIndex = selectAppTargetIndex(gameState.player, difficulty);
 
     if (previewIndex === null) {
@@ -321,7 +325,7 @@ const Index = () => {
 
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
-        if (!currentState || currentState.currentTurn !== 'app') {
+        if (!currentState || currentState.currentTurn !== 'app' || currentState.player.cells.some((cell) => cell.targeting)) {
           return currentState;
         }
 
@@ -338,7 +342,7 @@ const Index = () => {
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
-        if (!currentState || currentState.currentTurn !== 'app') {
+        if (!currentState || currentState.currentTurn !== 'app' || !currentState.player.cells[previewIndex]?.targeting) {
           return currentState;
         }
 
