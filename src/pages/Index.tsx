@@ -603,7 +603,7 @@ function NavyPanel({
                           className={status.isSunk || index < status.targetedCount ? 'text-red-500' : 'text-cyan-100'}
                         >
                           {ship.code}
-                          {index < ship.length - 1 ? '\u00A0\u00A0' : ''}
+                          {index < ship.length - 1 ? '\u00A0' : ''}
                         </span>
                       ))}
                     </span>
