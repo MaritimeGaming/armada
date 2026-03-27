@@ -40,12 +40,13 @@ type PlacedShip = ShipDefinition & {
 };
 
 type ExposureState = 'known' | 'unknown' | 'revealed';
-type EffectState = 'untargeted' | 'targeting' | 'targeted' | 'sunk';
+type EffectState = 'untargeted' | 'targeted' | 'sunk';
 
 type CellState = {
   exposure: ExposureState;
   occupied: boolean;
   effect: EffectState;
+  targeting: boolean;
   oil: boolean;
   shipCode?: string;
 };
@@ -79,7 +80,7 @@ type GameOverState = {
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
-const GAME_STATE_VERSION = 7;
+const GAME_STATE_VERSION = 8;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
@@ -229,11 +230,11 @@ const Index = () => {
 
       const targetCell = currentState.enemy.cells[cellIndex];
 
-      if (!targetCell || targetCell.effect !== 'untargeted') {
+      if (!targetCell || targetCell.effect !== 'untargeted' || targetCell.targeting) {
         return currentState;
       }
 
-      const nextEnemy = setCellEffect(currentState.enemy, cellIndex, 'targeting');
+      const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
       const nextState: GameState = {
         ...currentState,
         enemy: nextEnemy,
@@ -250,13 +251,13 @@ const Index = () => {
         return currentState;
       }
 
-      const targetingIndex = currentState.enemy.cells.findIndex((cell) => cell.effect === 'targeting');
+      const targetingIndex = currentState.enemy.cells.findIndex((cell) => cell.targeting);
 
       if (targetingIndex === -1) {
         return currentState;
       }
 
-      const nextEnemy = setCellEffect(currentState.enemy, targetingIndex, 'untargeted');
+      const nextEnemy = setCellTargeting(currentState.enemy, targetingIndex, false);
       const nextState: GameState = {
         ...currentState,
         enemy: nextEnemy,
@@ -271,7 +272,10 @@ const Index = () => {
     setGameState((currentState) => {
       if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
 
-      const enemyWithTargetedCell = setCellEffect(currentState.enemy, cellIndex, 'targeted');
+      const enemyWithTargetedCell = setCellState(currentState.enemy, cellIndex, {
+        effect: 'targeted',
+        targeting: false,
+      });
       const { navy: updatedEnemy, audioSequence } = targetCellInNavy(enemyWithTargetedCell, cellIndex);
 
       if (updatedEnemy === currentState.enemy) {
@@ -316,7 +320,7 @@ const Index = () => {
           return currentState;
         }
 
-        const nextPlayer = setCellEffect(currentState.player, previewIndex, 'targeting');
+        const nextPlayer = setCellTargeting(currentState.player, previewIndex, true);
         const nextState: GameState = {
           ...currentState,
           player: nextPlayer,
@@ -333,7 +337,10 @@ const Index = () => {
           return currentState;
         }
 
-        const playerWithTargetedCell = setCellEffect(currentState.player, previewIndex, 'targeted');
+        const playerWithTargetedCell = setCellState(currentState.player, previewIndex, {
+          effect: 'targeted',
+          targeting: false,
+        });
         const { navy: updatedPlayer, audioSequence } = targetCellInNavy(playerWithTargetedCell, previewIndex);
         const nextState: GameState = {
           ...currentState,
@@ -669,7 +676,7 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     };
   }
 
-  if (cell.effect === 'targeting') {
+  if (cell.targeting) {
     return {
       className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
       value,
@@ -735,7 +742,7 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
 function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState; audioSequence: AudioSequence } {
   const targetCell = navy.cells[cellIndex];
 
-  if (!targetCell || (targetCell.effect !== 'targeted' && targetCell.effect !== 'targeting')) {
+  if (!targetCell || (targetCell.effect !== 'targeted' && !targetCell.targeting)) {
     return { navy, audioSequence: ['splash'] };
   }
 
@@ -744,11 +751,13 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState
       return cell;
     }
 
-    return {
-      ...cell,
-      exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
-      effect: 'targeted' as EffectState,
-    };
+      return {
+        ...cell,
+        exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
+        effect: 'targeted' as EffectState,
+        targeting: false,
+      };
+
   });
 
   const targetedCell = nextCells[cellIndex];
@@ -768,6 +777,7 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState
         nextCells[index] = {
           ...nextCells[index],
           effect: 'sunk',
+          targeting: false,
           exposure: 'known',
         };
       });
@@ -810,6 +820,29 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
   }
 
   return sequence;
+}
+
+function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
+  const nextCells = navy.cells.map((cell, index) => {
+    if (index !== cellIndex) {
+      return cell;
+    }
+
+    return {
+      ...cell,
+      ...updates,
+    };
+  });
+
+  return {
+    ...navy,
+    cells: nextCells,
+    knownCount: nextCells.filter((cell) => cell.exposure === 'known' || cell.exposure === 'revealed').length,
+  };
+}
+
+function setCellTargeting(navy: NavyState, cellIndex: number, targeting: boolean): NavyState {
+  return setCellState(navy, cellIndex, { targeting });
 }
 
 function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): number | null {
@@ -894,6 +927,7 @@ function createNavy(side: NavySide, label: string, known: boolean): NavyState {
         exposure: known ? 'known' : 'unknown',
         occupied: Boolean(shipCode),
         effect: 'untargeted',
+        targeting: false,
         oil: false,
         shipCode,
       });
