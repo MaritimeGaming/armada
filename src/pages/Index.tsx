@@ -67,7 +67,7 @@ type GameState = {
   enemy: NavyState;
 };
 
-type AudioCue = 'splash' | 'sink' | 'ensign' | 'highscream' | 'lowscream' | 'explosion' | 'wingame';
+type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'lowscream' | 'helicoptera' | 'explosion' | 'wingame';
 type AudioSequence = AudioCue[];
 type DifficultyLevel = 'level1' | 'level2';
 
@@ -107,9 +107,9 @@ const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const AUDIO_FILES: Record<AudioCue, string> = {
   splash: '/audio/Splash.wav',
   sink: '/audio/Sink.wav',
-  ensign: '/audio/Ensign.wav',
-  highscream: '/audio/HighScream.wav',
+  lifeboat: '/audio/LifeBoat.wav',
   lowscream: '/audio/LowScream.wav',
+  helicoptera: '/audio/Helicopter_a.wav',
   explosion: '/audio/Explosion.wav',
   wingame: '/audio/WinGame.wav',
 };
@@ -134,9 +134,9 @@ const Index = () => {
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
     splash: null,
     sink: null,
-    ensign: null,
-    highscream: null,
+    lifeboat: null,
     lowscream: null,
+    helicoptera: null,
     explosion: null,
     wingame: null,
   });
@@ -741,27 +741,25 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
     return ['splash'];
   }
 
-  if (cell.effect === 'sunk') {
-    if (cell.shipCode === 'L') {
-      return ['highscream', 'sink'];
-    }
+  const sequence: AudioSequence = ['explosion'];
 
-    return ['explosion', 'sink'];
+  if (cell.effect === 'sunk') {
+    sequence.push('sink');
   }
 
   if (cell.shipCode === 'E') {
-    return ['ensign'];
+    sequence.push('lowscream');
   }
 
   if (cell.shipCode === 'L') {
-    return ['highscream'];
+    sequence.push('lifeboat');
   }
 
   if (cell.shipCode === 'H') {
-    return ['lowscream'];
+    sequence.push('helicoptera');
   }
 
-  return ['explosion'];
+  return sequence;
 }
 
 function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): number | null {
