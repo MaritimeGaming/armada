@@ -73,6 +73,11 @@ type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'lowscream' | 'helicoptera' | '
 type AudioSequence = AudioCue[];
 type DifficultyLevel = 'level1' | 'level2';
 
+type TargetingResult = {
+  navy: NavyState;
+  audioSequence: AudioSequence;
+};
+
 type GameOverState = {
   isOpen: boolean;
   winner: Winner | null;
@@ -276,7 +281,7 @@ const Index = () => {
         effect: 'targeted',
         targeting: false,
       });
-      const { navy: updatedEnemy, audioSequence } = targetCellInNavy(enemyWithTargetedCell, cellIndex);
+      const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [cellIndex]);
 
       if (updatedEnemy === currentState.enemy) {
         return currentState;
@@ -341,7 +346,7 @@ const Index = () => {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedPlayer, audioSequence } = targetCellInNavy(playerWithTargetedCell, previewIndex);
+        const { navy: updatedPlayer, audioSequence } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
         const nextState: GameState = {
           ...currentState,
           currentTurn: 'player',
@@ -739,7 +744,7 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   };
 }
 
-function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState; audioSequence: AudioSequence } {
+function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
   const targetCell = navy.cells[cellIndex];
 
   if (!targetCell || (targetCell.effect !== 'targeted' && !targetCell.targeting)) {
@@ -751,13 +756,12 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState
       return cell;
     }
 
-      return {
-        ...cell,
-        exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
-        effect: 'targeted' as EffectState,
-        targeting: false,
-      };
-
+    return {
+      ...cell,
+      exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
+      effect: 'targeted' as EffectState,
+      targeting: false,
+    };
   });
 
   const targetedCell = nextCells[cellIndex];
@@ -787,7 +791,7 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState
   const resolvedNavy: NavyState = {
     ...navy,
     cells: nextCells,
-    knownCount: nextCells.filter((cell) => cell.exposure === 'known').length,
+    knownCount: nextCells.filter((cell) => cell.exposure === 'known' || cell.exposure === 'revealed').length,
   };
 
   return {
@@ -795,6 +799,50 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState
     audioSequence: resolveAudioSequence(nextCells[cellIndex]),
   };
 }
+
+function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
+  let currentNavy = navy;
+  const playedCues = new Set<AudioCue>();
+  const pendingIndexes = [...initialCellIndexes];
+  const visitedIndexes = new Set<number>();
+
+  while (pendingIndexes.length > 0) {
+    const cellIndex = pendingIndexes.shift();
+
+    if (cellIndex === undefined || visitedIndexes.has(cellIndex)) {
+      continue;
+    }
+
+    visitedIndexes.add(cellIndex);
+
+    const result = targetCellInNavy(currentNavy, cellIndex);
+    currentNavy = result.navy;
+    result.audioSequence.forEach((cue) => playedCues.add(cue));
+
+    const targetedCell = currentNavy.cells[cellIndex];
+
+    if (targetedCell?.oil && targetedCell.effect === 'targeted' && randomInt(1, 20) === 1) {
+      currentNavy.cells.forEach((cell, index) => {
+        if (cell.oil && cell.effect === 'untargeted' && !visitedIndexes.has(index)) {
+          const preparedNavy = setCellState(currentNavy, index, {
+            effect: 'targeted',
+            targeting: false,
+          });
+          currentNavy = preparedNavy;
+          pendingIndexes.push(index);
+        }
+      });
+    }
+  }
+
+  currentNavy = spreadOilSlick(currentNavy);
+
+  return {
+    navy: currentNavy,
+    audioSequence: Array.from(playedCues),
+  };
+}
+
 
 function resolveAudioSequence(cell: CellState): AudioSequence {
   if (!cell.occupied) {
@@ -843,6 +891,52 @@ function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellS
 
 function setCellTargeting(navy: NavyState, cellIndex: number, targeting: boolean): NavyState {
   return setCellState(navy, cellIndex, { targeting });
+}
+
+function getAdjacentIndexes(cellIndex: number): number[] {
+  const x = cellIndex % GRID_SIZE;
+  const y = Math.floor(cellIndex / GRID_SIZE);
+  const adjacentIndexes: number[] = [];
+
+  for (let deltaY = -1; deltaY <= 1; deltaY += 1) {
+    for (let deltaX = -1; deltaX <= 1; deltaX += 1) {
+      if (deltaX === 0 && deltaY === 0) {
+        continue;
+      }
+
+      const nextX = x + deltaX;
+      const nextY = y + deltaY;
+
+      if (nextX >= 0 && nextX < GRID_SIZE && nextY >= 0 && nextY < GRID_SIZE) {
+        adjacentIndexes.push(nextY * GRID_SIZE + nextX);
+      }
+    }
+  }
+
+  return adjacentIndexes;
+}
+
+function spreadOilSlick(navy: NavyState): NavyState {
+  const candidateIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
+    if (cell.oil || cell.effect !== 'untargeted') {
+      return indexes;
+    }
+
+    const isAdjacentToOil = getAdjacentIndexes(index).some((adjacentIndex) => navy.cells[adjacentIndex]?.oil);
+
+    if (isAdjacentToOil) {
+      indexes.push(index);
+    }
+
+    return indexes;
+  }, []);
+
+  if (candidateIndexes.length === 0) {
+    return navy;
+  }
+
+  const spreadIndex = randomItem(candidateIndexes);
+  return setCellState(navy, spreadIndex, { oil: true });
 }
 
 function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): number | null {
