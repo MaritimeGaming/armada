@@ -40,12 +40,13 @@ type PlacedShip = ShipDefinition & {
 };
 
 type ExposureState = 'known' | 'unknown' | 'revealed';
-type EffectState = 'untargeted' | 'targeted' | 'sunk' | 'oil';
+type EffectState = 'untargeted' | 'targeting' | 'targeted' | 'sunk';
 
 type CellState = {
   exposure: ExposureState;
   occupied: boolean;
   effect: EffectState;
+  oil: boolean;
   shipCode?: string;
 };
 
@@ -78,7 +79,7 @@ type GameOverState = {
 
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
-const GAME_STATE_VERSION = 6;
+const GAME_STATE_VERSION = 7;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
 const SHIPS: ShipDefinition[] = [
@@ -125,8 +126,6 @@ const Index = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
   const [gameOver, setGameOver] = useState<GameOverState>({ isOpen: false, winner: null });
-  const [pressedEnemyCellIndex, setPressedEnemyCellIndex] = useState<number | null>(null);
-  const [appPreviewCellIndex, setAppPreviewCellIndex] = useState<number | null>(null);
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(() => {
     const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
@@ -193,8 +192,6 @@ const Index = () => {
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
     setGameOver({ isOpen: false, winner: null });
-    setPressedEnemyCellIndex(null);
-    setAppPreviewCellIndex(null);
   };
 
   const handleDifficultyChange = (value: string) => {
@@ -221,21 +218,61 @@ const Index = () => {
   };
 
   const handleEnemyCellPressStart = (cellIndex: number) => {
-    if (activeView === 'enemy') {
-      setPressedEnemyCellIndex(cellIndex);
+    if (activeView !== 'enemy') {
+      return;
     }
+
+    setGameState((currentState) => {
+      if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
+        return currentState;
+      }
+
+      const targetCell = currentState.enemy.cells[cellIndex];
+
+      if (!targetCell || targetCell.effect !== 'untargeted') {
+        return currentState;
+      }
+
+      const nextEnemy = setCellEffect(currentState.enemy, cellIndex, 'targeting');
+      const nextState: GameState = {
+        ...currentState,
+        enemy: nextEnemy,
+      };
+
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      return nextState;
+    });
   };
 
   const clearEnemyCellPress = () => {
-    setPressedEnemyCellIndex(null);
+    setGameState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const targetingIndex = currentState.enemy.cells.findIndex((cell) => cell.effect === 'targeting');
+
+      if (targetingIndex === -1) {
+        return currentState;
+      }
+
+      const nextEnemy = setCellEffect(currentState.enemy, targetingIndex, 'untargeted');
+      const nextState: GameState = {
+        ...currentState,
+        enemy: nextEnemy,
+      };
+
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      return nextState;
+    });
   };
 
   const handleTargetEnemyCell = (cellIndex: number) => {
-    setPressedEnemyCellIndex(null);
     setGameState((currentState) => {
       if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
 
-      const { navy: updatedEnemy, audioSequence } = targetCellInNavy(currentState.enemy, cellIndex);
+      const enemyWithTargetedCell = setCellEffect(currentState.enemy, cellIndex, 'targeted');
+      const { navy: updatedEnemy, audioSequence } = targetCellInNavy(enemyWithTargetedCell, cellIndex);
 
       if (updatedEnemy === currentState.enemy) {
         return currentState;
@@ -274,7 +311,20 @@ const Index = () => {
     }, 1000);
 
     const previewDelay = window.setTimeout(() => {
-      setAppPreviewCellIndex(previewIndex);
+      setGameState((currentState) => {
+        if (!currentState || currentState.currentTurn !== 'app') {
+          return currentState;
+        }
+
+        const nextPlayer = setCellEffect(currentState.player, previewIndex, 'targeting');
+        const nextState: GameState = {
+          ...currentState,
+          player: nextPlayer,
+        };
+
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        return nextState;
+      });
     }, 1500);
 
     const executeTargetingDelay = window.setTimeout(() => {
@@ -283,7 +333,8 @@ const Index = () => {
           return currentState;
         }
 
-        const { navy: updatedPlayer, audioSequence } = targetCellInNavy(currentState.player, previewIndex);
+        const playerWithTargetedCell = setCellEffect(currentState.player, previewIndex, 'targeted');
+        const { navy: updatedPlayer, audioSequence } = targetCellInNavy(playerWithTargetedCell, previewIndex);
         const nextState: GameState = {
           ...currentState,
           currentTurn: 'player',
@@ -292,7 +343,6 @@ const Index = () => {
 
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         playAudioSequence(audioSequence);
-        setAppPreviewCellIndex(null);
 
         if (areAllShipsSunk(updatedPlayer)) {
           concludeGame('app', nextState);
@@ -310,7 +360,6 @@ const Index = () => {
       window.clearTimeout(scrollToPlayerDelay);
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
-      setAppPreviewCellIndex(null);
     };
   }, [difficulty, gameOver.isOpen, gameState]);
 
@@ -341,7 +390,6 @@ const Index = () => {
                           onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
                           onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
                           onCellPressEnd={side === 'enemy' ? clearEnemyCellPress : undefined}
-                          highlightedCellIndex={side === 'enemy' ? pressedEnemyCellIndex : side === 'player' ? appPreviewCellIndex : null}
                         />
                       </div>
                     );
@@ -407,7 +455,6 @@ type NavyPanelProps = {
   onTargetCell?: (cellIndex: number) => void;
   onCellPressStart?: (cellIndex: number) => void;
   onCellPressEnd?: () => void;
-  highlightedCellIndex?: number | null;
 };
 
 function NavyPanel({
@@ -420,7 +467,6 @@ function NavyPanel({
   onTargetCell,
   onCellPressStart,
   onCellPressEnd,
-  highlightedCellIndex,
 }: NavyPanelProps) {
   const shipStatusByCode = useMemo(() => {
     return SHIPS.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
@@ -514,7 +560,6 @@ function NavyPanel({
             <GridCell
               key={`${navy.side}-${index}`}
               cell={cell}
-              isHighlighted={highlightedCellIndex === index}
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
               onPressEnd={onCellPressEnd}
@@ -566,20 +611,17 @@ function NavyPanel({
 
 function GridCell({
   cell,
-  isHighlighted = false,
   onClick,
   onPressStart,
   onPressEnd,
 }: {
   cell: CellState;
-  isHighlighted?: boolean;
   onClick?: () => void;
   onPressStart?: () => void;
   onPressEnd?: () => void;
 }) {
   const exposure = cell.exposure;
   const { className, value, label } = getCellPresentation(cell);
-  const highlightClassName = isHighlighted ? 'border-[#00FFFF] bg-[#00FFFF] text-slate-950' : className;
 
   if (onClick) {
     return (
@@ -594,7 +636,7 @@ function GridCell({
         onTouchCancel={onPressEnd}
         className={cn(
           'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
-          highlightClassName
+          className
         )}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
       >
@@ -607,7 +649,7 @@ function GridCell({
     <div
       className={cn(
         'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
-        highlightClassName
+        className
       )}
       aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
     >
@@ -619,11 +661,19 @@ function GridCell({
 function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
   const value = cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
-  if (cell.effect === 'oil') {
+  if (cell.oil) {
     return {
       className: 'border-[#404040] bg-[#404040] text-white',
       value,
       label: cell.occupied ? 'occupied with oil' : 'empty with oil',
+    };
+  }
+
+  if (cell.effect === 'targeting') {
+    return {
+      className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
+      value,
+      label: cell.occupied ? 'occupied and targeting' : 'empty and targeting',
     };
   }
 
@@ -685,7 +735,7 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
 function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState; audioSequence: AudioSequence } {
   const targetCell = navy.cells[cellIndex];
 
-  if (!targetCell || targetCell.effect === 'targeted' || targetCell.effect === 'sunk') {
+  if (!targetCell || (targetCell.effect !== 'targeted' && targetCell.effect !== 'targeting')) {
     return { navy, audioSequence: ['splash'] };
   }
 
@@ -694,11 +744,11 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): { navy: NavyState
       return cell;
     }
 
-      return {
-        ...cell,
-        exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
-        effect: 'targeted' as EffectState,
-      };
+    return {
+      ...cell,
+      exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
+      effect: 'targeted' as EffectState,
+    };
   });
 
   const targetedCell = nextCells[cellIndex];
@@ -844,6 +894,7 @@ function createNavy(side: NavySide, label: string, known: boolean): NavyState {
         exposure: known ? 'known' : 'unknown',
         occupied: Boolean(shipCode),
         effect: 'untargeted',
+        oil: false,
         shipCode,
       });
     }
