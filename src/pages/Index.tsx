@@ -9,6 +9,7 @@ import {
   GAME_STATE_VERSION,
   GRID_SIZE,
   resolveTargetingSequence,
+  selectAppTargetIndex,
   setCellState,
   setCellTargeting,
   SHIPS,
