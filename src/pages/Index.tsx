@@ -670,10 +670,6 @@ function GridCell({
     };
 
     const handlePressEnd = () => {
-      if (isTargetable) {
-        onClick();
-      }
-
       onPressEnd?.();
     };
 
