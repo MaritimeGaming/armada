@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
-import type { AudioSequence, DifficultyLevel, GameState, NavySide, Winner } from '@/pages/Index';
+import type { AudioSequence, DifficultyLevel, GameState, NavySide, Winner } from '@/lib/armada-game';
 import {
   areAllShipsSunk,
   resolveTargetingSequence,
   selectAppTargetIndex,
   setCellState,
   setCellTargeting,
-} from '@/pages/Index';
+} from '@/lib/armada-game';
 
 type AppTurnPhase = 'idle' | 'scheduled' | 'previewing';
 
