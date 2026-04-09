@@ -215,21 +215,34 @@ const Index = () => {
     });
   };
 
-  const clearEnemyCellPress = () => {
-    setGameState((currentState) => {
-      if (!currentState) {
-        return currentState;
+  const handleEnemyCellPressEnd = (cellIndex: number) => {
+    const currentState = gameState;
+
+    if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
+      return;
+    }
+
+    const targetCell = currentState.enemy.cells[cellIndex];
+
+    if (targetCell?.targeting) {
+      handleTargetEnemyCell(cellIndex);
+      return;
+    }
+
+    setGameState((state) => {
+      if (!state) {
+        return state;
       }
 
-      const targetingIndex = currentState.enemy.cells.findIndex((cell) => cell.targeting);
+      const targetingIndex = state.enemy.cells.findIndex((cell) => cell.targeting);
 
       if (targetingIndex === -1) {
-        return currentState;
+        return state;
       }
 
-      const nextEnemy = setCellTargeting(currentState.enemy, targetingIndex, false);
+      const nextEnemy = setCellTargeting(state.enemy, targetingIndex, false);
       const nextState: GameState = {
-        ...currentState,
+        ...state,
         enemy: nextEnemy,
       };
 
@@ -393,7 +406,7 @@ const Index = () => {
                           onGoRight={canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
                           onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
                           onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
-                          onCellPressEnd={side === 'enemy' ? clearEnemyCellPress : undefined}
+                          onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
                           isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
                         />
                       </div>
@@ -461,7 +474,7 @@ type NavyPanelProps = {
   onGoRight?: () => void;
   onTargetCell?: (cellIndex: number) => void;
   onCellPressStart?: (cellIndex: number) => void;
-  onCellPressEnd?: () => void;
+  onCellPressEnd?: (cellIndex: number) => void;
   isCellTargetable?: (cell: CellState) => boolean;
 };
 
@@ -584,7 +597,7 @@ function NavyPanel({
               isTargetable={isCellTargetable?.(cell) ?? false}
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
-              onPressEnd={onCellPressEnd}
+              onPressEnd={onCellPressEnd ? () => onCellPressEnd(index) : undefined}
             />
           ))}
         </div>
