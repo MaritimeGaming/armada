@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 
 import type { AudioSequence, DifficultyLevel, GameState, NavySide, Winner } from '@/pages/Index';
 import {
@@ -18,7 +19,7 @@ type UseAppTargetingSequenceParams = {
   onConcludeGame: (winner: Winner, state: GameState) => void;
   onPlayAudioSequence: (sequence: AudioSequence) => void;
   onSetActiveView: (side: NavySide) => void;
-  setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
+  setGameState: Dispatch<SetStateAction<GameState | null>>;
   storageKey: string;
 };
 
