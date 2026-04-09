@@ -246,9 +246,7 @@ const Index = () => {
 
     appPreviewIndexRef.current = previewIndex;
 
-    const scrollToPlayerDelay = window.setTimeout(() => {
-      setActiveView('player');
-    }, 400);
+    setActiveView('player');
 
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -279,7 +277,7 @@ const Index = () => {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-    }, 400);
+    }, 800);
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -313,10 +311,9 @@ const Index = () => {
 
         return nextState;
       });
-    }, 800);
+    }, 1200);
 
     return () => {
-      window.clearTimeout(scrollToPlayerDelay);
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
     };
@@ -349,6 +346,7 @@ const Index = () => {
                           onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
                           onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
                           onCellPressEnd={side === 'enemy' ? clearEnemyCellPress : undefined}
+                          isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
                         />
                       </div>
                     );
@@ -414,6 +412,7 @@ type NavyPanelProps = {
   onTargetCell?: (cellIndex: number) => void;
   onCellPressStart?: (cellIndex: number) => void;
   onCellPressEnd?: () => void;
+  isCellTargetable?: (cell: CellState) => boolean;
 };
 
 function NavyPanel({
@@ -426,6 +425,7 @@ function NavyPanel({
   onTargetCell,
   onCellPressStart,
   onCellPressEnd,
+  isCellTargetable,
 }: NavyPanelProps) {
   const shipStatusByCode = useMemo(() => {
     return SHIPS.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
@@ -519,6 +519,7 @@ function NavyPanel({
             <GridCell
               key={`${navy.side}-${index}`}
               cell={cell}
+              isTargetable={isCellTargetable?.(cell) ?? false}
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
               onPressEnd={onCellPressEnd}
@@ -570,11 +571,13 @@ function NavyPanel({
 
 function GridCell({
   cell,
+  isTargetable,
   onClick,
   onPressStart,
   onPressEnd,
 }: {
   cell: CellState;
+  isTargetable?: boolean;
   onClick?: () => void;
   onPressStart?: () => void;
   onPressEnd?: () => void;
@@ -583,18 +586,39 @@ function GridCell({
   const { className, value, label } = getCellPresentation(cell);
 
   if (onClick) {
+    const handleClick = () => {
+      if (!isTargetable) {
+        return;
+      }
+
+      onClick();
+    };
+
+    const handlePressStart = () => {
+      if (!isTargetable) {
+        return;
+      }
+
+      onPressStart?.();
+    };
+
+    const handlePressEnd = () => {
+      onPressEnd?.();
+    };
+
     return (
       <button
         type="button"
-        onClick={onClick}
-        onMouseDown={onPressStart}
-        onMouseUp={onPressEnd}
-        onMouseLeave={onPressEnd}
-        onTouchStart={onPressStart}
-        onTouchEnd={onPressEnd}
-        onTouchCancel={onPressEnd}
+        onClick={handleClick}
+        onMouseDown={handlePressStart}
+        onMouseUp={handlePressEnd}
+        onMouseLeave={handlePressEnd}
+        onTouchStart={handlePressStart}
+        onTouchEnd={handlePressEnd}
+        onTouchCancel={handlePressEnd}
         className={cn(
           'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
+          isTargetable ? 'cursor-crosshair' : 'cursor-default',
           className
         )}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
