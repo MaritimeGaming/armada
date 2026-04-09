@@ -350,7 +350,7 @@ function createNavy(side: NavySide, label: string, known: boolean, options: Ship
         occupied: Boolean(shipCode),
         effect: 'untargeted',
         targeting: false,
-        oil: false,
+        oil: shipCode === 'O',
         shipCode,
       });
     }

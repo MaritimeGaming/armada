@@ -132,11 +132,14 @@ const Index = () => {
     const audio = reusableAudio ?? new Audio(AUDIO_FILES[cue]);
 
     if (!reusableAudio) {
+      audio.preload = 'auto';
       pool.push(audio);
     }
 
     audio.currentTime = 0;
-    void audio.play().catch(() => undefined);
+    void audio.play().catch((error) => {
+      console.warn(`Audio playback failed for ${cue}`, error);
+    });
   };
 
   const playAudioSequence = (sequence: AudioSequence) => {
