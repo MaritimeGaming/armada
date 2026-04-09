@@ -241,6 +241,7 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
           effect: 'sunk',
           targeting: false,
           exposure: 'known',
+          oil: targetedCell.shipCode === 'O' ? true : nextCells[index].oil,
         };
       });
     }
@@ -350,7 +351,7 @@ function createNavy(side: NavySide, label: string, known: boolean, options: Ship
         occupied: Boolean(shipCode),
         effect: 'untargeted',
         targeting: false,
-        oil: shipCode === 'O',
+        oil: false,
         shipCode,
       });
     }
