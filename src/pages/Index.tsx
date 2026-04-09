@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSeoMeta } from '@unhead/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSeoMeta } from '@unhead/react';
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -136,6 +135,7 @@ const Index = () => {
     const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
   });
+  const appTargetPreviewRef = useRef<number | null>(null);
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
     splash: null,
     sink: null,
@@ -306,14 +306,17 @@ const Index = () => {
 
   useEffect(() => {
     if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
+      appTargetPreviewRef.current = null;
       return;
     }
 
-    const previewIndex = selectAppTargetIndex(gameState.player, difficulty);
+    const previewIndex = appTargetPreviewRef.current ?? selectAppTargetIndex(gameState.player, difficulty);
 
     if (previewIndex === null) {
       return;
     }
+
+    appTargetPreviewRef.current = previewIndex;
 
     const scrollToPlayerDelay = window.setTimeout(() => {
       setActiveView('player');
@@ -325,7 +328,21 @@ const Index = () => {
           return currentState;
         }
 
-        const nextPlayer = setCellTargeting(currentState.player, previewIndex, true);
+        const currentlyTargetingIndex = currentState.player.cells.findIndex((cell) => cell.targeting);
+        let nextPlayer = currentState.player;
+
+        if (currentlyTargetingIndex !== -1 && currentlyTargetingIndex !== previewIndex) {
+          nextPlayer = setCellTargeting(nextPlayer, currentlyTargetingIndex, false);
+        }
+
+        if (!nextPlayer.cells[previewIndex]?.targeting) {
+          nextPlayer = setCellTargeting(nextPlayer, previewIndex, true);
+        }
+
+        if (nextPlayer === currentState.player) {
+          return currentState;
+        }
+
         const nextState: GameState = {
           ...currentState,
           player: nextPlayer,
@@ -341,6 +358,8 @@ const Index = () => {
         if (!currentState || currentState.currentTurn !== 'app') {
           return currentState;
         }
+
+        appTargetPreviewRef.current = null;
 
         const playerWithTargetedCell = setCellState(currentState.player, previewIndex, {
           effect: 'targeted',
