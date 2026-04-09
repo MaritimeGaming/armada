@@ -54,14 +54,14 @@ const Index = () => {
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
   });
   const appPreviewIndexRef = useRef<number | null>(null);
-  const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
-    splash: null,
-    sink: null,
-    lifeboat: null,
-    ensign: null,
-    helicopter: null,
-    explosion: null,
-    wingame: null,
+  const audioRef = useRef<Record<AudioCue, HTMLAudioElement[]>>({
+    splash: [],
+    sink: [],
+    lifeboat: [],
+    ensign: [],
+    helicopter: [],
+    explosion: [],
+    wingame: [],
   });
 
   useEffect(() => {
@@ -97,11 +97,19 @@ const Index = () => {
   }, [activeView, gameState]);
 
   const playAudioCue = (cue: AudioCue) => {
-    const existingAudio = audioRef.current[cue];
-    const audio = existingAudio ?? new Audio(AUDIO_FILES[cue]);
-    audioRef.current[cue] = audio;
-    audio.currentTime = 0;
-    void audio.play().catch(() => undefined);
+    const audio = new Audio(AUDIO_FILES[cue]);
+    audioRef.current[cue].push(audio);
+
+    const cleanupAudio = () => {
+      audioRef.current[cue] = audioRef.current[cue].filter((item) => item !== audio);
+    };
+
+    audio.addEventListener('ended', cleanupAudio, { once: true });
+    audio.addEventListener('error', cleanupAudio, { once: true });
+
+    void audio.play().catch(() => {
+      cleanupAudio();
+    });
   };
 
   const playAudioSequence = (sequence: AudioSequence) => {
@@ -240,7 +248,7 @@ const Index = () => {
 
     const scrollToPlayerDelay = window.setTimeout(() => {
       setActiveView('player');
-    }, 1000);
+    }, 400);
 
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -271,7 +279,7 @@ const Index = () => {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-    }, 1500);
+    }, 400);
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -305,7 +313,7 @@ const Index = () => {
 
         return nextState;
       });
-    }, 2250);
+    }, 800);
 
     return () => {
       window.clearTimeout(scrollToPlayerDelay);
@@ -654,7 +662,9 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
 
   if (cell.shipCode === 'O' && (cell.effect === 'targeted' || cell.effect === 'sunk')) {
     return {
-      className: 'border-[#404040] bg-[#404040] text-white',
+      className: cell.effect === 'sunk'
+        ? 'border-[#202020] bg-[#202020] text-white'
+        : 'border-[#404040] bg-[#404040] text-white',
       value,
       label: cell.effect === 'sunk' ? 'oil tanker sunk' : 'oil tanker targeted',
     };
