@@ -239,6 +239,12 @@ const Index = () => {
     setGameState((currentState) => {
       if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
 
+      const targetCell = currentState.enemy.cells[cellIndex];
+
+      if (!targetCell || (targetCell.effect !== 'untargeted' && !targetCell.targeting)) {
+        return currentState;
+      }
+
       const enemyWithTargetedCell = setCellState(currentState.enemy, cellIndex, {
         effect: 'targeted',
         targeting: false,
@@ -639,14 +645,6 @@ function GridCell({
   const { className, value, label } = getCellPresentation(cell);
 
   if (onClick) {
-    const handleClick = () => {
-      if (!isTargetable) {
-        return;
-      }
-
-      onClick();
-    };
-
     const handlePressStart = () => {
       if (!isTargetable) {
         return;
@@ -656,13 +654,17 @@ function GridCell({
     };
 
     const handlePressEnd = () => {
+      if (isTargetable) {
+        onClick();
+      }
+
       onPressEnd?.();
     };
+
 
     return (
       <button
         type="button"
-        onClick={handleClick}
         onMouseDown={handlePressStart}
         onMouseUp={handlePressEnd}
         onTouchStart={handlePressStart}
