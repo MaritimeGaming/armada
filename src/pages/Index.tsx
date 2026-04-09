@@ -58,8 +58,8 @@ const Index = () => {
     splash: null,
     sink: null,
     lifeboat: null,
-    lowscream: null,
-    helicoptera: null,
+    ensign: null,
+    helicopter: null,
     explosion: null,
     wingame: null,
   });
