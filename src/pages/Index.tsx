@@ -216,22 +216,41 @@ const Index = () => {
   };
 
   const handleEnemyCellPressEnd = (cellIndex: number) => {
-    const currentState = gameState;
-
-    if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
-      return;
-    }
-
-    const targetCell = currentState.enemy.cells[cellIndex];
-
-    if (targetCell?.targeting) {
-      handleTargetEnemyCell(cellIndex);
-      return;
-    }
-
     setGameState((state) => {
-      if (!state) {
+      if (!state || state.currentTurn !== 'player' || gameOver.isOpen) {
         return state;
+      }
+
+      const targetCell = state.enemy.cells[cellIndex];
+
+      if (targetCell?.targeting) {
+        const enemyWithTargetedCell = setCellState(state.enemy, cellIndex, {
+          effect: 'targeted',
+          targeting: false,
+        });
+        const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [cellIndex]);
+
+        if (updatedEnemy === state.enemy) {
+          return state;
+        }
+
+        const nextState: GameState = {
+          ...state,
+          currentTurn: 'app',
+          enemy: updatedEnemy,
+        };
+
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        window.setTimeout(() => {
+          setActiveView('player');
+        }, 700);
+        playAudioSequence(audioSequence);
+
+        if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
+          concludeGame('player', nextState);
+        }
+
+        return nextState;
       }
 
       const targetingIndex = state.enemy.cells.findIndex((cell) => cell.targeting);
@@ -252,44 +271,7 @@ const Index = () => {
   };
 
   const handleTargetEnemyCell = (cellIndex: number) => {
-    setGameState((currentState) => {
-      if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
-
-      const targetCell = currentState.enemy.cells[cellIndex];
-
-      if (!targetCell || (targetCell.effect !== 'untargeted' && !targetCell.targeting)) {
-        return currentState;
-      }
-
-      const enemyWithTargetedCell = setCellState(currentState.enemy, cellIndex, {
-        effect: 'targeted',
-        targeting: false,
-      });
-      const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [cellIndex]);
-
-      if (updatedEnemy === currentState.enemy) {
-        return currentState;
-      }
-
-      const nextState: GameState = {
-        ...currentState,
-        currentTurn: 'app',
-        enemy: updatedEnemy,
-      };
-
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      window.setTimeout(() => {
-        setActiveView('player');
-      }, 700);
-      playAudioSequence(audioSequence);
- 
-      if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
-
-        concludeGame('player', nextState);
-      }
-
-      return nextState;
-    });
+    handleEnemyCellPressEnd(cellIndex);
   };
 
   useEffect(() => {
