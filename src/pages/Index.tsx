@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
+import { useAppTargetingSequence } from '@/hooks/useAppTargetingSequence';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -18,30 +19,30 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-type Orientation = 'vertical-down' | 'horizontal-right' | 'diagonal-down' | 'diagonal-up';
-type NavySide = 'player' | 'enemy';
+export type Orientation = 'vertical-down' | 'horizontal-right' | 'diagonal-down' | 'diagonal-up';
+export type NavySide = 'player' | 'enemy';
 
-type ShipDefinition = {
+export type ShipDefinition = {
   code: string;
   name: string;
   length: number;
 };
 
-type Point = {
+export type Point = {
   x: number;
   y: number;
 };
 
-type PlacedShip = ShipDefinition & {
+export type PlacedShip = ShipDefinition & {
   orientation: Orientation;
   start: Point;
   cells: Point[];
 };
 
-type ExposureState = 'known' | 'unknown' | 'revealed';
-type EffectState = 'untargeted' | 'targeted' | 'sunk';
+export type ExposureState = 'known' | 'unknown' | 'revealed';
+export type EffectState = 'untargeted' | 'targeted' | 'sunk';
 
-type CellState = {
+export type CellState = {
   exposure: ExposureState;
   occupied: boolean;
   effect: EffectState;
@@ -50,7 +51,7 @@ type CellState = {
   shipCode?: string;
 };
 
-type NavyState = {
+export type NavyState = {
   side: NavySide;
   label: string;
   knownCount: number;
@@ -58,21 +59,21 @@ type NavyState = {
   cells: CellState[];
 };
 
-type TurnOwner = 'player' | 'app';
-type Winner = 'player' | 'app';
+export type TurnOwner = 'player' | 'app';
+export type Winner = 'player' | 'app';
 
-type GameState = {
+export type GameState = {
   version: number;
   currentTurn: TurnOwner;
   player: NavyState;
   enemy: NavyState;
 };
 
-type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'lowscream' | 'helicoptera' | 'explosion' | 'wingame';
-type AudioSequence = AudioCue[];
-type DifficultyLevel = 'level1' | 'level2';
+export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'lowscream' | 'helicoptera' | 'explosion' | 'wingame';
+export type AudioSequence = AudioCue[];
+export type DifficultyLevel = 'level1' | 'level2';
 
-type TargetingResult = {
+export type TargetingResult = {
   navy: NavyState;
   audioSequence: AudioSequence;
 };
@@ -82,14 +83,12 @@ type GameOverState = {
   winner: Winner | null;
 };
 
-type AppTurnPhase = 'idle' | 'scheduled' | 'previewing';
-
-const GRID_SIZE = 10;
+export const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
 const GAME_STATE_VERSION = 8;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
-const SHIPS: ShipDefinition[] = [
+export const SHIPS: ShipDefinition[] = [
   { code: 'A', name: 'Aircraft Carrier', length: 5 },
   { code: 'B', name: 'Battleship', length: 4 },
   { code: 'C', name: 'Cruiser', length: 3 },
@@ -112,7 +111,7 @@ const ORIENTATIONS: Orientation[] = [
 
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 
-const AUDIO_FILES: Record<AudioCue, string> = {
+export const AUDIO_FILES: Record<AudioCue, string> = {
   splash: '/audio/Splash.wav',
   sink: '/audio/Sink.wav',
   lifeboat: '/audio/LifeBoat.wav',
@@ -137,8 +136,6 @@ const Index = () => {
     const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
   });
-  const appTargetPreviewRef = useRef<number | null>(null);
-  const appTurnPhaseRef = useRef<AppTurnPhase>('idle');
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
     splash: null,
     sink: null,
@@ -197,8 +194,6 @@ const Index = () => {
 
   const handleNewGame = () => {
     const nextState = createGameState();
-    appTargetPreviewRef.current = null;
-    appTurnPhaseRef.current = 'idle';
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
@@ -212,9 +207,6 @@ const Index = () => {
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
-    appTargetPreviewRef.current = null;
-    appTurnPhaseRef.current = 'idle';
-
     const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
@@ -285,9 +277,6 @@ const Index = () => {
     setGameState((currentState) => {
       if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
 
-      appTargetPreviewRef.current = null;
-      appTurnPhaseRef.current = 'idle';
-
       const enemyWithTargetedCell = setCellState(currentState.enemy, cellIndex, {
         effect: 'targeted',
         targeting: false,
@@ -315,108 +304,16 @@ const Index = () => {
     });
   };
 
-  useEffect(() => {
-    if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
-      appTargetPreviewRef.current = null;
-      appTurnPhaseRef.current = 'idle';
-      return;
-    }
-
-    if (appTurnPhaseRef.current !== 'idle') {
-      return;
-    }
-
-    const previewIndex = appTargetPreviewRef.current ?? selectAppTargetIndex(gameState.player, difficulty);
-
-    if (previewIndex === null) {
-      return;
-    }
-
-    appTargetPreviewRef.current = previewIndex;
-    appTurnPhaseRef.current = 'scheduled';
-
-    const scrollToPlayerDelay = window.setTimeout(() => {
-      setActiveView('player');
-    }, 1000);
-
-    const previewDelay = window.setTimeout(() => {
-      appTurnPhaseRef.current = 'previewing';
-
-      setGameState((currentState) => {
-        if (!currentState || currentState.currentTurn !== 'app') {
-          return currentState;
-        }
-
-        const currentlyTargetingIndex = currentState.player.cells.findIndex((cell) => cell.targeting);
-        let nextPlayer = currentState.player;
-
-        if (currentlyTargetingIndex !== -1 && currentlyTargetingIndex !== previewIndex) {
-          nextPlayer = setCellTargeting(nextPlayer, currentlyTargetingIndex, false);
-        }
-
-        if (!nextPlayer.cells[previewIndex]?.targeting) {
-          nextPlayer = setCellTargeting(nextPlayer, previewIndex, true);
-        }
-
-        if (nextPlayer === currentState.player) {
-          return currentState;
-        }
-
-        const nextState: GameState = {
-          ...currentState,
-          player: nextPlayer,
-        };
-
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-        return nextState;
-      });
-    }, 1500);
-
-    const executeTargetingDelay = window.setTimeout(() => {
-      setGameState((currentState) => {
-        if (!currentState || currentState.currentTurn !== 'app') {
-          return currentState;
-        }
-
-        appTargetPreviewRef.current = null;
-        appTurnPhaseRef.current = 'idle';
-
-        const playerWithTargetedCell = setCellState(currentState.player, previewIndex, {
-          effect: 'targeted',
-          targeting: false,
-        });
-        const { navy: updatedPlayer, audioSequence } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
-        const nextState: GameState = {
-          ...currentState,
-          currentTurn: 'player',
-          player: updatedPlayer,
-        };
-
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-        playAudioSequence(audioSequence);
-
-        if (areAllShipsSunk(updatedPlayer)) {
-          concludeGame('app', nextState);
-        } else {
-          window.setTimeout(() => {
-            setActiveView('enemy');
-          }, 1000);
-        }
-
-        return nextState;
-      });
-    }, 2250);
-
-    return () => {
-      window.clearTimeout(scrollToPlayerDelay);
-      window.clearTimeout(previewDelay);
-      window.clearTimeout(executeTargetingDelay);
-
-      if (appTurnPhaseRef.current !== 'idle') {
-        appTurnPhaseRef.current = 'idle';
-      }
-    };
-  }, [difficulty, gameOver.isOpen, gameState]);
+  useAppTargetingSequence({
+    difficulty,
+    gameOverOpen: gameOver.isOpen,
+    gameState,
+    onConcludeGame: concludeGame,
+    onPlayAudioSequence: playAudioSequence,
+    onSetActiveView: setActiveView,
+    setGameState,
+    storageKey: STORAGE_KEY,
+  });
 
   return (
     <>
@@ -843,7 +740,7 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
   };
 }
 
-function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
+export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
   let currentNavy = navy;
   const playedCues = new Set<AudioCue>();
   const pendingIndexes = [...initialCellIndexes];
@@ -913,7 +810,7 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
   return sequence;
 }
 
-function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
+export function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
   const nextCells = navy.cells.map((cell, index) => {
     if (index !== cellIndex) {
       return cell;
@@ -932,7 +829,7 @@ function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellS
   };
 }
 
-function setCellTargeting(navy: NavyState, cellIndex: number, targeting: boolean): NavyState {
+export function setCellTargeting(navy: NavyState, cellIndex: number, targeting: boolean): NavyState {
   return setCellState(navy, cellIndex, { targeting });
 }
 
@@ -982,7 +879,7 @@ function spreadOilSlick(navy: NavyState): NavyState {
   return setCellState(navy, spreadIndex, { oil: true });
 }
 
-function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): number | null {
+export function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): number | null {
   const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
     if (cell.effect === 'untargeted') {
       indexes.push(index);
@@ -997,7 +894,7 @@ function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): nu
   return randomItem(untargetedIndexes);
 }
 
-function areAllShipsSunk(navy: NavyState): boolean {
+export function areAllShipsSunk(navy: NavyState): boolean {
   return SHIPS.every((ship) => navy.cells.filter((cell) => cell.shipCode === ship.code).every((cell) => cell.effect === 'sunk'));
 }
 
