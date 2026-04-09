@@ -97,19 +97,16 @@ const Index = () => {
   }, [activeView, gameState]);
 
   const playAudioCue = (cue: AudioCue) => {
-    const audio = new Audio(AUDIO_FILES[cue]);
-    audioRef.current[cue].push(audio);
+    const pool = audioRef.current[cue];
+    const reusableAudio = pool.find((item) => item.paused || item.ended);
+    const audio = reusableAudio ?? new Audio(AUDIO_FILES[cue]);
 
-    const cleanupAudio = () => {
-      audioRef.current[cue] = audioRef.current[cue].filter((item) => item !== audio);
-    };
+    if (!reusableAudio) {
+      pool.push(audio);
+    }
 
-    audio.addEventListener('ended', cleanupAudio, { once: true });
-    audio.addEventListener('error', cleanupAudio, { once: true });
-
-    void audio.play().catch(() => {
-      cleanupAudio();
-    });
+    audio.currentTime = 0;
+    void audio.play().catch(() => undefined);
   };
 
   const playAudioSequence = (sequence: AudioSequence) => {
@@ -222,6 +219,9 @@ const Index = () => {
       };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      window.setTimeout(() => {
+        setActiveView('player');
+      }, 400);
       playAudioSequence(audioSequence);
 
       if (areAllShipsSunk(updatedEnemy)) {
@@ -245,8 +245,6 @@ const Index = () => {
     }
 
     appPreviewIndexRef.current = previewIndex;
-
-    setActiveView('player');
 
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -618,7 +616,7 @@ function GridCell({
         onTouchCancel={handlePressEnd}
         className={cn(
           'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
-          isTargetable ? 'cursor-crosshair' : 'cursor-default',
+          isTargetable ? 'targeting-crosshair cursor-none' : 'cursor-default',
           className
         )}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}

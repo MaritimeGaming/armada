@@ -104,3 +104,26 @@
     min-height: 100vh;
   }
 }
+
+@layer utilities {
+  .targeting-crosshair {
+    position: relative;
+  }
+
+  .targeting-crosshair::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: 20px;
+    height: 20px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    border-radius: 9999px;
+    border: 1.5px solid rgba(15, 23, 42, 0.95);
+    background:
+      linear-gradient(rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.95)) center/1.5px 100%,
+      linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.95)) center/100% 1.5px;
+    background-repeat: no-repeat;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+  }
+}
