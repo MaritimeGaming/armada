@@ -163,8 +163,9 @@ const Index = () => {
   const handleSinglesToggle = (includeSingles: boolean) => {
     const nextOptions: ShipSetOptions = { includeSingles };
     window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
+    appPreviewIndexRef.current = null;
+    setGameOver({ isOpen: false, winner: null });
     setShipSetOptions(nextOptions);
-    handleNewGame(nextOptions);
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
