@@ -14,7 +14,6 @@ import {
   SHIPS,
 } from '@/lib/armada-game';
 import type { AudioCue, AudioSequence, CellState, DifficultyLevel, GameState, NavySide, Winner } from '@/lib/armada-game';
-import { useAppTargetingSequence } from '@/hooks/useAppTargetingSequence';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -221,16 +220,90 @@ const Index = () => {
     });
   };
 
-  useAppTargetingSequence({
-    difficulty,
-    gameOverOpen: gameOver.isOpen,
-    gameState,
-    onConcludeGame: concludeGame,
-    onPlayAudioSequence: playAudioSequence,
-    onSetActiveView: setActiveView,
-    setGameState,
-    storageKey: STORAGE_KEY,
-  });
+  useEffect(() => {
+    if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
+      return;
+    }
+
+    const previewIndex = selectAppTargetIndex(gameState.player, difficulty);
+
+    if (previewIndex === null) {
+      return;
+    }
+
+    const scrollToPlayerDelay = window.setTimeout(() => {
+      setActiveView('player');
+    }, 1000);
+
+    const previewDelay = window.setTimeout(() => {
+      setGameState((currentState) => {
+        if (!currentState || currentState.currentTurn !== 'app') {
+          return currentState;
+        }
+
+        const currentlyTargetingIndex = currentState.player.cells.findIndex((cell) => cell.targeting);
+        let nextPlayer = currentState.player;
+
+        if (currentlyTargetingIndex !== -1 && currentlyTargetingIndex !== previewIndex) {
+          nextPlayer = setCellTargeting(nextPlayer, currentlyTargetingIndex, false);
+        }
+
+        if (!nextPlayer.cells[previewIndex]?.targeting) {
+          nextPlayer = setCellTargeting(nextPlayer, previewIndex, true);
+        }
+
+        if (nextPlayer === currentState.player) {
+          return currentState;
+        }
+
+        const nextState: GameState = {
+          ...currentState,
+          player: nextPlayer,
+        };
+
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        return nextState;
+      });
+    }, 1500);
+
+    const executeTargetingDelay = window.setTimeout(() => {
+      setGameState((currentState) => {
+        if (!currentState || currentState.currentTurn !== 'app') {
+          return currentState;
+        }
+
+        const playerWithTargetedCell = setCellState(currentState.player, previewIndex, {
+          effect: 'targeted',
+          targeting: false,
+        });
+        const { navy: updatedPlayer, audioSequence } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+        const nextState: GameState = {
+          ...currentState,
+          currentTurn: 'player',
+          player: updatedPlayer,
+        };
+
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        playAudioSequence(audioSequence);
+
+        if (areAllShipsSunk(updatedPlayer)) {
+          concludeGame('app', nextState);
+        } else {
+          window.setTimeout(() => {
+            setActiveView('enemy');
+          }, 1000);
+        }
+
+        return nextState;
+      });
+    }, 2250);
+
+    return () => {
+      window.clearTimeout(scrollToPlayerDelay);
+      window.clearTimeout(previewDelay);
+      window.clearTimeout(executeTargetingDelay);
+    };
+  }, [difficulty, gameOver.isOpen, gameState]);
 
   return (
     <>
