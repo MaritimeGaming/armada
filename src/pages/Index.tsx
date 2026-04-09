@@ -82,6 +82,8 @@ type GameOverState = {
   winner: Winner | null;
 };
 
+type AppTurnPhase = 'idle' | 'scheduled' | 'previewing';
+
 const GRID_SIZE = 10;
 const STORAGE_KEY = 'armada:game-state';
 const GAME_STATE_VERSION = 8;
@@ -136,6 +138,7 @@ const Index = () => {
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
   });
   const appTargetPreviewRef = useRef<number | null>(null);
+  const appTurnPhaseRef = useRef<AppTurnPhase>('idle');
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
     splash: null,
     sink: null,
@@ -194,6 +197,8 @@ const Index = () => {
 
   const handleNewGame = () => {
     const nextState = createGameState();
+    appTargetPreviewRef.current = null;
+    appTurnPhaseRef.current = 'idle';
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
@@ -207,6 +212,9 @@ const Index = () => {
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
+    appTargetPreviewRef.current = null;
+    appTurnPhaseRef.current = 'idle';
+
     const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
@@ -277,6 +285,9 @@ const Index = () => {
     setGameState((currentState) => {
       if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
 
+      appTargetPreviewRef.current = null;
+      appTurnPhaseRef.current = 'idle';
+
       const enemyWithTargetedCell = setCellState(currentState.enemy, cellIndex, {
         effect: 'targeted',
         targeting: false,
@@ -307,6 +318,11 @@ const Index = () => {
   useEffect(() => {
     if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
       appTargetPreviewRef.current = null;
+      appTurnPhaseRef.current = 'idle';
+      return;
+    }
+
+    if (appTurnPhaseRef.current !== 'idle') {
       return;
     }
 
@@ -317,12 +333,15 @@ const Index = () => {
     }
 
     appTargetPreviewRef.current = previewIndex;
+    appTurnPhaseRef.current = 'scheduled';
 
     const scrollToPlayerDelay = window.setTimeout(() => {
       setActiveView('player');
     }, 1000);
 
     const previewDelay = window.setTimeout(() => {
+      appTurnPhaseRef.current = 'previewing';
+
       setGameState((currentState) => {
         if (!currentState || currentState.currentTurn !== 'app') {
           return currentState;
@@ -360,6 +379,7 @@ const Index = () => {
         }
 
         appTargetPreviewRef.current = null;
+        appTurnPhaseRef.current = 'idle';
 
         const playerWithTargetedCell = setCellState(currentState.player, previewIndex, {
           effect: 'targeted',
@@ -391,6 +411,10 @@ const Index = () => {
       window.clearTimeout(scrollToPlayerDelay);
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
+
+      if (appTurnPhaseRef.current !== 'idle') {
+        appTurnPhaseRef.current = 'idle';
+      }
     };
   }, [difficulty, gameOver.isOpen, gameState]);
 
