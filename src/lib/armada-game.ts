@@ -87,7 +87,7 @@ export const AUDIO_FILES: Record<AudioCue, string> = {
   sink: '/audio/Sink.wav',
   lifeboat: '/audio/LifeBoat.wav',
   lowscream: '/audio/LowScream.wav',
-  helicoptera: '/audio/Helicopter_a.wav',
+  helicoptera: '/audio/Helicopter.wav',
   explosion: '/audio/Explosion.wav',
   wingame: '/audio/WinGame.wav',
 };
