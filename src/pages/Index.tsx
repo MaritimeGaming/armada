@@ -163,9 +163,8 @@ const Index = () => {
   const handleSinglesToggle = (includeSingles: boolean) => {
     const nextOptions: ShipSetOptions = { includeSingles };
     window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
-    appPreviewIndexRef.current = null;
-    setGameOver({ isOpen: false, winner: null });
     setShipSetOptions(nextOptions);
+    handleNewGame(nextOptions);
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
@@ -471,8 +470,10 @@ function NavyPanel({
   onCellPressEnd,
   isCellTargetable,
 }: NavyPanelProps) {
+  const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
+
   const shipStatusByCode = useMemo(() => {
-    return SHIPS.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
+    return availableShips.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
       const shipCells = navy.cells.filter((cell) => cell.shipCode === ship.code);
       const targetedCount = shipCells.filter((cell) => cell.effect === 'targeted').length;
       const isSunk = shipCells.length > 0 && shipCells.every((cell) => cell.effect === 'sunk');
@@ -480,7 +481,7 @@ function NavyPanel({
       accumulator[ship.code] = { targetedCount, isSunk };
       return accumulator;
     }, {});
-  }, [navy.cells]);
+  }, [availableShips, navy.cells]);
 
   return (
     <div className="flex h-full flex-col gap-1.5">
@@ -582,7 +583,7 @@ function NavyPanel({
 
       <div className="px-1">
         <div className="space-y-0.5">
-          {getShips(shipSetOptions).map((ship) => {
+          {availableShips.map((ship) => {
             const status = shipStatusByCode[ship.code] ?? { targetedCount: 0, isSunk: false };
 
             return (
