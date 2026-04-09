@@ -53,6 +53,7 @@ const Index = () => {
     const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
   });
+  const appPreviewIndexRef = useRef<number | null>(null);
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
     splash: null,
     sink: null,
@@ -111,6 +112,7 @@ const Index = () => {
 
   const handleNewGame = () => {
     const nextState = createGameState();
+    appPreviewIndexRef.current = null;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
@@ -124,6 +126,7 @@ const Index = () => {
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
+    appPreviewIndexRef.current = null;
     const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
@@ -223,14 +226,17 @@ const Index = () => {
 
   useEffect(() => {
     if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
+      appPreviewIndexRef.current = null;
       return;
     }
 
-    const previewIndex = selectAppTargetIndex(gameState.player, difficulty);
+    const previewIndex = appPreviewIndexRef.current ?? selectAppTargetIndex(gameState.player, difficulty);
 
     if (previewIndex === null) {
       return;
     }
+
+    appPreviewIndexRef.current = previewIndex;
 
     const scrollToPlayerDelay = window.setTimeout(() => {
       setActiveView('player');
@@ -272,6 +278,8 @@ const Index = () => {
         if (!currentState || currentState.currentTurn !== 'app') {
           return currentState;
         }
+
+        appPreviewIndexRef.current = null;
 
         const playerWithTargetedCell = setCellState(currentState.player, previewIndex, {
           effect: 'targeted',
