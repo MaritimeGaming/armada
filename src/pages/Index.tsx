@@ -335,7 +335,7 @@ const Index = () => {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-    }, 800);
+    }, 400);
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -370,7 +370,7 @@ const Index = () => {
 
         return nextState;
       });
-    }, 1200);
+    }, 800);
 
     return () => {
       window.clearTimeout(previewDelay);
@@ -689,7 +689,7 @@ function GridCell({
         onBlur={handlePressEnd}
         className={cn(
           'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
-          isTargetable ? 'cursor-[url(/crosshair-cursor.svg)_12_12,crosshair]' : 'cursor-default',
+          (isTargetable || cell.targeting) ? 'cursor-[url(/crosshair-cursor.svg)_12_12,crosshair]' : 'cursor-default',
           className
         )}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
@@ -713,7 +713,9 @@ function GridCell({
 }
 
 function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
-  const value = cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
+  const value = cell.oil && cell.effect === 'untargeted'
+    ? ''
+    : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
   if (cell.oil) {
     return {
