@@ -102,7 +102,9 @@ const Index = () => {
             Array.from(currentShipCodes).every((code) => persistedShipCodes.has(code));
 
           if (hasMatchingShipSet) {
-            setGameState(parsedState as GameState);
+            const restoredState = parsedState as GameState;
+            setGameState(restoredState);
+            setActiveView(restoredState.currentTurn === 'app' ? 'player' : 'enemy');
             return;
           }
         }
@@ -116,6 +118,7 @@ const Index = () => {
     const nextState = createGameState(shipSetOptions);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
+    setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
   }, [shipSetOptions]);
 
   const activeIndex = navyViewOrder.indexOf(activeView);
@@ -249,12 +252,9 @@ const Index = () => {
           enemy: updatedEnemy,
         };
 
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-        window.setTimeout(() => {
-          setActiveView('player');
-        }, 700);
-        playAudioSequence(audioSequence);
-
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      playAudioSequence(audioSequence);
+ 
         if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
           concludeGame('player', nextState);
         }
@@ -299,6 +299,10 @@ const Index = () => {
 
     appPreviewIndexRef.current = previewIndex;
 
+    const showPlayerDelay = window.setTimeout(() => {
+      setActiveView('player');
+    }, 700);
+
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
         if (!currentState || currentState.currentTurn !== 'app') {
@@ -328,7 +332,7 @@ const Index = () => {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-    }, 400);
+    }, 1400);
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -363,9 +367,10 @@ const Index = () => {
 
         return nextState;
       });
-    }, 800);
+    }, 1600);
 
     return () => {
+      window.clearTimeout(showPlayerDelay);
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
     };
