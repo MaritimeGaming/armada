@@ -332,7 +332,7 @@ const Index = () => {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-    }, 1100);
+    }, 1400);
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -367,7 +367,7 @@ const Index = () => {
 
         return nextState;
       });
-    }, 1500);
+    }, 1800);
 
     return () => {
       window.clearTimeout(showPlayerDelay);
