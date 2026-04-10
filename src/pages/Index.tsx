@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
@@ -74,6 +73,10 @@ const Index = () => {
   });
   const appPreviewIndexRef = useRef<number | null>(null);
   const userPreviewIndexRef = useRef<number | null>(null);
+  const [explosionCells, setExplosionCells] = useState<Record<NavySide, number | null>>({
+    player: null,
+    enemy: null,
+  });
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement[]>>({
     splash: [],
     sink: [],
@@ -156,12 +159,29 @@ const Index = () => {
     });
   };
 
+  const triggerCellExplosion = (side: NavySide, cellIndex: number) => {
+    setExplosionCells((current) => ({
+      ...current,
+      [side]: cellIndex,
+    }));
+
+    window.setTimeout(() => {
+      setExplosionCells((current) => (
+        current[side] === cellIndex
+          ? { ...current, [side]: null }
+          : current
+      ));
+    }, 380);
+  };
+
   const handleNewGame = (nextOptions: ShipSetOptions = shipSetOptions) => {
-    const nextState = createGameState(nextOptions);
-    appPreviewIndexRef.current = null;
-    userPreviewIndexRef.current = null;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-    setGameState(nextState);
+      const nextState = createGameState(nextOptions);
+      appPreviewIndexRef.current = null;
+      userPreviewIndexRef.current = null;
+      setExplosionCells({ player: null, enemy: null });
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      setGameState(nextState);
+
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
     setGameOver({ isOpen: false, winner: null });
   };
@@ -180,9 +200,11 @@ const Index = () => {
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
-    appPreviewIndexRef.current = null;
-    userPreviewIndexRef.current = null;
-    const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
+      appPreviewIndexRef.current = null;
+      userPreviewIndexRef.current = null;
+      setExplosionCells({ player: null, enemy: null });
+      const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
+
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(revealedState));
@@ -203,29 +225,27 @@ const Index = () => {
       return;
     }
 
-    flushSync(() => {
-      setGameState((currentState) => {
-        if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
-          return currentState;
-        }
+    setGameState((currentState) => {
+      if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
+        return currentState;
+      }
 
-        const targetCell = currentState.enemy.cells[cellIndex];
+      const targetCell = currentState.enemy.cells[cellIndex];
 
-        if (!targetCell || targetCell.effect !== 'untargeted' || targetCell.targeting) {
-          return currentState;
-        }
+      if (!targetCell || targetCell.effect !== 'untargeted' || targetCell.targeting) {
+        return currentState;
+      }
 
-        userPreviewIndexRef.current = cellIndex;
+      userPreviewIndexRef.current = cellIndex;
 
-        const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
-        const nextState: GameState = {
-          ...currentState,
-          enemy: nextEnemy,
-        };
+      const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
+      const nextState: GameState = {
+        ...currentState,
+        enemy: nextEnemy,
+      };
 
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-        return nextState;
-      });
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      return nextState;
     });
   };
 
@@ -247,6 +267,10 @@ const Index = () => {
           targeting: false,
         });
         const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+
+        if (targetCell.occupied) {
+          triggerCellExplosion('enemy', releaseIndex);
+        }
 
         if (updatedEnemy === state.enemy) {
           return state;
@@ -353,6 +377,10 @@ const Index = () => {
           targeting: false,
         });
         const { navy: updatedPlayer, audioSequence } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+
+        if (currentState.player.cells[previewIndex]?.occupied) {
+          triggerCellExplosion('player', previewIndex);
+        }
         const nextState: GameState = {
           ...currentState,
           currentTurn: 'player',
@@ -412,6 +440,7 @@ const Index = () => {
                           onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
                           onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
                           isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
+                          explodingCellIndex={explosionCells[side]}
                         />
                       </div>
                     );
@@ -480,6 +509,7 @@ type NavyPanelProps = {
   onCellPressStart?: (cellIndex: number) => void;
   onCellPressEnd?: (cellIndex: number) => void;
   isCellTargetable?: (cell: CellState) => boolean;
+  explodingCellIndex?: number | null;
 };
 
 function NavyPanel({
@@ -495,6 +525,7 @@ function NavyPanel({
   onCellPressStart,
   onCellPressEnd,
   isCellTargetable,
+  explodingCellIndex,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
 
@@ -602,6 +633,7 @@ function NavyPanel({
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
               onPressEnd={onCellPressEnd ? () => onCellPressEnd(index) : undefined}
+              isExploding={explodingCellIndex === index}
             />
           ))}
         </div>
@@ -654,12 +686,14 @@ function GridCell({
   onClick,
   onPressStart,
   onPressEnd,
+  isExploding,
 }: {
   cell: CellState;
   isTargetable?: boolean;
   onClick?: () => void;
   onPressStart?: () => void;
   onPressEnd?: () => void;
+  isExploding?: boolean;
 }) {
   const exposure = cell.exposure;
   const { className, value, label } = getCellPresentation(cell);
@@ -688,13 +722,22 @@ function GridCell({
         onTouchCancel={handlePressEnd}
         onBlur={handlePressEnd}
         className={cn(
-          'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
+          'relative aspect-square overflow-hidden rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
           (isTargetable || cell.targeting) ? 'cursor-[url(/crosshair-cursor.svg)_12_12,crosshair]' : 'cursor-default',
           className
         )}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
       >
         <div className="flex h-full items-center justify-center text-white">{value}</div>
+        {isExploding ? (
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="cell-explosion">
+              <span className="cell-explosion-core" />
+              <span className="cell-explosion-ring" />
+              <span className="cell-explosion-sparks" />
+            </span>
+          </span>
+        ) : null}
       </button>
     );
   }
@@ -702,12 +745,21 @@ function GridCell({
   return (
     <div
       className={cn(
-        'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
+        'relative aspect-square overflow-hidden rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300',
         className
       )}
       aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
     >
       <div className="flex h-full items-center justify-center text-white">{value}</div>
+      {isExploding ? (
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="cell-explosion">
+            <span className="cell-explosion-core" />
+            <span className="cell-explosion-ring" />
+            <span className="cell-explosion-sparks" />
+          </span>
+        </span>
+      ) : null}
     </div>
   );
 }
