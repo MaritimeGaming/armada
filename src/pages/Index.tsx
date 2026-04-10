@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
@@ -202,27 +203,29 @@ const Index = () => {
       return;
     }
 
-    setGameState((currentState) => {
-      if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
-        return currentState;
-      }
+    flushSync(() => {
+      setGameState((currentState) => {
+        if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
+          return currentState;
+        }
 
-      const targetCell = currentState.enemy.cells[cellIndex];
+        const targetCell = currentState.enemy.cells[cellIndex];
 
-      if (!targetCell || targetCell.effect !== 'untargeted' || targetCell.targeting) {
-        return currentState;
-      }
+        if (!targetCell || targetCell.effect !== 'untargeted' || targetCell.targeting) {
+          return currentState;
+        }
 
-      userPreviewIndexRef.current = cellIndex;
+        userPreviewIndexRef.current = cellIndex;
 
-      const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
-      const nextState: GameState = {
-        ...currentState,
-        enemy: nextEnemy,
-      };
+        const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
+        const nextState: GameState = {
+          ...currentState,
+          enemy: nextEnemy,
+        };
 
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      return nextState;
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        return nextState;
+      });
     });
   };
 
