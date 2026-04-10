@@ -367,7 +367,7 @@ const Index = () => {
 
         return nextState;
       });
-    }, 1400);
+    }, 1450);
 
     return () => {
       window.clearTimeout(showPlayerDelay);
