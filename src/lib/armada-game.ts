@@ -188,7 +188,7 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
     const candidateIndexes = new Set<number>();
 
     navy.cells.forEach((cell, index) => {
-      if (cell.effect !== 'targeted') {
+      if (cell.effect !== 'targeted' || !cell.occupied) {
         return;
       }
 
