@@ -48,9 +48,12 @@ export type GameState = {
   enemy: NavyState;
 };
 
-export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'lowscream' | 'helicoptera' | 'explosion' | 'wingame';
+export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
 export type AudioSequence = AudioCue[];
 export type DifficultyLevel = 'level1' | 'level2';
+export type ShipSetOptions = {
+  includeSingles: boolean;
+};
 
 export type TargetingResult = {
   navy: NavyState;
@@ -61,19 +64,30 @@ export const GRID_SIZE = 10;
 export const GAME_STATE_VERSION = 8;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 
-export const SHIPS: ShipDefinition[] = [
+const BASE_SHIPS: ShipDefinition[] = [
   { code: 'A', name: 'Aircraft Carrier', length: 5 },
   { code: 'B', name: 'Battleship', length: 4 },
   { code: 'C', name: 'Cruiser', length: 3 },
   { code: 'D', name: 'Destroyer', length: 3 },
-  { code: 'E', name: 'Ensign', length: 1 },
   { code: 'F', name: 'Frigate', length: 3 },
   { code: 'G', name: 'Garbage Scow', length: 2 },
-  { code: 'H', name: 'Helicopter', length: 1 },
-  { code: 'L', name: 'Lifeboat', length: 1 },
   { code: 'O', name: 'Oil Tanker', length: 3 },
   { code: 'S', name: 'Submarine', length: 2 },
 ];
+
+const SINGLE_SHIPS: ShipDefinition[] = [
+  { code: 'E', name: 'Ensign', length: 1 },
+  { code: 'H', name: 'Helicopter', length: 1 },
+  { code: 'L', name: 'Lifeboat', length: 1 },
+];
+
+export const DEFAULT_SHIP_SET_OPTIONS: ShipSetOptions = {
+  includeSingles: true,
+};
+
+export function getShips(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIONS): ShipDefinition[] {
+  return options.includeSingles ? [...BASE_SHIPS, ...SINGLE_SHIPS] : BASE_SHIPS;
+}
 
 const ORIENTATIONS: Orientation[] = [
   'vertical-down',
@@ -86,8 +100,8 @@ export const AUDIO_FILES: Record<AudioCue, string> = {
   splash: '/audio/Splash.wav',
   sink: '/audio/Sink.wav',
   lifeboat: '/audio/LifeBoat.wav',
-  lowscream: '/audio/LowScream.wav',
-  helicoptera: '/audio/Helicopter.wav',
+  ensign: '/audio/Ensign.wav',
+  helicopter: '/audio/Helicopter.wav',
   explosion: '/audio/Explosion.wav',
   wingame: '/audio/WinGame.wav',
 };
@@ -173,18 +187,18 @@ export function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLev
   return randomItem(untargetedIndexes);
 }
 
-export function areAllShipsSunk(navy: NavyState): boolean {
-  return SHIPS.every((ship) => navy.cells.filter((cell) => cell.shipCode === ship.code).every((cell) => cell.effect === 'sunk'));
+export function areAllShipsSunk(navy: NavyState, options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIONS): boolean {
+  return getShips(options).every((ship) => navy.cells.filter((cell) => cell.shipCode === ship.code).every((cell) => cell.effect === 'sunk'));
 }
 
-export function createGameState(): GameState {
+export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIONS): GameState {
   const currentTurn: TurnOwner = Math.random() < 0.5 ? 'player' : 'app';
 
   return {
     version: GAME_STATE_VERSION,
     currentTurn,
-    player: createNavy('player', 'Your Navy', true),
-    enemy: createNavy('enemy', 'Enemy Navy', false),
+    player: createNavy('player', 'Your Navy', true, options),
+    enemy: createNavy('enemy', 'Enemy Navy', false, options),
   };
 }
 
@@ -227,6 +241,7 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
           effect: 'sunk',
           targeting: false,
           exposure: 'known',
+          oil: targetedCell.shipCode === 'O' ? true : nextCells[index].oil,
         };
       });
     }
@@ -253,18 +268,18 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
 
   if (cell.effect === 'sunk') {
     sequence.push('sink');
-  }
 
-  if (cell.shipCode === 'E') {
-    sequence.push('lowscream');
-  }
+    if (cell.shipCode === 'E') {
+      sequence.push('ensign');
+    }
 
-  if (cell.shipCode === 'L') {
-    sequence.push('lifeboat');
-  }
+    if (cell.shipCode === 'L') {
+      sequence.push('lifeboat');
+    }
 
-  if (cell.shipCode === 'H') {
-    sequence.push('helicoptera');
+    if (cell.shipCode === 'H') {
+      sequence.push('helicopter');
+    }
   }
 
   return sequence;
@@ -316,8 +331,8 @@ function spreadOilSlick(navy: NavyState): NavyState {
   return setCellState(navy, spreadIndex, { oil: true });
 }
 
-function createNavy(side: NavySide, label: string, known: boolean): NavyState {
-  const ships = placeShips();
+function createNavy(side: NavySide, label: string, known: boolean, options: ShipSetOptions): NavyState {
+  const ships = placeShips(options);
   const shipMap = new Map<string, string>();
 
   ships.forEach((ship) => {
@@ -351,10 +366,10 @@ function createNavy(side: NavySide, label: string, known: boolean): NavyState {
   };
 }
 
-function placeShips(): PlacedShip[] {
+function placeShips(options: ShipSetOptions): PlacedShip[] {
   const placedShips: PlacedShip[] = [];
 
-  for (const ship of SHIPS) {
+  for (const ship of getShips(options)) {
     let placed = false;
 
     for (let attempt = 0; attempt < MAX_PLACEMENT_ATTEMPTS; attempt += 1) {

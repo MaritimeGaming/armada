@@ -6,15 +6,16 @@ import {
   areAllShipsSunk,
   AUDIO_FILES,
   createGameState,
+  DEFAULT_SHIP_SET_OPTIONS,
   GAME_STATE_VERSION,
+  getShips,
   GRID_SIZE,
   resolveTargetingSequence,
   selectAppTargetIndex,
   setCellState,
   setCellTargeting,
-  SHIPS,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, DifficultyLevel, GameState, NavySide, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, DifficultyLevel, GameState, NavySide, ShipSetOptions, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -39,6 +40,7 @@ type GameOverState = {
 const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const DIFFICULTY_STORAGE_KEY = 'armada:difficulty';
+const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
 
 const Index = () => {
   useSeoMeta({
@@ -53,15 +55,32 @@ const Index = () => {
     const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
     return storedDifficulty === 'level2' ? 'level2' : 'level1';
   });
+  const [shipSetOptions, setShipSetOptions] = useState<ShipSetOptions>(() => {
+    const storedOptions = window.localStorage.getItem(SHIP_SET_STORAGE_KEY);
+
+    if (!storedOptions) {
+      return DEFAULT_SHIP_SET_OPTIONS;
+    }
+
+    try {
+      const parsedOptions = JSON.parse(storedOptions) as Partial<ShipSetOptions>;
+      return {
+        includeSingles: parsedOptions.includeSingles !== false,
+      };
+    } catch {
+      return DEFAULT_SHIP_SET_OPTIONS;
+    }
+  });
   const appPreviewIndexRef = useRef<number | null>(null);
-  const audioRef = useRef<Record<AudioCue, HTMLAudioElement | null>>({
-    splash: null,
-    sink: null,
-    lifeboat: null,
-    lowscream: null,
-    helicoptera: null,
-    explosion: null,
-    wingame: null,
+  const userPreviewIndexRef = useRef<number | null>(null);
+  const audioRef = useRef<Record<AudioCue, HTMLAudioElement[]>>({
+    splash: [],
+    sink: [],
+    lifeboat: [],
+    ensign: [],
+    helicopter: [],
+    explosion: [],
+    wingame: [],
   });
 
   useEffect(() => {
@@ -72,8 +91,20 @@ const Index = () => {
         const parsedState = JSON.parse(storedState) as Partial<GameState>;
 
         if (parsedState.version === GAME_STATE_VERSION) {
-          setGameState(parsedState as GameState);
-          return;
+          const currentShipCodes = new Set(getShips(shipSetOptions).map((ship) => ship.code));
+          const persistedShipCodes = new Set(
+            [parsedState.player, parsedState.enemy]
+              .flatMap((navy) => navy?.ships?.map((ship) => ship.code) ?? [])
+          );
+
+          const hasMatchingShipSet =
+            currentShipCodes.size === persistedShipCodes.size &&
+            Array.from(currentShipCodes).every((code) => persistedShipCodes.has(code));
+
+          if (hasMatchingShipSet) {
+            setGameState(parsedState as GameState);
+            return;
+          }
         }
 
         window.localStorage.removeItem(STORAGE_KEY);
@@ -82,10 +113,10 @@ const Index = () => {
       }
     }
 
-    const nextState = createGameState();
+    const nextState = createGameState(shipSetOptions);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
-  }, []);
+  }, [shipSetOptions]);
 
   const activeIndex = navyViewOrder.indexOf(activeView);
   const canGoLeft = activeIndex > 0;
@@ -97,11 +128,19 @@ const Index = () => {
   }, [activeView, gameState]);
 
   const playAudioCue = (cue: AudioCue) => {
-    const existingAudio = audioRef.current[cue];
-    const audio = existingAudio ?? new Audio(AUDIO_FILES[cue]);
-    audioRef.current[cue] = audio;
+    const pool = audioRef.current[cue];
+    const reusableAudio = pool.find((item) => item.paused || item.ended);
+    const audio = reusableAudio ?? new Audio(AUDIO_FILES[cue]);
+
+    if (!reusableAudio) {
+      audio.preload = 'auto';
+      pool.push(audio);
+    }
+
     audio.currentTime = 0;
-    void audio.play().catch(() => undefined);
+    void audio.play().catch((error) => {
+      console.warn(`Audio playback failed for ${cue}`, error);
+    });
   };
 
   const playAudioSequence = (sequence: AudioSequence) => {
@@ -110,9 +149,10 @@ const Index = () => {
     });
   };
 
-  const handleNewGame = () => {
-    const nextState = createGameState();
+  const handleNewGame = (nextOptions: ShipSetOptions = shipSetOptions) => {
+    const nextState = createGameState(nextOptions);
     appPreviewIndexRef.current = null;
+    userPreviewIndexRef.current = null;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
@@ -125,8 +165,16 @@ const Index = () => {
     setDifficulty(nextDifficulty);
   };
 
+  const handleSinglesToggle = (includeSingles: boolean) => {
+    const nextOptions: ShipSetOptions = { includeSingles };
+    window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
+    setShipSetOptions(nextOptions);
+    handleNewGame(nextOptions);
+  };
+
   const concludeGame = (winner: Winner, state: GameState) => {
     appPreviewIndexRef.current = null;
+    userPreviewIndexRef.current = null;
     const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
@@ -159,6 +207,8 @@ const Index = () => {
         return currentState;
       }
 
+      userPreviewIndexRef.current = cellIndex;
+
       const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
       const nextState: GameState = {
         ...currentState,
@@ -170,21 +220,59 @@ const Index = () => {
     });
   };
 
-  const clearEnemyCellPress = () => {
-    setGameState((currentState) => {
-      if (!currentState) {
-        return currentState;
+  const handleEnemyCellPressEnd = (cellIndex: number) => {
+    setGameState((state) => {
+      if (!state || state.currentTurn !== 'player' || gameOver.isOpen) {
+        return state;
       }
 
-      const targetingIndex = currentState.enemy.cells.findIndex((cell) => cell.targeting);
+      const previewIndex = userPreviewIndexRef.current;
+      const releaseIndex = previewIndex ?? cellIndex;
+      const targetCell = state.enemy.cells[releaseIndex];
+
+      if (targetCell?.targeting) {
+        userPreviewIndexRef.current = null;
+
+        const enemyWithTargetedCell = setCellState(state.enemy, releaseIndex, {
+          effect: 'targeted',
+          targeting: false,
+        });
+        const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+
+        if (updatedEnemy === state.enemy) {
+          return state;
+        }
+
+        const nextState: GameState = {
+          ...state,
+          currentTurn: 'app',
+          enemy: updatedEnemy,
+        };
+
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        window.setTimeout(() => {
+          setActiveView('player');
+        }, 700);
+        playAudioSequence(audioSequence);
+
+        if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
+          concludeGame('player', nextState);
+        }
+
+        return nextState;
+      }
+
+      userPreviewIndexRef.current = null;
+
+      const targetingIndex = state.enemy.cells.findIndex((cell) => cell.targeting);
 
       if (targetingIndex === -1) {
-        return currentState;
+        return state;
       }
 
-      const nextEnemy = setCellTargeting(currentState.enemy, targetingIndex, false);
+      const nextEnemy = setCellTargeting(state.enemy, targetingIndex, false);
       const nextState: GameState = {
-        ...currentState,
+        ...state,
         enemy: nextEnemy,
       };
 
@@ -194,34 +282,7 @@ const Index = () => {
   };
 
   const handleTargetEnemyCell = (cellIndex: number) => {
-    setGameState((currentState) => {
-      if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) return currentState;
-
-      const enemyWithTargetedCell = setCellState(currentState.enemy, cellIndex, {
-        effect: 'targeted',
-        targeting: false,
-      });
-      const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [cellIndex]);
-
-      if (updatedEnemy === currentState.enemy) {
-        return currentState;
-      }
-
-      const nextState: GameState = {
-        ...currentState,
-        currentTurn: 'app',
-        enemy: updatedEnemy,
-      };
-
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      playAudioSequence(audioSequence);
-
-      if (areAllShipsSunk(updatedEnemy)) {
-        concludeGame('player', nextState);
-      }
-
-      return nextState;
-    });
+    handleEnemyCellPressEnd(cellIndex);
   };
 
   useEffect(() => {
@@ -237,10 +298,6 @@ const Index = () => {
     }
 
     appPreviewIndexRef.current = previewIndex;
-
-    const scrollToPlayerDelay = window.setTimeout(() => {
-      setActiveView('player');
-    }, 1000);
 
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -271,7 +328,7 @@ const Index = () => {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-    }, 1500);
+    }, 400);
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -294,8 +351,9 @@ const Index = () => {
 
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         playAudioSequence(audioSequence);
+ 
+        if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
 
-        if (areAllShipsSunk(updatedPlayer)) {
           concludeGame('app', nextState);
         } else {
           window.setTimeout(() => {
@@ -305,14 +363,13 @@ const Index = () => {
 
         return nextState;
       });
-    }, 2250);
+    }, 800);
 
     return () => {
-      window.clearTimeout(scrollToPlayerDelay);
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
     };
-  }, [difficulty, gameOver.isOpen, gameState]);
+  }, [difficulty, gameOver.isOpen, gameState, shipSetOptions]);
 
   return (
     <>
@@ -334,13 +391,16 @@ const Index = () => {
                         <NavyPanel
                           navy={navy}
                           difficulty={difficulty}
+                          shipSetOptions={shipSetOptions}
                           onDifficultyChange={handleDifficultyChange}
-                          onNewGame={handleNewGame}
+                          onSinglesToggle={handleSinglesToggle}
+                          onNewGame={() => handleNewGame()}
                           onGoLeft={canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
                           onGoRight={canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
                           onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
                           onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
-                          onCellPressEnd={side === 'enemy' ? clearEnemyCellPress : undefined}
+                          onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
+                          isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
                         />
                       </div>
                     );
@@ -399,28 +459,36 @@ const Index = () => {
 type NavyPanelProps = {
   navy: NavyState;
   difficulty: DifficultyLevel;
+  shipSetOptions: ShipSetOptions;
   onDifficultyChange: (value: string) => void;
+  onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
   onGoLeft?: () => void;
   onGoRight?: () => void;
   onTargetCell?: (cellIndex: number) => void;
   onCellPressStart?: (cellIndex: number) => void;
-  onCellPressEnd?: () => void;
+  onCellPressEnd?: (cellIndex: number) => void;
+  isCellTargetable?: (cell: CellState) => boolean;
 };
 
 function NavyPanel({
   navy,
   difficulty,
+  shipSetOptions,
   onDifficultyChange,
+  onSinglesToggle,
   onNewGame,
   onGoLeft,
   onGoRight,
   onTargetCell,
   onCellPressStart,
   onCellPressEnd,
+  isCellTargetable,
 }: NavyPanelProps) {
+  const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
+
   const shipStatusByCode = useMemo(() => {
-    return SHIPS.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
+    return availableShips.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
       const shipCells = navy.cells.filter((cell) => cell.shipCode === ship.code);
       const targetedCount = shipCells.filter((cell) => cell.effect === 'targeted').length;
       const isSunk = shipCells.length > 0 && shipCells.every((cell) => cell.effect === 'sunk');
@@ -428,7 +496,7 @@ function NavyPanel({
       accumulator[ship.code] = { targetedCount, isSunk };
       return accumulator;
     }, {});
-  }, [navy.cells]);
+  }, [availableShips, navy.cells]);
 
   return (
     <div className="flex h-full flex-col gap-1.5">
@@ -489,12 +557,20 @@ function NavyPanel({
               <Settings className="h-4 w-4" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>Difficulty</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={difficulty} onValueChange={onDifficultyChange}>
               <DropdownMenuRadioItem value="level1">Level 1</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="level2">Level 2</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Ships</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}>
+              <div className="flex w-full items-center justify-between gap-3">
+                <span>Singles (E H L)</span>
+                <span className="text-xs text-muted-foreground">{shipSetOptions.includeSingles ? 'On' : 'Off'}</span>
+              </div>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
           </DropdownMenuContent>
@@ -511,9 +587,10 @@ function NavyPanel({
             <GridCell
               key={`${navy.side}-${index}`}
               cell={cell}
+              isTargetable={isCellTargetable?.(cell) ?? false}
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
-              onPressEnd={onCellPressEnd}
+              onPressEnd={onCellPressEnd ? () => onCellPressEnd(index) : undefined}
             />
           ))}
         </div>
@@ -521,7 +598,7 @@ function NavyPanel({
 
       <div className="px-1">
         <div className="space-y-0.5">
-          {SHIPS.map((ship) => {
+          {availableShips.map((ship) => {
             const status = shipStatusByCode[ship.code] ?? { targetedCount: 0, isSunk: false };
 
             return (
@@ -562,11 +639,13 @@ function NavyPanel({
 
 function GridCell({
   cell,
+  isTargetable,
   onClick,
   onPressStart,
   onPressEnd,
 }: {
   cell: CellState;
+  isTargetable?: boolean;
   onClick?: () => void;
   onPressStart?: () => void;
   onPressEnd?: () => void;
@@ -575,18 +654,31 @@ function GridCell({
   const { className, value, label } = getCellPresentation(cell);
 
   if (onClick) {
+    const handlePressStart = () => {
+      if (!isTargetable) {
+        return;
+      }
+
+      onPressStart?.();
+    };
+
+    const handlePressEnd = () => {
+      onPressEnd?.();
+    };
+
+
     return (
       <button
         type="button"
-        onClick={onClick}
-        onMouseDown={onPressStart}
-        onMouseUp={onPressEnd}
-        onMouseLeave={onPressEnd}
-        onTouchStart={onPressStart}
-        onTouchEnd={onPressEnd}
-        onTouchCancel={onPressEnd}
+        onMouseDown={handlePressStart}
+        onMouseUp={handlePressEnd}
+        onTouchStart={handlePressStart}
+        onTouchEnd={handlePressEnd}
+        onTouchCancel={handlePressEnd}
+        onBlur={handlePressEnd}
         className={cn(
           'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
+          (isTargetable || cell.targeting) ? 'cursor-[url(/crosshair-cursor.svg)_12_12,crosshair]' : 'cursor-default',
           className
         )}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
@@ -610,7 +702,9 @@ function GridCell({
 }
 
 function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
-  const value = cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
+  const value = cell.oil && cell.effect === 'untargeted'
+    ? ''
+    : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
   if (cell.oil) {
     return {
@@ -654,7 +748,9 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
 
   if (cell.shipCode === 'O' && (cell.effect === 'targeted' || cell.effect === 'sunk')) {
     return {
-      className: 'border-[#404040] bg-[#404040] text-white',
+      className: cell.effect === 'sunk'
+        ? 'border-[#202020] bg-[#202020] text-white'
+        : 'border-[#404040] bg-[#404040] text-white',
       value,
       label: cell.effect === 'sunk' ? 'oil tanker sunk' : 'oil tanker targeted',
     };
