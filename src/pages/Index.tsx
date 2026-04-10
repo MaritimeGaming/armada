@@ -102,7 +102,9 @@ const Index = () => {
             Array.from(currentShipCodes).every((code) => persistedShipCodes.has(code));
 
           if (hasMatchingShipSet) {
-            setGameState(parsedState as GameState);
+            const restoredState = parsedState as GameState;
+            setGameState(restoredState);
+            setActiveView(restoredState.currentTurn === 'app' ? 'player' : 'enemy');
             return;
           }
         }
@@ -116,6 +118,7 @@ const Index = () => {
     const nextState = createGameState(shipSetOptions);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
+    setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
   }, [shipSetOptions]);
 
   const activeIndex = navyViewOrder.indexOf(activeView);
