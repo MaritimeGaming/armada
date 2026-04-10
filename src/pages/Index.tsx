@@ -252,12 +252,9 @@ const Index = () => {
           enemy: updatedEnemy,
         };
 
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-        window.setTimeout(() => {
-          setActiveView('player');
-        }, 700);
-        playAudioSequence(audioSequence);
-
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      playAudioSequence(audioSequence);
+ 
         if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
           concludeGame('player', nextState);
         }
@@ -302,6 +299,10 @@ const Index = () => {
 
     appPreviewIndexRef.current = previewIndex;
 
+    const showPlayerDelay = window.setTimeout(() => {
+      setActiveView('player');
+    }, 700);
+
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
         if (!currentState || currentState.currentTurn !== 'app') {
@@ -331,7 +332,7 @@ const Index = () => {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-    }, 400);
+    }, 1100);
 
     const executeTargetingDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -366,9 +367,10 @@ const Index = () => {
 
         return nextState;
       });
-    }, 800);
+    }, 1500);
 
     return () => {
+      window.clearTimeout(showPlayerDelay);
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
     };
