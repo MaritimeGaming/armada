@@ -131,18 +131,21 @@ const Index = () => {
   }, [activeView, gameState]);
 
   const playAudioCue = (cue: AudioCue) => {
-    const pool = audioRef.current[cue];
-    const reusableAudio = pool.find((item) => item.paused || item.ended);
-    const audio = reusableAudio ?? new Audio(AUDIO_FILES[cue]);
+    const audio = new Audio(AUDIO_FILES[cue]);
+    audio.preload = 'auto';
+    audioRef.current[cue].push(audio);
 
-    if (!reusableAudio) {
-      audio.preload = 'auto';
-      pool.push(audio);
-    }
+    const cleanupAudio = () => {
+      audioRef.current[cue] = audioRef.current[cue].filter((item) => item !== audio);
+    };
+
+    audio.addEventListener('ended', cleanupAudio, { once: true });
+    audio.addEventListener('error', cleanupAudio, { once: true });
 
     audio.currentTime = 0;
     void audio.play().catch((error) => {
       console.warn(`Audio playback failed for ${cue}`, error);
+      cleanupAudio();
     });
   };
 
@@ -367,7 +370,7 @@ const Index = () => {
 
         return nextState;
       });
-    }, 1600);
+    }, 1450);
 
     return () => {
       window.clearTimeout(showPlayerDelay);
