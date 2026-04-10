@@ -72,6 +72,7 @@ const Index = () => {
     }
   });
   const appPreviewIndexRef = useRef<number | null>(null);
+  const userPreviewIndexRef = useRef<number | null>(null);
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement[]>>({
     splash: [],
     sink: [],
@@ -151,6 +152,7 @@ const Index = () => {
   const handleNewGame = (nextOptions: ShipSetOptions = shipSetOptions) => {
     const nextState = createGameState(nextOptions);
     appPreviewIndexRef.current = null;
+    userPreviewIndexRef.current = null;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
@@ -172,6 +174,7 @@ const Index = () => {
 
   const concludeGame = (winner: Winner, state: GameState) => {
     appPreviewIndexRef.current = null;
+    userPreviewIndexRef.current = null;
     const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
@@ -204,6 +207,8 @@ const Index = () => {
         return currentState;
       }
 
+      userPreviewIndexRef.current = cellIndex;
+
       const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
       const nextState: GameState = {
         ...currentState,
@@ -221,14 +226,18 @@ const Index = () => {
         return state;
       }
 
-      const targetCell = state.enemy.cells[cellIndex];
+      const previewIndex = userPreviewIndexRef.current;
+      const releaseIndex = previewIndex ?? cellIndex;
+      const targetCell = state.enemy.cells[releaseIndex];
 
       if (targetCell?.targeting) {
-        const enemyWithTargetedCell = setCellState(state.enemy, cellIndex, {
+        userPreviewIndexRef.current = null;
+
+        const enemyWithTargetedCell = setCellState(state.enemy, releaseIndex, {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [cellIndex]);
+        const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
 
         if (updatedEnemy === state.enemy) {
           return state;
@@ -252,6 +261,8 @@ const Index = () => {
 
         return nextState;
       }
+
+      userPreviewIndexRef.current = null;
 
       const targetingIndex = state.enemy.cells.findIndex((cell) => cell.targeting);
 
