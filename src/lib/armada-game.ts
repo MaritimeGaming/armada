@@ -97,13 +97,13 @@ const ORIENTATIONS: Orientation[] = [
 ];
 
 export const AUDIO_FILES: Record<AudioCue, string> = {
-  splash: '/audio/Splash.wav',
-  sink: '/audio/Sink.wav',
-  lifeboat: '/audio/LifeBoat.wav',
-  ensign: '/audio/Ensign.wav',
-  helicopter: '/audio/Helicopter.wav',
-  explosion: '/audio/Explosion.wav',
-  wingame: '/audio/WinGame.wav',
+  splash: `${import.meta.env.BASE_URL}audio/Splash.wav`,
+  sink: `${import.meta.env.BASE_URL}audio/Sink.wav`,
+  lifeboat: `${import.meta.env.BASE_URL}audio/LifeBoat.wav`,
+  ensign: `${import.meta.env.BASE_URL}audio/Ensign.wav`,
+  helicopter: `${import.meta.env.BASE_URL}audio/Helicopter.wav`,
+  explosion: `${import.meta.env.BASE_URL}audio/Explosion.wav`,
+  wingame: `${import.meta.env.BASE_URL}audio/WinGame.wav`,
 };
 
 export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {

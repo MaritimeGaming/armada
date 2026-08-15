@@ -686,9 +686,13 @@ function GridCell({
         onBlur={handlePressEnd}
         className={cn(
           'aspect-square rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
-          (isTargetable || cell.targeting) ? 'cursor-[url(/crosshair-cursor.svg)_12_12,crosshair]' : 'cursor-default',
           className
         )}
+        style={{
+          cursor: (isTargetable || cell.targeting)
+            ? `url(${import.meta.env.BASE_URL}crosshair-cursor.svg) 12 12, crosshair`
+            : 'default',
+        }}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
       >
         <div className="flex h-full items-center justify-center text-white">{value}</div>
