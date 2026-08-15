@@ -15,7 +15,7 @@ import {
   setCellState,
   setCellTargeting,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, DifficultyLevel, GameState, NavySide, ShipSetOptions, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipSetOptions, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -454,7 +454,7 @@ const Index = () => {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" onClick={handleNewGame} className="w-full sm:w-auto">
+            <Button type="button" onClick={() => handleNewGame()} className="w-full sm:w-auto">
               OK
             </Button>
           </DialogFooter>
@@ -784,62 +784,6 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     className: 'border-[#0000FF] bg-[#0000FF] text-white',
     value,
     label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
-  };
-}
-
-function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
-  const targetCell = navy.cells[cellIndex];
-
-  if (!targetCell || (targetCell.effect !== 'targeted' && !targetCell.targeting)) {
-    return { navy, audioSequence: ['splash'] };
-  }
-
-  const nextCells = navy.cells.map((cell, index) => {
-    if (index !== cellIndex) {
-      return cell;
-    }
-
-    return {
-      ...cell,
-      exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
-      effect: 'targeted' as EffectState,
-      targeting: false,
-    };
-  });
-
-  const targetedCell = nextCells[cellIndex];
-
-  if (targetedCell.occupied && targetedCell.shipCode) {
-    const shipIndexes = nextCells.reduce<number[]>((indexes, cell, index) => {
-      if (cell.shipCode === targetedCell.shipCode) {
-        indexes.push(index);
-      }
-      return indexes;
-    }, []);
-
-    const allShipCellsTargeted = shipIndexes.every((index) => nextCells[index].effect === 'targeted' || nextCells[index].effect === 'sunk');
-
-    if (allShipCellsTargeted) {
-      shipIndexes.forEach((index) => {
-        nextCells[index] = {
-          ...nextCells[index],
-          effect: 'sunk',
-          targeting: false,
-          exposure: 'known',
-        };
-      });
-    }
-  }
-
-  const resolvedNavy: NavyState = {
-    ...navy,
-    cells: nextCells,
-    knownCount: nextCells.filter((cell) => cell.exposure === 'known' || cell.exposure === 'revealed').length,
-  };
-
-  return {
-    navy: resolvedNavy,
-    audioSequence: resolveAudioSequence(nextCells[cellIndex]),
   };
 }
 

@@ -1,0 +1,11 @@
+{
+  "name": "Armada",
+  "short_name": "Armada",
+  "description": "A mobile-first naval combat game. Sink the enemy fleet before they sink yours.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": []
+}
