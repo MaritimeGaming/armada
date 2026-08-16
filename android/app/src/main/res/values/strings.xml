@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Armada</string>
+    <string name="title_activity_main">Armada</string>
+    <string name="package_name">com.chipwhitmer.armada</string>
+    <string name="custom_url_scheme">com.chipwhitmer.armada</string>
+</resources>

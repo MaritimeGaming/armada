@@ -4,8 +4,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 // https://vitejs.dev/config/
-export default defineConfig(() => ({
-  base: "/armada/",
+export default defineConfig(({ mode }) => ({
+  // GitHub Pages serves this app from a /armada/ subpath, but the Capacitor
+  // native wrapper serves its bundled build from its own app root, so the
+  // base path has to differ per target. Build for Capacitor with
+  // `vite build --mode capacitor` (see npm run cap:sync).
+  base: mode === "capacitor" ? "/" : "/armada/",
   server: {
     host: "::",
     port: 8080,
