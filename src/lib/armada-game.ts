@@ -172,7 +172,7 @@ export function setCellTargeting(navy: NavyState, cellIndex: number, targeting: 
   return setCellState(navy, cellIndex, { targeting });
 }
 
-export function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLevel): number | null {
+export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLevel): number | null {
   const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
     if (cell.effect === 'untargeted') {
       indexes.push(index);
@@ -182,6 +182,36 @@ export function selectAppTargetIndex(navy: NavyState, _difficulty: DifficultyLev
 
   if (untargetedIndexes.length === 0) {
     return null;
+  }
+
+  if (difficulty === 'level2') {
+    const candidateIndexes = new Set<number>();
+
+    navy.cells.forEach((cell, index) => {
+      if (cell.effect !== 'targeted' || !cell.occupied) {
+        return;
+      }
+
+      const isPartOfSunkShip = cell.shipCode
+        ? navy.cells
+            .filter((candidateCell) => candidateCell.shipCode === cell.shipCode)
+            .every((candidateCell) => candidateCell.effect === 'sunk')
+        : false;
+
+      if (isPartOfSunkShip) {
+        return;
+      }
+
+      getAdjacentIndexes(index).forEach((adjacentIndex) => {
+        if (navy.cells[adjacentIndex]?.effect === 'untargeted') {
+          candidateIndexes.add(adjacentIndex);
+        }
+      });
+    });
+
+    if (candidateIndexes.size > 0) {
+      return randomItem(Array.from(candidateIndexes));
+    }
   }
 
   return randomItem(untargetedIndexes);
