@@ -773,19 +773,19 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     ? ''
     : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
-  if (cell.oil) {
-    return {
-      className: 'border-[#404040] bg-[#404040] text-white',
-      value,
-      label: cell.occupied ? 'occupied with oil' : 'empty with oil',
-    };
-  }
-
   if (cell.targeting) {
     return {
       className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
       value,
       label: cell.occupied ? 'occupied and targeting' : 'empty and targeting',
+    };
+  }
+
+  if (cell.oil) {
+    return {
+      className: 'border-[#404040] bg-[#404040] text-white',
+      value,
+      label: cell.occupied ? 'occupied with oil' : 'empty with oil',
     };
   }
 
