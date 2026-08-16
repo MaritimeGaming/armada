@@ -36,6 +36,8 @@ export type NavyState = {
   knownCount: number;
   ships: PlacedShip[];
   cells: CellState[];
+  /** True for exactly one turn cycle after the Oil Tanker sinks, before its wreck cells become oil. */
+  oilPending: boolean;
 };
 
 export type TurnOwner = 'player' | 'app';
@@ -58,11 +60,13 @@ export type ShipSetOptions = {
 export type TargetingResult = {
   navy: NavyState;
   audioSequence: AudioSequence;
+  ignited?: boolean;
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 8;
+export const GAME_STATE_VERSION = 9;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
+const OIL_IGNITION_ODDS = 12;
 
 const BASE_SHIPS: ShipDefinition[] = [
   { code: 'A', name: 'Aircraft Carrier', length: 5 },
@@ -107,10 +111,11 @@ export const AUDIO_FILES: Record<AudioCue, string> = {
 };
 
 export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
-  let currentNavy = navy;
+  let currentNavy = activatePendingOilSlick(navy);
   const playedCues = new Set<AudioCue>();
   const pendingIndexes = [...initialCellIndexes];
   const visitedIndexes = new Set<number>();
+  let ignited = false;
 
   while (pendingIndexes.length > 0) {
     const cellIndex = pendingIndexes.shift();
@@ -127,7 +132,9 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
 
     const targetedCell = currentNavy.cells[cellIndex];
 
-    if (targetedCell?.oil && targetedCell.effect === 'targeted' && randomInt(1, 20) === 1) {
+    if (targetedCell?.oil && targetedCell.effect === 'targeted' && randomInt(1, OIL_IGNITION_ODDS) === 1) {
+      ignited = true;
+
       currentNavy.cells.forEach((cell, index) => {
         if (cell.oil && cell.effect === 'untargeted' && !visitedIndexes.has(index)) {
           const preparedNavy = setCellState(currentNavy, index, {
@@ -141,11 +148,16 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
     }
   }
 
-  currentNavy = spreadOilSlick(currentNavy);
+  currentNavy = ignited ? extinguishOilSlick(currentNavy) : spreadOilSlick(currentNavy);
+
+  const audioSequence = ignited
+    ? Array.from(playedCues).filter((cue) => cue !== 'explosion' && cue !== 'splash')
+    : Array.from(playedCues);
 
   return {
     navy: currentNavy,
-    audioSequence: Array.from(playedCues),
+    audioSequence,
+    ignited,
   };
 }
 
@@ -253,6 +265,7 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
   });
 
   const targetedCell = nextCells[cellIndex];
+  let oilTankerJustSunk = false;
 
   if (targetedCell.occupied && targetedCell.shipCode) {
     const shipIndexes = nextCells.reduce<number[]>((indexes, cell, index) => {
@@ -271,9 +284,10 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
           effect: 'sunk',
           targeting: false,
           exposure: 'known',
-          oil: targetedCell.shipCode === 'O' ? true : nextCells[index].oil,
         };
       });
+
+      oilTankerJustSunk = targetedCell.shipCode === 'O';
     }
   }
 
@@ -281,6 +295,7 @@ function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {
     ...navy,
     cells: nextCells,
     knownCount: nextCells.filter((cell) => cell.exposure === 'known' || cell.exposure === 'revealed').length,
+    oilPending: navy.oilPending || oilTankerJustSunk,
   };
 
   return {
@@ -338,6 +353,33 @@ function getAdjacentIndexes(cellIndex: number): number[] {
   return adjacentIndexes;
 }
 
+function activatePendingOilSlick(navy: NavyState): NavyState {
+  if (!navy.oilPending) {
+    return navy;
+  }
+
+  const nextCells = navy.cells.map((cell) => (
+    cell.shipCode === 'O' ? { ...cell, oil: true } : cell
+  ));
+
+  return {
+    ...navy,
+    cells: nextCells,
+    oilPending: false,
+  };
+}
+
+function extinguishOilSlick(navy: NavyState): NavyState {
+  const nextCells = navy.cells.map((cell) => (
+    cell.oil ? { ...cell, oil: false } : cell
+  ));
+
+  return {
+    ...navy,
+    cells: nextCells,
+  };
+}
+
 function spreadOilSlick(navy: NavyState): NavyState {
   const candidateIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
     if (cell.oil || cell.effect !== 'untargeted') {
@@ -393,6 +435,7 @@ function createNavy(side: NavySide, label: string, known: boolean, options: Ship
     ships,
     cells,
     knownCount: known ? GRID_SIZE * GRID_SIZE : 0,
+    oilPending: false,
   };
 }
 

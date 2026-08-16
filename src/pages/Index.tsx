@@ -160,6 +160,13 @@ const Index = () => {
     });
   };
 
+  const playIgnitionSequence = (sequence: AudioSequence) => {
+    playAudioCue('explosion');
+    window.setTimeout(() => playAudioCue('explosion'), 300);
+    window.setTimeout(() => playAudioCue('explosion'), 600);
+    playAudioSequence(sequence);
+  };
+
   const triggerCellExplosion = (side: NavySide, cellIndex: number) => {
     setExplosionCells((current) => ({
       ...current,
@@ -267,7 +274,7 @@ const Index = () => {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedEnemy, audioSequence } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+        const { navy: updatedEnemy, audioSequence, ignited } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
 
         if (targetCell.occupied) {
           triggerCellExplosion('enemy', releaseIndex);
@@ -288,7 +295,11 @@ const Index = () => {
         };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      playAudioSequence(audioSequence);
+      if (ignited) {
+        playIgnitionSequence(audioSequence);
+      } else {
+        playAudioSequence(audioSequence);
+      }
  
         if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
           concludeGame('player', nextState);
@@ -384,7 +395,7 @@ const Index = () => {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedPlayer, audioSequence } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+        const { navy: updatedPlayer, audioSequence, ignited } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
 
         if (currentState.player.cells[previewIndex]?.occupied) {
           triggerCellExplosion('player', previewIndex);
@@ -396,7 +407,11 @@ const Index = () => {
         };
 
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-        playAudioSequence(audioSequence);
+        if (ignited) {
+          playIgnitionSequence(audioSequence);
+        } else {
+          playAudioSequence(audioSequence);
+        }
  
         if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
 
@@ -789,19 +804,19 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     };
   }
 
-  if (cell.oil) {
-    return {
-      className: 'border-[#404040] bg-[#404040] text-white',
-      value,
-      label: cell.occupied ? 'occupied with oil' : 'empty with oil',
-    };
-  }
-
   if (cell.exposure === 'unknown') {
     return {
       className: 'border-[#C0C0C0] bg-[#C0C0C0] text-white',
       value: '',
       label: cell.effect,
+    };
+  }
+
+  if (cell.oil && cell.shipCode === 'O' && cell.effect === 'sunk') {
+    return {
+      className: 'border-[#202020] bg-[#202020] text-white',
+      value,
+      label: 'oil tanker sunk',
     };
   }
 
@@ -821,16 +836,6 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     };
   }
 
-  if (cell.shipCode === 'O' && (cell.effect === 'targeted' || cell.effect === 'sunk')) {
-    return {
-      className: cell.effect === 'sunk'
-        ? 'border-[#202020] bg-[#202020] text-white'
-        : 'border-[#404040] bg-[#404040] text-white',
-      value,
-      label: cell.effect === 'sunk' ? 'oil tanker sunk' : 'oil tanker targeted',
-    };
-  }
-
   if (cell.effect === 'sunk') {
     return {
       className: 'border-[#0000B2] bg-[#0000B2] text-white',
@@ -844,6 +849,14 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
       className: 'border-[#FF0000] bg-[#FF0000] text-white',
       value,
       label: 'occupied and targeted',
+    };
+  }
+
+  if (cell.oil) {
+    return {
+      className: 'border-[#404040] bg-[#404040] text-white',
+      value,
+      label: cell.occupied ? 'occupied with oil' : 'empty with oil',
     };
   }
 
