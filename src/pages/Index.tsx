@@ -804,14 +804,6 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     };
   }
 
-  if (cell.exposure === 'unknown') {
-    return {
-      className: 'border-[#C0C0C0] bg-[#C0C0C0] text-white',
-      value: '',
-      label: cell.effect,
-    };
-  }
-
   if (cell.oil && cell.shipCode === 'O' && cell.effect === 'sunk') {
     return {
       className: 'border-[#202020] bg-[#202020] text-white',
@@ -857,6 +849,14 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
       className: 'border-[#404040] bg-[#404040] text-white',
       value,
       label: cell.occupied ? 'occupied with oil' : 'empty with oil',
+    };
+  }
+
+  if (cell.exposure === 'unknown') {
+    return {
+      className: 'border-[#C0C0C0] bg-[#C0C0C0] text-white',
+      value: '',
+      label: cell.effect,
     };
   }
 
