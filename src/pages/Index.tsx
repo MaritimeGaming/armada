@@ -73,6 +73,7 @@ const Index = () => {
   });
   const appPreviewIndexRef = useRef<number | null>(null);
   const userPreviewIndexRef = useRef<number | null>(null);
+  const playerShotSunkShipRef = useRef(false);
   const [explosionCells, setExplosionCells] = useState<Record<NavySide, number | null>>({
     player: null,
     enemy: null,
@@ -272,6 +273,10 @@ const Index = () => {
           triggerCellExplosion('enemy', releaseIndex);
         }
 
+        if (audioSequence.includes('sink')) {
+          playerShotSunkShipRef.current = true;
+        }
+
         if (updatedEnemy === state.enemy) {
           return state;
         }
@@ -329,9 +334,12 @@ const Index = () => {
 
     appPreviewIndexRef.current = previewIndex;
 
+    const playerSunkShip = playerShotSunkShipRef.current;
+    playerShotSunkShipRef.current = false;
+
     const showPlayerDelay = window.setTimeout(() => {
       setActiveView('player');
-    }, 700);
+    }, playerSunkShip ? 1700 : 700);
 
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
@@ -396,7 +404,7 @@ const Index = () => {
         } else {
           window.setTimeout(() => {
             setActiveView('enemy');
-          }, 1000);
+          }, audioSequence.includes('sink') ? 2000 : 1000);
         }
 
         return nextState;
