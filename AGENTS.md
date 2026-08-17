@@ -2,6 +2,8 @@
 
 This project is a Nostr client application built with React 18.x, TailwindCSS 3.x, Vite, shadcn/ui, and Nostrify.
 
+> **Note:** This file is generic boilerplate from the template this project started from — it documents the Nostr-client scaffolding, not the actual application built on top of it (a Battleship-style game called Armada). For the game's design intent and rationale — why ship placement is random, why the oil slick is visible through fog of war, the "no progression" philosophy, etc. — see [GAME_DESIGN.md](GAME_DESIGN.md).
+
 ## Technology Stack
 
 - **React 18.x**: Stable version of React with hooks, concurrent rendering, and improved performance
