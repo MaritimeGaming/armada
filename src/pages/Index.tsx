@@ -75,9 +75,9 @@ const Index = () => {
   const appPreviewIndexRef = useRef<number | null>(null);
   const userPreviewIndexRef = useRef<number | null>(null);
   const playerShotSunkShipRef = useRef(false);
-  const [explosionCells, setExplosionCells] = useState<Record<NavySide, number | null>>({
-    player: null,
-    enemy: null,
+  const [explosionCells, setExplosionCells] = useState<Record<NavySide, number[]>>({
+    player: [],
+    enemy: [],
   });
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement[]>>({
     splash: [],
@@ -189,18 +189,21 @@ const Index = () => {
     playAudioSequence(sequence);
   };
 
-  const triggerCellExplosion = (side: NavySide, cellIndex: number) => {
+  const triggerCellExplosions = (side: NavySide, cellIndexes: number[]) => {
+    if (cellIndexes.length === 0) {
+      return;
+    }
+
     setExplosionCells((current) => ({
       ...current,
-      [side]: cellIndex,
+      [side]: Array.from(new Set([...current[side], ...cellIndexes])),
     }));
 
     window.setTimeout(() => {
-      setExplosionCells((current) => (
-        current[side] === cellIndex
-          ? { ...current, [side]: null }
-          : current
-      ));
+      setExplosionCells((current) => ({
+        ...current,
+        [side]: current[side].filter((index) => !cellIndexes.includes(index)),
+      }));
     }, 380);
   };
 
@@ -208,7 +211,7 @@ const Index = () => {
       const nextState = createGameState(nextOptions);
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
-      setExplosionCells({ player: null, enemy: null });
+      setExplosionCells({ player: [], enemy: [] });
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       setGameState(nextState);
 
@@ -232,7 +235,7 @@ const Index = () => {
   const concludeGame = (winner: Winner, state: GameState) => {
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
-      setExplosionCells({ player: null, enemy: null });
+      setExplosionCells({ player: [], enemy: [] });
 
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
@@ -296,10 +299,12 @@ const Index = () => {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedEnemy, audioSequence, ignited } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+        const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
 
-        if (targetCell.occupied) {
-          triggerCellExplosion('enemy', releaseIndex);
+        if (ignited && ignitedCellIndexes) {
+          triggerCellExplosions('enemy', ignitedCellIndexes);
+        } else if (targetCell.occupied) {
+          triggerCellExplosions('enemy', [releaseIndex]);
         }
 
         if (audioSequence.includes('sink')) {
@@ -445,10 +450,12 @@ const Index = () => {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedPlayer, audioSequence, ignited } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+        const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
 
-        if (currentState.player.cells[previewIndex]?.occupied) {
-          triggerCellExplosion('player', previewIndex);
+        if (ignited && ignitedCellIndexes) {
+          triggerCellExplosions('player', ignitedCellIndexes);
+        } else if (currentState.player.cells[previewIndex]?.occupied) {
+          triggerCellExplosions('player', [previewIndex]);
         }
         const nextState: GameState = {
           ...currentState,
@@ -522,7 +529,7 @@ const Index = () => {
                           onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
                           onCellPressCancel={side === 'enemy' ? handleEnemyCellPressCancel : undefined}
                           isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
-                          explodingCellIndex={explosionCells[side]}
+                          explodingCellIndexes={explosionCells[side]}
                         />
                       </div>
                     );
@@ -595,7 +602,7 @@ type NavyPanelProps = {
   onCellPressEnd?: (cellIndex: number) => void;
   onCellPressCancel?: (cellIndex: number) => void;
   isCellTargetable?: (cell: CellState) => boolean;
-  explodingCellIndex?: number | null;
+  explodingCellIndexes?: number[];
 };
 
 function NavyPanel({
@@ -612,7 +619,7 @@ function NavyPanel({
   onCellPressEnd,
   onCellPressCancel,
   isCellTargetable,
-  explodingCellIndex,
+  explodingCellIndexes,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
 
@@ -721,7 +728,7 @@ function NavyPanel({
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
               onPressEnd={onCellPressEnd ? () => onCellPressEnd(index) : undefined}
               onPressCancel={onCellPressCancel ? () => onCellPressCancel(index) : undefined}
-              isExploding={explodingCellIndex === index}
+              isExploding={explodingCellIndexes?.includes(index) ?? false}
             />
           ))}
         </div>
@@ -878,7 +885,7 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
     };
   }
 
-  if (cell.oil && cell.shipCode === 'O' && cell.effect === 'sunk') {
+  if (cell.shipCode === 'O' && cell.effect === 'sunk') {
     return {
       className: 'border-[#202020] bg-[#202020] text-white',
       value,

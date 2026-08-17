@@ -61,6 +61,8 @@ export type TargetingResult = {
   navy: NavyState;
   audioSequence: AudioSequence;
   ignited?: boolean;
+  /** Every cell resolved this turn, populated only when ignited is true, so the UI can animate the whole chain-reaction at once. */
+  ignitedCellIndexes?: number[];
 };
 
 export const GRID_SIZE = 10;
@@ -158,6 +160,7 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
     navy: currentNavy,
     audioSequence,
     ignited,
+    ignitedCellIndexes: ignited ? Array.from(visitedIndexes) : undefined,
   };
 }
 
