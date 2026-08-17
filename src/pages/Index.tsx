@@ -332,6 +332,34 @@ const Index = () => {
     handleEnemyCellPressEnd(cellIndex);
   };
 
+  const handleEnemyCellPressCancel = (cellIndex: number) => {
+    setGameState((state) => {
+      if (!state) {
+        return state;
+      }
+
+      // Only cancel if THIS cell is the one actually being previewed. A blur
+      // firing on some other, previously-focused cell (e.g. focus moving
+      // from the last cell you fired at to the one you're pressing now)
+      // must not touch the current press just because a preview happens to
+      // be active somewhere on the board.
+      if (!state.enemy.cells[cellIndex]?.targeting) {
+        return state;
+      }
+
+      userPreviewIndexRef.current = null;
+
+      const nextEnemy = setCellTargeting(state.enemy, cellIndex, false);
+      const nextState: GameState = {
+        ...state,
+        enemy: nextEnemy,
+      };
+
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      return nextState;
+    });
+  };
+
   useEffect(() => {
     if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
       appPreviewIndexRef.current = null;
@@ -463,6 +491,7 @@ const Index = () => {
                           onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
                           onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
                           onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
+                          onCellPressCancel={side === 'enemy' ? handleEnemyCellPressCancel : undefined}
                           isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
                           explodingCellIndex={explosionCells[side]}
                         />
@@ -535,6 +564,7 @@ type NavyPanelProps = {
   onTargetCell?: (cellIndex: number) => void;
   onCellPressStart?: (cellIndex: number) => void;
   onCellPressEnd?: (cellIndex: number) => void;
+  onCellPressCancel?: (cellIndex: number) => void;
   isCellTargetable?: (cell: CellState) => boolean;
   explodingCellIndex?: number | null;
 };
@@ -551,6 +581,7 @@ function NavyPanel({
   onTargetCell,
   onCellPressStart,
   onCellPressEnd,
+  onCellPressCancel,
   isCellTargetable,
   explodingCellIndex,
 }: NavyPanelProps) {
@@ -660,6 +691,7 @@ function NavyPanel({
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
               onPressEnd={onCellPressEnd ? () => onCellPressEnd(index) : undefined}
+              onPressCancel={onCellPressCancel ? () => onCellPressCancel(index) : undefined}
               isExploding={explodingCellIndex === index}
             />
           ))}
@@ -713,6 +745,7 @@ function GridCell({
   onClick,
   onPressStart,
   onPressEnd,
+  onPressCancel,
   isExploding,
 }: {
   cell: CellState;
@@ -720,6 +753,7 @@ function GridCell({
   onClick?: () => void;
   onPressStart?: () => void;
   onPressEnd?: () => void;
+  onPressCancel?: () => void;
   isExploding?: boolean;
 }) {
   const exposure = cell.exposure;
@@ -738,6 +772,9 @@ function GridCell({
       onPressEnd?.();
     };
 
+    const handlePressCancel = () => {
+      onPressCancel?.();
+    };
 
     return (
       <button
@@ -746,8 +783,8 @@ function GridCell({
         onMouseUp={handlePressEnd}
         onTouchStart={handlePressStart}
         onTouchEnd={handlePressEnd}
-        onTouchCancel={handlePressEnd}
-        onBlur={handlePressEnd}
+        onTouchCancel={handlePressCancel}
+        onBlur={handlePressCancel}
         className={cn(
           'relative aspect-square overflow-hidden rounded-[2px] border-[0.5px] text-center text-[clamp(0.5rem,1.6vw,0.78rem)] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
           className
