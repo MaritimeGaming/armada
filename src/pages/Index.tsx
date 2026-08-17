@@ -840,7 +840,11 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   if (cell.targeting) {
     return {
       className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
-      value,
+      // Fog of war: don't leak the ship identifier while previewing a shot
+      // on a cell that hasn't been revealed yet. Once exposure is 'known'
+      // (the player's own navy, or a cell already hit), the identity isn't
+      // a secret, so show it as normal.
+      value: cell.exposure === 'unknown' ? '' : value,
       label: cell.occupied ? 'occupied and targeting' : 'empty and targeting',
     };
   }
