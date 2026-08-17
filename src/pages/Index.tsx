@@ -757,44 +757,44 @@ function NavyPanel({
             const status = shipStatusByCode[ship.code] ?? { targetedCount: 0, isSunk: false };
 
             return (
-              <Tooltip
-                key={`${navy.side}-${ship.code}`}
-                open={openTooltipCode === ship.code}
-                onOpenChange={(open) => {
-                  if (open) {
-                    setOpenTooltipCode(ship.code);
-                  } else if (openTooltipCode === ship.code) {
-                    setOpenTooltipCode(null);
-                  }
-                }}
-              >
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="relative flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-                    aria-label={ship.name}
-                    onClick={() => revealShipTooltip(ship.code)}
+              <div key={`${navy.side}-${ship.code}`} className="relative">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="relative flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+                      aria-label={ship.name}
+                      onClick={() => revealShipTooltip(ship.code)}
+                    >
+                      <span className="relative inline-flex items-center justify-center font-mono text-[12px] tracking-[0.34em]">
+                        {status.isSunk ? (
+                          <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%+0.35rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
+                        ) : null}
+                        {Array.from({ length: ship.length }, (_, index) => (
+                          <span
+                            key={`${ship.code}-${index}`}
+                            className={status.isSunk || index < status.targetedCount ? 'text-red-500' : 'text-cyan-100'}
+                          >
+                            {ship.code}
+                            {index < ship.length - 1 ? '\u00A0' : ''}
+                          </span>
+                        ))}
+                      </span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{ship.name}</p>
+                  </TooltipContent>
+                </Tooltip>
+                {openTooltipCode === ship.code ? (
+                  <div
+                    role="tooltip"
+                    className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 overflow-hidden whitespace-nowrap rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md"
                   >
-                    <span className="relative inline-flex items-center justify-center font-mono text-[12px] tracking-[0.34em]">
-                      {status.isSunk ? (
-                        <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%+0.35rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
-                      ) : null}
-                      {Array.from({ length: ship.length }, (_, index) => (
-                        <span
-                          key={`${ship.code}-${index}`}
-                          className={status.isSunk || index < status.targetedCount ? 'text-red-500' : 'text-cyan-100'}
-                        >
-                          {ship.code}
-                          {index < ship.length - 1 ? '\u00A0' : ''}
-                        </span>
-                      ))}
-                    </span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{ship.name}</p>
-                </TooltipContent>
-              </Tooltip>
+                    {ship.name}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </div>
