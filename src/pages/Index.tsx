@@ -537,6 +537,9 @@ const Index = () => {
                 </div>
               </div>
 
+              <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400 backdrop-blur-md">
+                Special Weapons — Coming Soon
+              </div>
             </section>
           ) : (
             <Card className="border-white/10 bg-white/5 text-white shadow-2xl shadow-cyan-950/20 backdrop-blur-md">
