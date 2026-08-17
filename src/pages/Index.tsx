@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
@@ -211,13 +212,11 @@ const Index = () => {
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
       setExplosionCells({ player: null, enemy: null });
-      const revealSide: NavySide = winner === 'player' ? 'player' : 'enemy';
 
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(revealedState));
     setGameState(revealedState);
-    setActiveView(revealSide);
 
     window.setTimeout(() => {
       if (winner === 'player') {
@@ -233,27 +232,29 @@ const Index = () => {
       return;
     }
 
-    setGameState((currentState) => {
-      if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
-        return currentState;
-      }
+    flushSync(() => {
+      setGameState((currentState) => {
+        if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
+          return currentState;
+        }
 
-      const targetCell = currentState.enemy.cells[cellIndex];
+        const targetCell = currentState.enemy.cells[cellIndex];
 
-      if (!targetCell || targetCell.effect !== 'untargeted' || targetCell.targeting) {
-        return currentState;
-      }
+        if (!targetCell || targetCell.effect !== 'untargeted' || targetCell.targeting) {
+          return currentState;
+        }
 
-      userPreviewIndexRef.current = cellIndex;
+        userPreviewIndexRef.current = cellIndex;
 
-      const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
-      const nextState: GameState = {
-        ...currentState,
-        enemy: nextEnemy,
-      };
+        const nextEnemy = setCellTargeting(currentState.enemy, cellIndex, true);
+        const nextState: GameState = {
+          ...currentState,
+          enemy: nextEnemy,
+        };
 
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      return nextState;
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        return nextState;
+      });
     });
   };
 
@@ -442,7 +443,7 @@ const Index = () => {
             <section className="flex min-h-0 flex-1 flex-col gap-2">
               <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
                 <div
-                  className="flex w-[200%] transition-transform duration-500 ease-out"
+                  className="flex w-[200%] transition-transform duration-1000 ease-out"
                   style={{ transform: `translateX(-${activeIndex * 50}%)` }}
                 >
                   {navyViewOrder.map((side) => {
@@ -498,8 +499,11 @@ const Index = () => {
       </div>
       </main>
 
-      <Dialog open={gameOver.isOpen}>
-        <DialogContent className="top-[75%] max-w-sm translate-y-[-50%] rounded-2xl border-white/10 bg-slate-950 text-white sm:top-[75%]">
+      <Dialog open={gameOver.isOpen} modal={false}>
+        <DialogContent
+          overlayClassName="pointer-events-none"
+          className="top-[75%] max-w-sm translate-y-[-50%] rounded-2xl border-white/10 bg-slate-950 text-white sm:top-[75%]"
+        >
           <DialogHeader>
             <DialogTitle>{gameOver.winner === 'player' ? 'Victory' : 'Defeat'}</DialogTitle>
             <DialogDescription className="text-slate-300">
