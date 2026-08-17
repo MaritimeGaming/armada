@@ -23,18 +23,24 @@ Object.defineProperty(window, 'scrollTo', {
 });
 
 // Mock IntersectionObserver
-global.IntersectionObserver = vi.fn().mockImplementation((_callback) => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-  root: null,
-  rootMargin: '',
-  thresholds: [],
-}));
+// NOTE: must be a regular function, not an arrow function -- arrow functions
+// can't be used as constructors, so `new IntersectionObserver()` would throw.
+global.IntersectionObserver = vi.fn().mockImplementation(function (_callback) {
+  return {
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+    root: null,
+    rootMargin: '',
+    thresholds: [],
+  };
+});
 
-// Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation((_callback) => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+// Mock ResizeObserver (see note above: must be a regular function)
+global.ResizeObserver = vi.fn().mockImplementation(function (_callback) {
+  return {
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  };
+});

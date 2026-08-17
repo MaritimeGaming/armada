@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
@@ -88,6 +88,27 @@ const Index = () => {
     explosion: [],
     wingame: [],
   });
+  const [panelWidth, setPanelWidth] = useState(0);
+  const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
+
+  // A callback ref, not an effect: the swipe viewport only exists once
+  // gameState is loaded, so an effect with an empty dependency array would
+  // fire before it mounts and never measure it. This runs exactly when the
+  // node actually attaches (and detaches), regardless of that timing.
+  const swipeViewportRef = useCallback((node: HTMLDivElement | null) => {
+    swipeResizeObserverRef.current?.disconnect();
+    swipeResizeObserverRef.current = null;
+
+    if (!node) {
+      return;
+    }
+
+    setPanelWidth(node.clientWidth);
+
+    const observer = new ResizeObserver(() => setPanelWidth(node.clientWidth));
+    observer.observe(node);
+    swipeResizeObserverRef.current = observer;
+  }, []);
 
   useEffect(() => {
     const storedState = window.localStorage.getItem(STORAGE_KEY);
@@ -469,16 +490,24 @@ const Index = () => {
         <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col px-3 pb-3 pt-2 sm:px-4">
           {gameState && activeNavy ? (
             <section className="flex min-h-0 flex-1 flex-col gap-2">
-              <div className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
+              <div ref={swipeViewportRef} className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
                 <div
                   className="flex w-[200%] transition-transform duration-1000 ease-out"
-                  style={{ transform: `translateX(-${activeIndex * 50}%)` }}
+                  style={
+                    panelWidth
+                      ? { width: panelWidth * 2, transform: `translateX(-${activeIndex * panelWidth}px)` }
+                      : { transform: `translateX(-${activeIndex * 50}%)` }
+                  }
                 >
                   {navyViewOrder.map((side) => {
                     const navy = side === 'player' ? gameState.player : gameState.enemy;
 
                     return (
-                      <div key={side} className="w-1/2 shrink-0 p-2.5">
+                      <div
+                        key={side}
+                        className="w-1/2 shrink-0 p-2.5"
+                        style={panelWidth ? { width: panelWidth } : undefined}
+                      >
                         <NavyPanel
                           navy={navy}
                           difficulty={difficulty}
