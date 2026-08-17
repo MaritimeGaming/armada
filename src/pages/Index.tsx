@@ -625,6 +625,20 @@ function NavyPanel({
   explodingCellIndexes,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
+  const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
+  const tooltipDismissTimeoutRef = useRef<number | null>(null);
+
+  const revealShipTooltip = (code: string) => {
+    if (tooltipDismissTimeoutRef.current) {
+      window.clearTimeout(tooltipDismissTimeoutRef.current);
+    }
+
+    setOpenTooltipCode(code);
+    tooltipDismissTimeoutRef.current = window.setTimeout(() => {
+      setOpenTooltipCode(null);
+      tooltipDismissTimeoutRef.current = null;
+    }, 2000);
+  };
 
   const shipStatusByCode = useMemo(() => {
     return availableShips.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
@@ -743,12 +757,23 @@ function NavyPanel({
             const status = shipStatusByCode[ship.code] ?? { targetedCount: 0, isSunk: false };
 
             return (
-              <Tooltip key={`${navy.side}-${ship.code}`}>
+              <Tooltip
+                key={`${navy.side}-${ship.code}`}
+                open={openTooltipCode === ship.code}
+                onOpenChange={(open) => {
+                  if (open) {
+                    setOpenTooltipCode(ship.code);
+                  } else if (openTooltipCode === ship.code) {
+                    setOpenTooltipCode(null);
+                  }
+                }}
+              >
                 <TooltipTrigger asChild>
                   <button
                     type="button"
                     className="relative flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
                     aria-label={ship.name}
+                    onClick={() => revealShipTooltip(ship.code)}
                   >
                     <span className="relative inline-flex items-center justify-center font-mono text-[12px] tracking-[0.34em]">
                       {status.isSunk ? (
