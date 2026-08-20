@@ -42,6 +42,24 @@ const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const DIFFICULTY_STORAGE_KEY = 'armada:difficulty';
 const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
+const DESKTOP_LAYOUT_QUERY = '(min-width: 1024px)';
+
+// Wide enough to show both navies side by side (laptop/desktop) instead of
+// the mobile swipe-between-panels layout.
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const mediaQueryList = window.matchMedia(query);
+    const handleChange = () => setMatches(mediaQueryList.matches);
+
+    handleChange();
+    mediaQueryList.addEventListener('change', handleChange);
+    return () => mediaQueryList.removeEventListener('change', handleChange);
+  }, [query]);
+
+  return matches;
+}
 
 const Index = () => {
   useSeoMeta({
@@ -90,6 +108,7 @@ const Index = () => {
   });
   const [panelWidth, setPanelWidth] = useState(0);
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const isDesktopLayout = useMediaQuery(DESKTOP_LAYOUT_QUERY);
 
   // A callback ref, not an effect: the swipe viewport only exists once
   // gameState is loaded, so an effect with an empty dependency array would
@@ -490,57 +509,100 @@ const Index = () => {
     };
   }, [difficulty, gameOver.isOpen, gameState, shipSetOptions]);
 
+  const renderNavyPanel = (
+    side: NavySide,
+    navy: NavyState,
+    { showArrows, showSettings }: { showArrows: boolean; showSettings: boolean },
+  ) => (
+    <NavyPanel
+      key={side}
+      navy={navy}
+      difficulty={difficulty}
+      shipSetOptions={shipSetOptions}
+      onDifficultyChange={handleDifficultyChange}
+      onSinglesToggle={handleSinglesToggle}
+      onNewGame={() => handleNewGame()}
+      onGoLeft={showArrows && canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
+      onGoRight={showArrows && canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
+      onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
+      onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
+      onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
+      onCellPressCancel={side === 'enemy' ? handleEnemyCellPressCancel : undefined}
+      isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
+      explodingCellIndexes={explosionCells[side]}
+      showSettings={showSettings}
+    />
+  );
+
+  const weaponsBar = (
+    <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400 backdrop-blur-md">
+      Special Weapons — Coming Soon
+    </div>
+  );
+
   return (
     <>
       <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="relative isolate min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.18),_transparent_40%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]">
-        <div className="mx-auto flex min-h-screen w-full max-w-sm flex-col px-3 pb-3 pt-2 sm:px-4">
+        <div className={cn('mx-auto flex min-h-screen w-full flex-col px-3 pb-3 pt-2 sm:px-4', isDesktopLayout ? 'max-w-4xl' : 'max-w-sm')}>
           {gameState && activeNavy ? (
-            <section className="flex min-h-0 flex-1 flex-col gap-2">
-              <div ref={swipeViewportRef} className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
-                <div
-                  className="flex w-[200%] transition-transform duration-1000 ease-out"
-                  style={
-                    panelWidth
-                      ? { width: panelWidth * 2, transform: `translateX(-${activeIndex * panelWidth}px)` }
-                      : { transform: `translateX(-${activeIndex * 50}%)` }
-                  }
-                >
-                  {navyViewOrder.map((side) => {
-                    const navy = side === 'player' ? gameState.player : gameState.enemy;
+            isDesktopLayout ? (
+              <section className="flex min-h-0 flex-1 flex-col gap-3">
+                <div className="flex items-center justify-end">
+                  <SettingsMenu
+                    difficulty={difficulty}
+                    shipSetOptions={shipSetOptions}
+                    onDifficultyChange={handleDifficultyChange}
+                    onSinglesToggle={handleSinglesToggle}
+                    onNewGame={() => handleNewGame()}
+                  />
+                </div>
 
-                    return (
+                <div className="grid grid-cols-2 gap-4">
+                  {navyViewOrder.map((side) => (
+                    <div
+                      key={side}
+                      className="rounded-[24px] border border-white/10 bg-white/5 p-2.5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md"
+                    >
+                      {renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
+                        showArrows: false,
+                        showSettings: false,
+                      })}
+                    </div>
+                  ))}
+                </div>
+
+                {weaponsBar}
+              </section>
+            ) : (
+              <section className="flex min-h-0 flex-1 flex-col gap-2">
+                <div ref={swipeViewportRef} className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
+                  <div
+                    className="flex w-[200%] transition-transform duration-1000 ease-out"
+                    style={
+                      panelWidth
+                        ? { width: panelWidth * 2, transform: `translateX(-${activeIndex * panelWidth}px)` }
+                        : { transform: `translateX(-${activeIndex * 50}%)` }
+                    }
+                  >
+                    {navyViewOrder.map((side) => (
                       <div
                         key={side}
                         className="w-1/2 shrink-0 p-2.5"
                         style={panelWidth ? { width: panelWidth } : undefined}
                       >
-                        <NavyPanel
-                          navy={navy}
-                          difficulty={difficulty}
-                          shipSetOptions={shipSetOptions}
-                          onDifficultyChange={handleDifficultyChange}
-                          onSinglesToggle={handleSinglesToggle}
-                          onNewGame={() => handleNewGame()}
-                          onGoLeft={canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
-                          onGoRight={canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
-                          onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
-                          onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
-                          onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
-                          onCellPressCancel={side === 'enemy' ? handleEnemyCellPressCancel : undefined}
-                          isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
-                          explodingCellIndexes={explosionCells[side]}
-                        />
+                        {renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
+                          showArrows: true,
+                          showSettings: true,
+                        })}
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400 backdrop-blur-md">
-                Special Weapons — Coming Soon
-              </div>
-            </section>
+                {weaponsBar}
+              </section>
+            )
           ) : (
             <Card className="border-white/10 bg-white/5 text-white shadow-2xl shadow-cyan-950/20 backdrop-blur-md">
               <CardHeader>
@@ -606,7 +668,51 @@ type NavyPanelProps = {
   onCellPressCancel?: (cellIndex: number) => void;
   isCellTargetable?: (cell: CellState) => boolean;
   explodingCellIndexes?: number[];
+  showSettings?: boolean;
 };
+
+type SettingsMenuProps = {
+  difficulty: DifficultyLevel;
+  shipSetOptions: ShipSetOptions;
+  onDifficultyChange: (value: string) => void;
+  onSinglesToggle: (includeSingles: boolean) => void;
+  onNewGame: () => void;
+};
+
+function SettingsMenu({ difficulty, shipSetOptions, onDifficultyChange, onSinglesToggle, onNewGame }: SettingsMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className="h-8 w-8 shrink-0 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+          aria-label="Open settings"
+        >
+          <Settings className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel>Difficulty</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={difficulty} onValueChange={onDifficultyChange}>
+          <DropdownMenuRadioItem value="level1">Level 1</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="level2">Level 2</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Ships</DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}>
+          <div className="flex w-full items-center justify-between gap-3">
+            <span>Singles (E H L)</span>
+            <span className="text-xs text-muted-foreground">{shipSetOptions.includeSingles ? 'On' : 'Off'}</span>
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 function NavyPanel({
   navy,
@@ -623,6 +729,7 @@ function NavyPanel({
   onCellPressCancel,
   isCellTargetable,
   explodingCellIndexes,
+  showSettings = true,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
   const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
@@ -654,7 +761,7 @@ function NavyPanel({
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="flex min-h-8 items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
-        <div className="relative w-[60%] min-w-0">
+        <div className={cn('relative min-w-0', showSettings ? 'w-[60%]' : 'w-full')}>
           {onGoLeft ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -698,36 +805,15 @@ function NavyPanel({
           ) : null}
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8 shrink-0 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-              aria-label="Open settings"
-            >
-              <Settings className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuLabel>Difficulty</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={difficulty} onValueChange={onDifficultyChange}>
-              <DropdownMenuRadioItem value="level1">Level 1</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="level2">Level 2</DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Ships</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}>
-              <div className="flex w-full items-center justify-between gap-3">
-                <span>Singles (E H L)</span>
-                <span className="text-xs text-muted-foreground">{shipSetOptions.includeSingles ? 'On' : 'Off'}</span>
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {showSettings ? (
+          <SettingsMenu
+            difficulty={difficulty}
+            shipSetOptions={shipSetOptions}
+            onDifficultyChange={onDifficultyChange}
+            onSinglesToggle={onSinglesToggle}
+            onNewGame={onNewGame}
+          />
+        ) : null}
       </div>
 
       <div className="rounded-[18px] border border-cyan-200/10 bg-slate-950/80 shadow-inner shadow-cyan-950/20">
