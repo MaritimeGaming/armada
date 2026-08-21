@@ -531,6 +531,7 @@ const Index = () => {
       isCellTargetable={side === 'enemy' ? (cell) => cell.effect === 'untargeted' && !cell.targeting : undefined}
       explodingCellIndexes={explosionCells[side]}
       showSettings={showSettings}
+      reserveArrowSpace={showArrows}
     />
   );
 
@@ -544,12 +545,12 @@ const Index = () => {
     <>
       <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="relative isolate min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.18),_transparent_40%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]">
-        <div className={cn('mx-auto flex min-h-screen w-full flex-col px-3 pb-3 pt-2 sm:px-4', isDesktopLayout ? 'max-w-4xl' : 'max-w-sm')}>
+        <div className={cn('mx-auto flex min-h-screen w-full flex-col px-3 pb-3 pt-2 sm:px-4', isDesktopLayout ? 'max-w-5xl' : 'max-w-sm')}>
           {gameState && activeNavy ? (
             isDesktopLayout ? (
               <section className="flex min-h-0 flex-1 flex-col gap-3">
                 <div className="rounded-[24px] border border-white/10 bg-white/5 p-2.5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-6">
                     {navyViewOrder.map((side) =>
                       renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
                         showArrows: false,
@@ -656,6 +657,7 @@ type NavyPanelProps = {
   isCellTargetable?: (cell: CellState) => boolean;
   explodingCellIndexes?: number[];
   showSettings?: boolean;
+  reserveArrowSpace?: boolean;
 };
 
 type SettingsMenuProps = {
@@ -717,6 +719,7 @@ function NavyPanel({
   isCellTargetable,
   explodingCellIndexes,
   showSettings = true,
+  reserveArrowSpace = true,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
   const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
@@ -747,59 +750,67 @@ function NavyPanel({
 
   return (
     <div className="flex h-full flex-col gap-1.5">
-      <div className="flex min-h-8 items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
-        <div className={cn('relative min-w-0', showSettings ? 'w-[60%]' : 'w-full')}>
-          {onGoLeft ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={onGoLeft}
-                  className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-                  aria-label="Show my navy"
-                >
-                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="text-[10px] normal-case">
-                <p>Show My Navy</p>
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
+      <div className="relative flex min-h-8 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
+        {reserveArrowSpace ? (
+          <div className="relative w-[60%] min-w-0">
+            {onGoLeft ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={onGoLeft}
+                    className="absolute left-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+                    aria-label="Show my navy"
+                  >
+                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-[10px] normal-case">
+                  <p>Show My Navy</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
 
-          <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
+            <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
 
-          {onGoRight ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={onGoRight}
-                  className="absolute right-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
-                  aria-label="Show enemy navy"
-                >
-                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="text-[10px] normal-case">
-                <p>Show Enemy Navy</p>
-              </TooltipContent>
-            </Tooltip>
-          ) : null}
-        </div>
+            {onGoRight ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={onGoRight}
+                    className="absolute right-0 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border border-white/10 bg-white/10 text-white hover:bg-white/20"
+                    aria-label="Show enemy navy"
+                  >
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-[10px] normal-case">
+                  <p>Show Enemy Navy</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+          </div>
+        ) : (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            {navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}
+          </div>
+        )}
 
         {showSettings ? (
-          <SettingsMenu
-            difficulty={difficulty}
-            shipSetOptions={shipSetOptions}
-            onDifficultyChange={onDifficultyChange}
-            onSinglesToggle={onSinglesToggle}
-            onNewGame={onNewGame}
-          />
+          <div className="ml-auto">
+            <SettingsMenu
+              difficulty={difficulty}
+              shipSetOptions={shipSetOptions}
+              onDifficultyChange={onDifficultyChange}
+              onSinglesToggle={onSinglesToggle}
+              onNewGame={onNewGame}
+            />
+          </div>
         ) : null}
       </div>
 
