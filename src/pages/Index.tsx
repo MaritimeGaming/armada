@@ -548,28 +548,15 @@ const Index = () => {
           {gameState && activeNavy ? (
             isDesktopLayout ? (
               <section className="flex min-h-0 flex-1 flex-col gap-3">
-                <div className="flex items-center justify-end">
-                  <SettingsMenu
-                    difficulty={difficulty}
-                    shipSetOptions={shipSetOptions}
-                    onDifficultyChange={handleDifficultyChange}
-                    onSinglesToggle={handleSinglesToggle}
-                    onNewGame={() => handleNewGame()}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {navyViewOrder.map((side) => (
-                    <div
-                      key={side}
-                      className="rounded-[24px] border border-white/10 bg-white/5 p-2.5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md"
-                    >
-                      {renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
+                <div className="rounded-[24px] border border-white/10 bg-white/5 p-2.5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
+                  <div className="grid grid-cols-2 gap-4">
+                    {navyViewOrder.map((side) =>
+                      renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
                         showArrows: false,
-                        showSettings: false,
-                      })}
-                    </div>
-                  ))}
+                        showSettings: side === 'enemy',
+                      }),
+                    )}
+                  </div>
                 </div>
 
                 {weaponsBar}
