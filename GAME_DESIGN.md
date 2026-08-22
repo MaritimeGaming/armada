@@ -133,9 +133,12 @@ tuning either mechanic, since they're designed to interact.
   total), clipped at grid edges — firing at a corner only resolves 4 cells,
   not 9. Already-targeted cells within that blast are left alone rather than
   reprocessed. Replaces the player's regular shot for the turn (see Turn
-  economy below). Player starts with `MOAB_CHARGE_COUNT` (3) charges;
-  firing decrements the count by one, tracked on `GameState.moabCount` so it
-  persists and resets with the rest of the game. Sound is always a double
+  economy below). Weapon charges are a standing inventory, not part of a
+  round: `moabCount` lives in its own `localStorage` key (`Index.tsx`),
+  separate from `GameState`, starting at `MOAB_STARTING_COUNT` (2) the very
+  first time someone plays. Firing decrements it by one, and it is
+  deliberately untouched by New Game or the ship-set toggle — the only way
+  it goes up is the refill flow below. Sound is always a double
   "explosion" cue with a brief pause between them (distinct from the oil
   slick's triple-explosion ignition cadence), regardless of whether
   anything was hit, plus any sink/single-ship cues layered on top — unless
@@ -214,7 +217,7 @@ a 30-second ad for +3 charges of that type, once connected to a real ad
 SDK). Tapping a weapon icon that's at 0 offers that flow directly, rather
 than routing through a separate inventory screen — for the MOAB this is
 currently stubbed as a 2-second "Procuring Weapons" overlay that then
-refills to `MOAB_CHARGE_COUNT` and arms the weapon, with no real ad or
+refills to `MOAB_REFILL_COUNT` (3) and arms the weapon, with no real ad or
 network call yet. This fits the "no progression" philosophy above because
 weapons are consumable tools that add variety to a round, not permanent
 unlocks that change the game's baseline difficulty.

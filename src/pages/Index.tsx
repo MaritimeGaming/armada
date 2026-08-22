@@ -12,7 +12,6 @@ import {
   GAME_STATE_VERSION,
   getShips,
   GRID_SIZE,
-  MOAB_CHARGE_COUNT,
   resolveTargetingSequence,
   selectAppTargetIndex,
   setCellState,
@@ -44,6 +43,14 @@ const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const DIFFICULTY_STORAGE_KEY = 'armada:difficulty';
 const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
+const MOAB_COUNT_STORAGE_KEY = 'armada:moab-count';
+// Starting inventory the first time someone plays; not the same as the
+// refill amount below - see the "no progression" philosophy in
+// GAME_DESIGN.md, weapon charges are a standing inventory, not a per-round
+// resource, so this only ever applies once, before anything is persisted.
+const MOAB_STARTING_COUNT = 2;
+// How many charges a "Procuring Weapons" refill grants once the player runs out.
+const MOAB_REFILL_COUNT = 3;
 const DESKTOP_LAYOUT_QUERY = '(min-width: 1024px)';
 
 // Wide enough to show both navies side by side (laptop/desktop) instead of
@@ -91,6 +98,19 @@ const Index = () => {
     } catch {
       return DEFAULT_SHIP_SET_OPTIONS;
     }
+  });
+  // A standing inventory, not part of GameState: it must survive a New Game
+  // (and browser restarts) untouched. The only way to increase it is
+  // through the "Procuring Weapons" refill flow.
+  const [moabCount, setMoabCount] = useState<number>(() => {
+    const storedCount = window.localStorage.getItem(MOAB_COUNT_STORAGE_KEY);
+
+    if (storedCount === null) {
+      return MOAB_STARTING_COUNT;
+    }
+
+    const parsedCount = Number(storedCount);
+    return Number.isFinite(parsedCount) ? parsedCount : MOAB_STARTING_COUNT;
   });
   const appPreviewIndexRef = useRef<number | null>(null);
   const userPreviewIndexRef = useRef<number | null>(null);
@@ -270,7 +290,7 @@ const Index = () => {
       return;
     }
 
-    if (gameState.moabCount > 0) {
+    if (moabCount > 0) {
       setArmedWeapon((current) => (current === 'moab' ? null : 'moab'));
       return;
     }
@@ -279,15 +299,8 @@ const Index = () => {
 
     window.setTimeout(() => {
       setIsProcuringWeapons(false);
-      setGameState((current) => {
-        if (!current) {
-          return current;
-        }
-
-        const nextState: GameState = { ...current, moabCount: MOAB_CHARGE_COUNT };
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-        return nextState;
-      });
+      window.localStorage.setItem(MOAB_COUNT_STORAGE_KEY, String(MOAB_REFILL_COUNT));
+      setMoabCount(MOAB_REFILL_COUNT);
       setArmedWeapon('moab');
     }, 2000);
   };
@@ -373,12 +386,16 @@ const Index = () => {
           }
 
           setArmedWeapon(null);
+          setMoabCount((current) => {
+            const nextCount = current - 1;
+            window.localStorage.setItem(MOAB_COUNT_STORAGE_KEY, String(nextCount));
+            return nextCount;
+          });
 
           const nextState: GameState = {
             ...state,
             currentTurn: 'app',
             enemy: updatedEnemy,
-            moabCount: state.moabCount - 1,
           };
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
@@ -646,7 +663,7 @@ const Index = () => {
         <Bomb className="h-4 w-4" aria-hidden="true" />
         MOAB
         <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/60 px-1.5 text-[10px] font-bold">
-          {gameState?.moabCount ?? 0}
+          {moabCount}
         </span>
       </Button>
     </div>

@@ -48,7 +48,6 @@ export type GameState = {
   currentTurn: TurnOwner;
   player: NavyState;
   enemy: NavyState;
-  moabCount: number;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -69,8 +68,7 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 10;
-export const MOAB_CHARGE_COUNT = 3;
+export const GAME_STATE_VERSION = 9;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 const OIL_IGNITION_ODDS = 12;
 
@@ -276,7 +274,6 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     currentTurn,
     player: createNavy('player', 'Your Navy', true, options),
     enemy: createNavy('enemy', 'Enemy Navy', false, options),
-    moabCount: MOAB_CHARGE_COUNT,
   };
 }
 
