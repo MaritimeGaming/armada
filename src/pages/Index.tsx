@@ -10,6 +10,7 @@ import {
   DEFAULT_SHIP_SET_OPTIONS,
   fireMoab,
   GAME_STATE_VERSION,
+  getMoabTargetIndexes,
   getShips,
   GRID_SIZE,
   resolveTargetingSequence,
@@ -369,17 +370,18 @@ const Index = () => {
         userPreviewIndexRef.current = null;
 
         if (armedWeapon === 'moab') {
-          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = fireMoab(state.enemy, releaseIndex);
+          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = fireMoab(state.enemy, releaseIndex);
 
-          if (ignited && ignitedCellIndexes) {
-            triggerCellExplosions('enemy', ignitedCellIndexes);
-          } else {
-            const hitIndexes = (targetedIndexes ?? []).filter((index) => state.enemy.cells[index]?.occupied);
-
-            if (hitIndexes.length > 0) {
-              triggerCellExplosions('enemy', hitIndexes);
-            }
-          }
+          // Always animate the MOAB's full blast footprint (hit, miss, or
+          // already-targeted) so the explosion visually covers every cell
+          // in range, not just the ones whose targeting data actually
+          // changed. If it also ignited the oil slick, that chain reaction
+          // can reach further than the blast itself, so include those too.
+          const moabFootprint = getMoabTargetIndexes(releaseIndex);
+          const explosionIndexes = ignited && ignitedCellIndexes
+            ? Array.from(new Set([...moabFootprint, ...ignitedCellIndexes]))
+            : moabFootprint;
+          triggerCellExplosions('enemy', explosionIndexes);
 
           if (audioSequence.includes('sink') || ignited) {
             playerShotExtendedDelayRef.current = true;
