@@ -967,13 +967,13 @@ function WeaponsBar({
 }: WeaponsBarProps) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-      <div className="relative flex min-h-8 items-center">
+      <div className="relative flex min-h-6 items-center">
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">
           {label}
         </div>
 
         <div
-          className="ml-auto grid grid-cols-2 grid-rows-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1.5"
+          className="ml-auto flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-1.5"
           role="img"
           aria-label={`${SPECIAL_WEAPON_QUOTA - weaponsUsed} of ${SPECIAL_WEAPON_QUOTA} special weapon uses remaining this game`}
         >
