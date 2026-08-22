@@ -313,6 +313,11 @@ const Index = () => {
       return;
     }
 
+    // MOAB is capped at one use per game, regardless of standing inventory.
+    if (weapon === 'moab' && gameState.playerMoabUsedThisGame) {
+      return;
+    }
+
     const count = weapon === 'moab' ? moabCount : mineCount;
 
     if (count > 0) {
@@ -463,6 +468,7 @@ const Index = () => {
             currentTurn: 'app',
             enemy: updatedEnemy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerMoabUsedThisGame: true,
             playerMineIndex: mineIndex,
           };
 
@@ -642,6 +648,7 @@ const Index = () => {
       appWeaponChoiceRef.current = selectAppWeaponChoice({
         appWeaponsUsed: gameState.appWeaponsUsed,
         appMoabCount: gameState.appMoabCount,
+        appMoabUsedThisGame: gameState.appMoabUsedThisGame,
         appMineCount: gameState.appMineCount,
         appMineIndex: gameState.appMineIndex,
       });
@@ -741,6 +748,7 @@ const Index = () => {
             currentTurn: 'player',
             player: updatedPlayer,
             appMoabCount: currentState.appMoabCount - 1,
+            appMoabUsedThisGame: true,
             appWeaponsUsed: currentState.appWeaponsUsed + 1,
             appMineIndex,
           };
@@ -900,7 +908,8 @@ const Index = () => {
   const playerWeaponsUsed = gameState?.playerWeaponsUsed ?? 0;
   const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
   const hasActiveMine = (gameState?.playerMineIndex ?? null) !== null;
-  const moabButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
+  const playerMoabUsedThisGame = gameState?.playerMoabUsedThisGame ?? false;
+  const moabButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || playerMoabUsedThisGame;
   const mineButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || hasActiveMine;
 
   // Each grid gets the weapons bar relevant to looking at it: the enemy
@@ -914,6 +923,7 @@ const Index = () => {
           key="enemy-weapons"
           label="Enemy Weapons"
           moabCount={gameState?.appMoabCount ?? 0}
+          moabUsedThisGame={gameState?.appMoabUsedThisGame ?? false}
           weaponsUsed={gameState?.appWeaponsUsed ?? 0}
           isMoabArmed={false}
           moabButtonDisabled
@@ -929,6 +939,7 @@ const Index = () => {
         key="my-weapons"
         label="My Weapons"
         moabCount={moabCount}
+        moabUsedThisGame={playerMoabUsedThisGame}
         weaponsUsed={playerWeaponsUsed}
         isMoabArmed={armedWeapon === 'moab'}
         moabButtonDisabled={moabButtonDisabled}
@@ -1048,6 +1059,8 @@ const Index = () => {
 type WeaponsBarProps = {
   label: string;
   moabCount: number;
+  /** MOAB is capped at one use per game; true once this side has fired its one. */
+  moabUsedThisGame: boolean;
   weaponsUsed: number;
   isMoabArmed: boolean;
   moabButtonDisabled: boolean;
@@ -1071,9 +1084,11 @@ type WeaponButtonProps = {
   isArmed: boolean;
   disabled: boolean;
   onClick?: () => void;
+  /** Single-use-per-game indicator dot: green until used, red once spent. Omit for weapons with no per-game single-use cap (e.g. Mines). */
+  usedThisGame?: boolean;
 };
 
-function WeaponButton({ icon, label, count, isArmed, disabled, onClick }: WeaponButtonProps) {
+function WeaponButton({ icon, label, count, isArmed, disabled, onClick, usedThisGame }: WeaponButtonProps) {
   return (
     <Button
       type="button"
@@ -1082,12 +1097,18 @@ function WeaponButton({ icon, label, count, isArmed, disabled, onClick }: Weapon
       disabled={disabled}
       aria-pressed={isArmed}
       className={cn(
-        'h-auto w-full gap-1 rounded-full border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white',
+        'relative h-auto w-full gap-1 rounded-full border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white',
         isArmed
           ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
           : 'border-white/10 bg-white/10 hover:bg-white/20',
       )}
     >
+      {usedThisGame !== undefined ? (
+        <span
+          className={cn('absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full ring-2 ring-slate-950', usedThisGame ? 'bg-red-500' : 'bg-green-500')}
+          aria-hidden="true"
+        />
+      ) : null}
       {icon}
       {label}
       <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
@@ -1100,6 +1121,7 @@ function WeaponButton({ icon, label, count, isArmed, disabled, onClick }: Weapon
 function WeaponsBar({
   label,
   moabCount,
+  moabUsedThisGame,
   weaponsUsed,
   isMoabArmed,
   moabButtonDisabled,
@@ -1138,6 +1160,7 @@ function WeaponsBar({
           isArmed={isMoabArmed}
           disabled={moabButtonDisabled}
           onClick={onMoabClick}
+          usedThisGame={moabUsedThisGame}
         />
         <WeaponButton
           icon={<CircleDot className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}

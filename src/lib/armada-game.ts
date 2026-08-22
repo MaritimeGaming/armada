@@ -61,6 +61,10 @@ export type GameState = {
   playerMineIndex: number | null;
   /** Mirrors playerMineIndex for the computer's mine, in player.cells. */
   appMineIndex: number | null;
+  /** MOAB is capped at one use per side per game, independent of standing inventory or the shared SPECIAL_WEAPON_QUOTA. Resets with a new game. */
+  playerMoabUsedThisGame: boolean;
+  /** Mirrors playerMoabUsedThisGame for the computer. */
+  appMoabUsedThisGame: boolean;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -81,7 +85,7 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 13;
+export const GAME_STATE_VERSION = 14;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 4;
@@ -339,6 +343,7 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
 export function selectAppWeaponChoice(options: {
   appWeaponsUsed: number;
   appMoabCount: number;
+  appMoabUsedThisGame: boolean;
   appMineCount: number;
   appMineIndex: number | null;
 }): WeaponType | null {
@@ -351,7 +356,7 @@ export function selectAppWeaponChoice(options: {
   }
 
   const availableWeapons: WeaponType[] = [];
-  if (options.appMoabCount > 0) {
+  if (options.appMoabCount > 0 && !options.appMoabUsedThisGame) {
     availableWeapons.push('moab');
   }
   if (options.appMineCount > 0 && options.appMineIndex === null) {
@@ -383,6 +388,8 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     appWeaponsUsed: 0,
     playerMineIndex: null,
     appMineIndex: null,
+    playerMoabUsedThisGame: false,
+    appMoabUsedThisGame: false,
   };
 }
 

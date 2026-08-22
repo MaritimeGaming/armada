@@ -243,6 +243,26 @@ aiming deliberately (e.g. at a partially-sunk ship's remaining cells), so
 equal quotas alone don't fully equalize the advantage — see Variable A's
 proposed "weapon-aware play" for the natural follow-up.
 
+### One MOAB per side per game
+
+On top of the shared `SPECIAL_WEAPON_QUOTA`, the MOAB specifically is
+capped at **one use per side per game**, independent of both the quota and
+standing inventory — a player who has procured a deep MOAB reserve still
+only gets to fire it once per round. This exists because a single MOAB
+already reveals up to 9 cells; stacking several in one game (which the
+shared 4-shot quota alone wouldn't prevent, given enough charges) would
+make Mines the only meaningfully-limited weapon and let MOAB spam dominate
+a round. `playerMoabUsedThisGame`/`appMoabUsedThisGame` on `GameState`
+track this (reset every New Game, like the quota counters), and
+`selectAppWeaponChoice()` excludes MOAB from the computer's random pool
+once its flag is set, so the cap applies symmetrically to both sides.
+
+Communicated via a small dot on the MOAB button itself (both "My Weapons"
+and the mirrored "Enemy Weapons" bar) — green while still available this
+game, red once spent, reusing the same green/red idiom as the quota dots
+rather than adding new visual language. The button disables once the dot
+turns red, even with charges left in the standing inventory.
+
 ### UI direction: arm, then tap
 
 Implemented for the MOAB, and the intended pattern for future weapons too:
