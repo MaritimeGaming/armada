@@ -1253,7 +1253,7 @@ function NavyPanel({
       {weaponsBarSlot}
 
       <div className="px-6">
-        <div className="grid grid-cols-[max-content_max-content] justify-center gap-x-1 gap-y-0.5">
+        <div className="grid grid-cols-[max-content_max-content] justify-center gap-x-7 gap-y-0.5">
           {Array.from({ length: Math.max(leftColumnShips.length, rightColumnShips.length) }, (_, rowIndex) => {
             const leftShip = leftColumnShips[rowIndex];
             const rightShip = rightColumnShips[rowIndex];
