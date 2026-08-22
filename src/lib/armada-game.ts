@@ -52,8 +52,12 @@ export type GameState = {
   playerWeaponsUsed: number;
   /** The computer's own MOAB loadout for this game - unlike the player's, this isn't a standing inventory (the computer doesn't watch ads), just a fixed per-game starting count. */
   appMoabCount: number;
+  /** Mirrors appMoabCount for the Mine, for display symmetry. Nothing increments/decrements this yet - the computer doesn't fire weapons. */
+  appMineCount: number;
   /** Mirrors playerWeaponsUsed for the computer. Nothing increments this yet - the computer doesn't fire weapons - it's tracked now so the display is symmetric from day one. */
   appWeaponsUsed: number;
+  /** Index in enemy.cells currently holding the player's active mine, or null if none is placed. Only one mine may be active at a time. */
+  playerMineIndex: number | null;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -74,11 +78,12 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 11;
+export const GAME_STATE_VERSION = 12;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 4;
 export const APP_MOAB_STARTING_COUNT = 2;
+export const APP_MINE_STARTING_COUNT = 2;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 const OIL_IGNITION_ODDS = 12;
 
@@ -204,6 +209,55 @@ export function fireMoab(navy: NavyState, cellIndex: number): TargetingResult {
   return { ...result, targetedIndexes: targetIndexes };
 }
 
+export type MineMoveResult = {
+  navy: NavyState;
+  /** The mine's new position, or null if this move detonated it (hit a ship - a mine is consumed on its first hit, freeing the "one active mine" slot). */
+  mineIndex: number | null;
+  hit: boolean;
+  hitIndex?: number;
+  audioSequence: AudioSequence;
+  ignited?: boolean;
+  ignitedCellIndexes?: number[];
+};
+
+/**
+ * A mine's automatic per-turn wander: moves to one random adjacent cell,
+ * regardless of whether that cell has already been targeted or the mine has
+ * already visited it. Only detonates (and is only ever processed through
+ * the normal targeting/oil-ignition machinery) if the new cell is both
+ * untargeted and occupied - an untargeted empty cell, or any already-
+ * targeted cell, is a silent no-op move. This is why a mine's movement
+ * can never ignite the oil slick by itself: an empty oil cell never gets
+ * targeted by a move, only a hit does, and a hit always reflects a real
+ * ship cell.
+ */
+export function moveMine(navy: NavyState, mineIndex: number): MineMoveResult {
+  const newIndex = randomItem(getAdjacentIndexes(mineIndex));
+  const candidateCell = navy.cells[newIndex];
+
+  if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
+    const preparedNavy = setCellState(navy, newIndex, { effect: 'targeted', targeting: false });
+    const result = resolveTargetingSequence(preparedNavy, [newIndex]);
+
+    return {
+      navy: result.navy,
+      mineIndex: null,
+      hit: true,
+      hitIndex: newIndex,
+      audioSequence: result.audioSequence,
+      ignited: result.ignited,
+      ignitedCellIndexes: result.ignitedCellIndexes,
+    };
+  }
+
+  return {
+    navy,
+    mineIndex: newIndex,
+    hit: false,
+    audioSequence: [],
+  };
+}
+
 export function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
   const nextCells = navy.cells.map((cell, index) => {
     if (index !== cellIndex) {
@@ -286,7 +340,9 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     enemy: createNavy('enemy', 'Enemy Navy', false, options),
     playerWeaponsUsed: 0,
     appMoabCount: APP_MOAB_STARTING_COUNT,
+    appMineCount: APP_MINE_STARTING_COUNT,
     appWeaponsUsed: 0,
+    playerMineIndex: null,
   };
 }
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
-import { Bomb, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { Bomb, ChevronLeft, ChevronRight, CircleDot, Settings } from 'lucide-react';
 
 import {
   areAllShipsSunk,
@@ -13,6 +14,7 @@ import {
   getMoabTargetIndexes,
   getShips,
   GRID_SIZE,
+  moveMine,
   resolveTargetingSequence,
   SPECIAL_WEAPON_QUOTA,
   selectAppTargetIndex,
@@ -41,6 +43,8 @@ type GameOverState = {
   winner: Winner | null;
 };
 
+type WeaponType = 'moab' | 'mine';
+
 const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const DIFFICULTY_STORAGE_KEY = 'armada:difficulty';
@@ -53,6 +57,9 @@ const MOAB_COUNT_STORAGE_KEY = 'armada:moab-count';
 const MOAB_STARTING_COUNT = 2;
 // How many charges a "Procuring Weapons" refill grants once the player runs out.
 const MOAB_REFILL_COUNT = 3;
+const MINE_COUNT_STORAGE_KEY = 'armada:mine-count';
+const MINE_STARTING_COUNT = 2;
+const MINE_REFILL_COUNT = 3;
 const DESKTOP_LAYOUT_QUERY = '(min-width: 1024px)';
 
 // Wide enough to show both navies side by side (laptop/desktop) instead of
@@ -70,6 +77,17 @@ function useMediaQuery(query: string): boolean {
   }, [query]);
 
   return matches;
+}
+
+function readStoredWeaponCount(storageKey: string, fallback: number): number {
+  const storedCount = window.localStorage.getItem(storageKey);
+
+  if (storedCount === null) {
+    return fallback;
+  }
+
+  const parsedCount = Number(storedCount);
+  return Number.isFinite(parsedCount) ? parsedCount : fallback;
 }
 
 const Index = () => {
@@ -101,19 +119,11 @@ const Index = () => {
       return DEFAULT_SHIP_SET_OPTIONS;
     }
   });
-  // A standing inventory, not part of GameState: it must survive a New Game
-  // (and browser restarts) untouched. The only way to increase it is
-  // through the "Procuring Weapons" refill flow.
-  const [moabCount, setMoabCount] = useState<number>(() => {
-    const storedCount = window.localStorage.getItem(MOAB_COUNT_STORAGE_KEY);
-
-    if (storedCount === null) {
-      return MOAB_STARTING_COUNT;
-    }
-
-    const parsedCount = Number(storedCount);
-    return Number.isFinite(parsedCount) ? parsedCount : MOAB_STARTING_COUNT;
-  });
+  // Standing inventories, not part of GameState: they must survive a New
+  // Game (and browser restarts) untouched. The only way to increase either
+  // is through its "Procuring Weapons" refill flow.
+  const [moabCount, setMoabCount] = useState<number>(() => readStoredWeaponCount(MOAB_COUNT_STORAGE_KEY, MOAB_STARTING_COUNT));
+  const [mineCount, setMineCount] = useState<number>(() => readStoredWeaponCount(MINE_COUNT_STORAGE_KEY, MINE_STARTING_COUNT));
   const appPreviewIndexRef = useRef<number | null>(null);
   const userPreviewIndexRef = useRef<number | null>(null);
   const playerShotExtendedDelayRef = useRef(false);
@@ -133,8 +143,8 @@ const Index = () => {
   const [panelWidth, setPanelWidth] = useState(0);
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
   const isDesktopLayout = useMediaQuery(DESKTOP_LAYOUT_QUERY);
-  const [armedWeapon, setArmedWeapon] = useState<'moab' | null>(null);
-  const [isProcuringWeapons, setIsProcuringWeapons] = useState(false);
+  const [armedWeapon, setArmedWeapon] = useState<WeaponType | null>(null);
+  const [procuringWeapon, setProcuringWeapon] = useState<WeaponType | null>(null);
 
   // A callback ref, not an effect: the swipe viewport only exists once
   // gameState is loaded, so an effect with an empty dependency array would
@@ -287,7 +297,7 @@ const Index = () => {
     handleNewGame(nextOptions);
   };
 
-  const handleMoabButtonClick = () => {
+  const handleWeaponButtonClick = (weapon: WeaponType) => {
     if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen) {
       return;
     }
@@ -296,18 +306,29 @@ const Index = () => {
       return;
     }
 
-    if (moabCount > 0) {
-      setArmedWeapon((current) => (current === 'moab' ? null : 'moab'));
+    // Only one mine may be active on the grid at a time.
+    if (weapon === 'mine' && gameState.playerMineIndex !== null) {
       return;
     }
 
-    setIsProcuringWeapons(true);
+    const count = weapon === 'moab' ? moabCount : mineCount;
+
+    if (count > 0) {
+      setArmedWeapon((current) => (current === weapon ? null : weapon));
+      return;
+    }
+
+    const storageKey = weapon === 'moab' ? MOAB_COUNT_STORAGE_KEY : MINE_COUNT_STORAGE_KEY;
+    const refillCount = weapon === 'moab' ? MOAB_REFILL_COUNT : MINE_REFILL_COUNT;
+    const setCount = weapon === 'moab' ? setMoabCount : setMineCount;
+
+    setProcuringWeapon(weapon);
 
     window.setTimeout(() => {
-      setIsProcuringWeapons(false);
-      window.localStorage.setItem(MOAB_COUNT_STORAGE_KEY, String(MOAB_REFILL_COUNT));
-      setMoabCount(MOAB_REFILL_COUNT);
-      setArmedWeapon('moab');
+      setProcuringWeapon(null);
+      window.localStorage.setItem(storageKey, String(refillCount));
+      setCount(refillCount);
+      setArmedWeapon(weapon);
     }, 2000);
   };
 
@@ -374,8 +395,37 @@ const Index = () => {
       if (targetCell?.targeting) {
         userPreviewIndexRef.current = null;
 
+        // An active mine (placed on a prior turn) moves automatically the
+        // moment the player takes any turn, regardless of what that turn's
+        // own action turns out to be.
+        let currentEnemy = state.enemy;
+        let mineIndex = state.playerMineIndex;
+        let mineCausedExtendedDelay = false;
+
+        if (mineIndex !== null) {
+          const moveResult = moveMine(currentEnemy, mineIndex);
+          currentEnemy = moveResult.navy;
+          mineIndex = moveResult.mineIndex;
+
+          if (moveResult.hit) {
+            if (moveResult.ignited && moveResult.ignitedCellIndexes) {
+              triggerCellExplosions('enemy', moveResult.ignitedCellIndexes);
+            } else if (moveResult.hitIndex !== undefined) {
+              triggerCellExplosions('enemy', [moveResult.hitIndex]);
+            }
+
+            mineCausedExtendedDelay = moveResult.audioSequence.includes('sink') || Boolean(moveResult.ignited);
+
+            if (moveResult.ignited) {
+              playIgnitionSequence(moveResult.audioSequence);
+            } else {
+              playAudioSequence(moveResult.audioSequence);
+            }
+          }
+        }
+
         if (armedWeapon === 'moab') {
-          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = fireMoab(state.enemy, releaseIndex);
+          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = fireMoab(currentEnemy, releaseIndex);
 
           // Always animate the MOAB's full blast footprint (hit, miss, or
           // already-targeted) so the explosion visually covers every cell
@@ -388,9 +438,7 @@ const Index = () => {
             : moabFootprint;
           triggerCellExplosions('enemy', explosionIndexes);
 
-          if (audioSequence.includes('sink') || ignited) {
-            playerShotExtendedDelayRef.current = true;
-          }
+          playerShotExtendedDelayRef.current = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
 
           setArmedWeapon(null);
           setMoabCount((current) => {
@@ -404,6 +452,7 @@ const Index = () => {
             currentTurn: 'app',
             enemy: updatedEnemy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerMineIndex: mineIndex,
           };
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
@@ -421,7 +470,57 @@ const Index = () => {
           return nextState;
         }
 
-        const enemyWithTargetedCell = setCellState(state.enemy, releaseIndex, {
+        if (armedWeapon === 'mine') {
+          const enemyWithTargetedCell = setCellState(currentEnemy, releaseIndex, {
+            effect: 'targeted',
+            targeting: false,
+          });
+          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+
+          if (ignited && ignitedCellIndexes) {
+            triggerCellExplosions('enemy', ignitedCellIndexes);
+          } else if (targetCell.occupied) {
+            triggerCellExplosions('enemy', [releaseIndex]);
+          }
+
+          playerShotExtendedDelayRef.current = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
+
+          setArmedWeapon(null);
+          setMineCount((current) => {
+            const nextCount = current - 1;
+            window.localStorage.setItem(MINE_COUNT_STORAGE_KEY, String(nextCount));
+            return nextCount;
+          });
+
+          // A hit consumes the newly-placed mine immediately - nothing left
+          // to activate. A miss plants it right here, stationary until the
+          // player's next turn.
+          const nextMineIndex = targetCell.occupied ? mineIndex : releaseIndex;
+
+          const nextState: GameState = {
+            ...state,
+            currentTurn: 'app',
+            enemy: updatedEnemy,
+            playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerMineIndex: nextMineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          if (ignited) {
+            playIgnitionSequence(audioSequence);
+          } else {
+            playAudioSequence(audioSequence);
+          }
+
+          if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
+            concludeGame('player', nextState);
+          }
+
+          return nextState;
+        }
+
+        const enemyWithTargetedCell = setCellState(currentEnemy, releaseIndex, {
           effect: 'targeted',
           targeting: false,
         });
@@ -433,11 +532,9 @@ const Index = () => {
           triggerCellExplosions('enemy', [releaseIndex]);
         }
 
-        if (audioSequence.includes('sink') || ignited) {
-          playerShotExtendedDelayRef.current = true;
-        }
+        playerShotExtendedDelayRef.current = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
 
-        if (updatedEnemy === state.enemy) {
+        if (updatedEnemy === currentEnemy && mineIndex === state.playerMineIndex) {
           return state;
         }
 
@@ -445,6 +542,7 @@ const Index = () => {
           ...state,
           currentTurn: 'app',
           enemy: updatedEnemy,
+          playerMineIndex: mineIndex,
         };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
@@ -648,12 +746,16 @@ const Index = () => {
       explodingCellIndexes={explosionCells[side]}
       showSettings={showSettings}
       reserveArrowSpace={showArrows}
+      mineIndex={side === 'enemy' ? gameState?.playerMineIndex : undefined}
     />
   );
 
   const isPlayerTurnActive = Boolean(gameState) && gameState?.currentTurn === 'player' && !gameOver.isOpen;
   const playerWeaponsUsed = gameState?.playerWeaponsUsed ?? 0;
   const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
+  const hasActiveMine = (gameState?.playerMineIndex ?? null) !== null;
+  const moabButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
+  const mineButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || hasActiveMine;
 
   // Each grid gets the weapons bar relevant to looking at it: the enemy
   // grid is where you'd arm and fire, so it gets "My Weapons"; your own
@@ -667,8 +769,11 @@ const Index = () => {
           label="Enemy Weapons"
           moabCount={gameState?.appMoabCount ?? 0}
           weaponsUsed={gameState?.appWeaponsUsed ?? 0}
-          isArmed={false}
+          isMoabArmed={false}
           moabButtonDisabled
+          mineCount={gameState?.appMineCount ?? 0}
+          isMineArmed={false}
+          mineButtonDisabled
         />
       );
     }
@@ -679,9 +784,13 @@ const Index = () => {
         label="My Weapons"
         moabCount={moabCount}
         weaponsUsed={playerWeaponsUsed}
-        isArmed={armedWeapon === 'moab'}
-        moabButtonDisabled={!isPlayerTurnActive || weaponQuotaReached}
-        onMoabClick={handleMoabButtonClick}
+        isMoabArmed={armedWeapon === 'moab'}
+        moabButtonDisabled={moabButtonDisabled}
+        onMoabClick={() => handleWeaponButtonClick('moab')}
+        mineCount={mineCount}
+        isMineArmed={armedWeapon === 'mine'}
+        mineButtonDisabled={mineButtonDisabled}
+        onMineClick={() => handleWeaponButtonClick('mine')}
       />
     );
   };
@@ -784,7 +893,7 @@ const Index = () => {
         </DialogContent>
       </Dialog>
 
-      {isProcuringWeapons ? (
+      {procuringWeapon ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
             Procuring Weapons
@@ -799,17 +908,66 @@ type WeaponsBarProps = {
   label: string;
   moabCount: number;
   weaponsUsed: number;
-  isArmed: boolean;
+  isMoabArmed: boolean;
   moabButtonDisabled: boolean;
   onMoabClick?: () => void;
+  mineCount: number;
+  isMineArmed: boolean;
+  mineButtonDisabled: boolean;
+  onMineClick?: () => void;
 };
 
-// 6 slots (3 across, 2 rows) reserved for weapon buttons; only MOAB exists
-// so far, in the first slot, with the rest left as empty spacers so the
-// grid geometry is already right for whichever weapons come next.
+// 6 slots (3 across, 2 rows) reserved for weapon buttons; only MOAB and
+// Mines exist so far, in the first two slots, with the rest left as empty
+// spacers so the grid geometry is already right for whichever weapons come
+// next.
 const WEAPON_BUTTON_SLOT_COUNT = 6;
 
-function WeaponsBar({ label, moabCount, weaponsUsed, isArmed, moabButtonDisabled, onMoabClick }: WeaponsBarProps) {
+type WeaponButtonProps = {
+  icon: ReactNode;
+  label: string;
+  count: number;
+  isArmed: boolean;
+  disabled: boolean;
+  onClick?: () => void;
+};
+
+function WeaponButton({ icon, label, count, isArmed, disabled, onClick }: WeaponButtonProps) {
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={isArmed}
+      className={cn(
+        'h-auto w-full gap-1 rounded-full border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white',
+        isArmed
+          ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
+          : 'border-white/10 bg-white/10 hover:bg-white/20',
+      )}
+    >
+      {icon}
+      {label}
+      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
+        {count}
+      </span>
+    </Button>
+  );
+}
+
+function WeaponsBar({
+  label,
+  moabCount,
+  weaponsUsed,
+  isMoabArmed,
+  moabButtonDisabled,
+  onMoabClick,
+  mineCount,
+  isMineArmed,
+  mineButtonDisabled,
+  onMineClick,
+}: WeaponsBarProps) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
       <div className="relative flex min-h-8 items-center">
@@ -832,27 +990,24 @@ function WeaponsBar({ label, moabCount, weaponsUsed, isArmed, moabButtonDisabled
       </div>
 
       <div className="grid grid-cols-3 grid-rows-2 gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onMoabClick}
+        <WeaponButton
+          icon={<Bomb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          label="MOAB"
+          count={moabCount}
+          isArmed={isMoabArmed}
           disabled={moabButtonDisabled}
-          aria-pressed={isArmed}
-          className={cn(
-            'h-auto w-full gap-1 rounded-full border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white',
-            isArmed
-              ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
-              : 'border-white/10 bg-white/10 hover:bg-white/20',
-          )}
-        >
-          <Bomb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          MOAB
-          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
-            {moabCount}
-          </span>
-        </Button>
+          onClick={onMoabClick}
+        />
+        <WeaponButton
+          icon={<CircleDot className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          label="MINES"
+          count={mineCount}
+          isArmed={isMineArmed}
+          disabled={mineButtonDisabled}
+          onClick={onMineClick}
+        />
 
-        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 1 }, (_, index) => (
+        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 2 }, (_, index) => (
           <div key={index} aria-hidden="true" />
         ))}
       </div>
@@ -877,6 +1032,8 @@ type NavyPanelProps = {
   explodingCellIndexes?: number[];
   showSettings?: boolean;
   reserveArrowSpace?: boolean;
+  /** Index within this navy's cells currently holding an active mine, if any. */
+  mineIndex?: number | null;
 };
 
 type SettingsMenuProps = {
@@ -939,6 +1096,7 @@ function NavyPanel({
   explodingCellIndexes,
   showSettings = true,
   reserveArrowSpace = true,
+  mineIndex = null,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
   const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
@@ -1049,6 +1207,7 @@ function NavyPanel({
               onPressEnd={onCellPressEnd ? () => onCellPressEnd(index) : undefined}
               onPressCancel={onCellPressCancel ? () => onCellPressCancel(index) : undefined}
               isExploding={explodingCellIndexes?.includes(index) ?? false}
+              hasMine={index === mineIndex}
             />
           ))}
         </div>
@@ -1114,6 +1273,7 @@ function GridCell({
   onPressEnd,
   onPressCancel,
   isExploding,
+  hasMine,
 }: {
   cell: CellState;
   isTargetable?: boolean;
@@ -1122,9 +1282,10 @@ function GridCell({
   onPressEnd?: () => void;
   onPressCancel?: () => void;
   isExploding?: boolean;
+  hasMine?: boolean;
 }) {
   const exposure = cell.exposure;
-  const { className, value, label } = getCellPresentation(cell);
+  const { className, value, label } = getCellPresentation(cell, hasMine ?? false);
 
   if (onClick) {
     const handlePressStart = () => {
@@ -1199,7 +1360,23 @@ function GridCell({
   );
 }
 
-function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
+function getCellPresentation(cell: CellState, hasMine: boolean): { className: string; value: string; label: string } {
+  const base = computeBaseCellPresentation(cell);
+
+  if (!hasMine) {
+    return base;
+  }
+
+  // Debug aid for validating mine movement during this initial
+  // implementation: mark the mine's current cell with an asterisk - alone
+  // if the cell is still hidden (so it doesn't leak anything else about
+  // the cell), appended to whatever would otherwise show if it's visible.
+  const value = cell.exposure === 'unknown' ? '*' : `${base.value}*`;
+
+  return { ...base, value, label: `${base.label}, mine present` };
+}
+
+function computeBaseCellPresentation(cell: CellState): { className: string; value: string; label: string } {
   // Oil hides a ship's identity only while the cell itself is still hidden
   // by fog of war. Once a cell is visible (the player's own navy, or a
   // future reveal effect on the enemy's), a ship under the oil should still

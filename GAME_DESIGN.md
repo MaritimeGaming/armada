@@ -145,16 +145,37 @@ tuning either mechanic, since they're designed to interact.
   the blast also ignites the oil slick, in which case the ignition's own
   triple-explosion sequence takes over instead of stacking two cadences.
 
+- **Mine** (`moveMine()` in `armada-game.ts`): only one may be active at a
+  time — the Mines button disables itself while `GameState.playerMineIndex`
+  is non-null. Firing it at an untargeted cell runs the normal targeting
+  sequence there (splash, or explosion/sink if occupied) and always costs
+  one charge and one quota dot, same as MOAB. If that placement shot was a
+  *hit*, the mine is spent immediately — nothing further to activate. If it
+  was a *miss*, a mine is planted at that cell (`playerMineIndex` is set);
+  no further charge/quota cost is ever taken for it again.
+
+  On every later turn the player takes (any shot or weapon, not just
+  another mine), the active mine automatically moves to one random adjacent
+  cell first (`getAdjacentIndexes`, silently, before the turn's own action
+  resolves) — clipped at grid edges, no memory of where it's already been.
+  A move only does anything if the new cell is both untargeted and
+  occupied: that's a hit, resolved through the same normal-targeting path
+  (including standard oil-ignition-on-hit odds), and the mine is consumed,
+  re-enabling the button. Landing on an already-targeted cell (occupied or
+  not) or an untargeted empty cell is a total no-op — the cell's state
+  doesn't change and nothing plays. This is *why* a mine's movement can
+  never ignite the oil slick by itself, per the request that shaped this:
+  an empty oil cell is never actually targeted by a move, only a hit is,
+  and a hit is always a real ship cell, so the ignition roll only ever
+  happens through the same path as any other hit.
+
+  A debug aid for validating this during development: any cell currently
+  holding a mine renders an asterisk (alone if the cell is still hidden by
+  fog of war, appended to whatever the cell would otherwise show if it's
+  visible) - see the `hasMine` plumbing through `NavyPanel`/`GridCell`/
+  `getCellPresentation` in `Index.tsx`.
+
 **Not yet implemented:**
-- **Mine**: placed on a cell. On every subsequent turn (regardless of who's
-  acting or what else happens that turn) it moves to one random adjacent
-  cell — a pure, unconstrained random walk. It doesn't avoid cells that have
-  already been targeted, and it doesn't avoid cells it has already visited
-  itself; it's just bobbing around in the ocean with no memory. If the cell
-  it moves into is occupied by a live (untargeted, unsunk) ship, it explodes
-  automatically, exactly as if that cell had been targeted directly. Silent
-  and invisible to the opponent — there's no indication a mine is nearby
-  until it goes off.
 - **Surveillance Drone**: reveals a cell, a 3x3 block, a full row, or a full
   column, without targeting any of it.
 - **Torpedo**: dropped at the left edge of a row, travels right until it
