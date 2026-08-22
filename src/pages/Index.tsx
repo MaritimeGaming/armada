@@ -332,23 +332,32 @@ const Index = () => {
     }, 2000);
   };
 
-  const concludeGame = (winner: Winner, state: GameState) => {
+  const concludeGame = (winner: Winner, state: GameState, hasStaggeredExplosion: boolean = false) => {
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
-      setExplosionCells({ player: [], enemy: [] });
+      // Deliberately not clearing explosionCells here: this runs in the same
+      // tick as the triggerCellExplosions() call for the winning shot, and
+      // clearing synchronously would erase that explosion before React ever
+      // paints it - the animation's own 380ms timeout (or handleNewGame,
+      // for the next round) already cleans it up.
 
     const revealedState = revealRemainingShipsInWinningNavy(state, winner);
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(revealedState));
     setGameState(revealedState);
 
+    // An oil ignition (playIgnitionSequence) or a MOAB kill
+    // (playMoabSequence) both queue a second/third "explosion" cue 300ms or
+    // 600ms after the first - and that cue is Explosion.wav, a ~1.5s clip,
+    // so the tail of either sequence runs well past the standard pause.
+    // Give it room to actually finish before the dialog interrupts it.
     window.setTimeout(() => {
       if (winner === 'player') {
         playAudioCue('wingame');
       }
 
       setGameOver({ isOpen: true, winner });
-    }, 600);
+    }, hasStaggeredExplosion ? 2000 : 600);
   };
 
   const handleEnemyCellPressStart = (cellIndex: number) => {
@@ -463,8 +472,10 @@ const Index = () => {
             playMoabSequence(audioSequence);
           }
 
+          // Either branch above queues a staggered explosion cue, unlike a
+          // plain shot, so this always needs the longer pause if it wins.
           if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
-            concludeGame('player', nextState);
+            concludeGame('player', nextState, true);
           }
 
           return nextState;
@@ -514,7 +525,7 @@ const Index = () => {
           }
 
           if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
-            concludeGame('player', nextState);
+            concludeGame('player', nextState, ignited);
           }
 
           return nextState;
@@ -553,7 +564,7 @@ const Index = () => {
       }
 
         if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
-          concludeGame('player', nextState);
+          concludeGame('player', nextState, ignited);
         }
 
         return nextState;
@@ -696,7 +707,7 @@ const Index = () => {
  
         if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
 
-          concludeGame('app', nextState);
+          concludeGame('app', nextState, ignited);
         } else {
           window.setTimeout(() => {
             setActiveView('enemy');
