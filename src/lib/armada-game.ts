@@ -48,6 +48,8 @@ export type GameState = {
   currentTurn: TurnOwner;
   player: NavyState;
   enemy: NavyState;
+  /** Special weapon shots fired this game, capped at SPECIAL_WEAPON_QUOTA regardless of standing inventory. Resets with a new game, unlike the inventory itself. */
+  playerWeaponsUsed: number;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -68,7 +70,10 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 9;
+export const GAME_STATE_VERSION = 10;
+// Total special-weapon shots (any type, combined) allowed per side per game -
+// independent of how large a standing inventory ad-refills have built up.
+export const SPECIAL_WEAPON_QUOTA = 4;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 const OIL_IGNITION_ODDS = 12;
 
@@ -274,6 +279,7 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     currentTurn,
     player: createNavy('player', 'Your Navy', true, options),
     enemy: createNavy('enemy', 'Enemy Navy', false, options),
+    playerWeaponsUsed: 0,
   };
 }
 

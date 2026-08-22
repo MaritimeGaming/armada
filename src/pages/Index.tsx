@@ -14,6 +14,7 @@ import {
   getShips,
   GRID_SIZE,
   resolveTargetingSequence,
+  SPECIAL_WEAPON_QUOTA,
   selectAppTargetIndex,
   setCellState,
   setCellTargeting,
@@ -291,6 +292,10 @@ const Index = () => {
       return;
     }
 
+    if (gameState.playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA) {
+      return;
+    }
+
     if (moabCount > 0) {
       setArmedWeapon((current) => (current === 'moab' ? null : 'moab'));
       return;
@@ -398,6 +403,7 @@ const Index = () => {
             ...state,
             currentTurn: 'app',
             enemy: updatedEnemy,
+            playerWeaponsUsed: state.playerWeaponsUsed + 1,
           };
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
@@ -646,14 +652,16 @@ const Index = () => {
   );
 
   const isPlayerTurnActive = Boolean(gameState) && gameState?.currentTurn === 'player' && !gameOver.isOpen;
+  const playerWeaponsUsed = gameState?.playerWeaponsUsed ?? 0;
+  const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
 
   const weaponsBar = (
-    <div className="mt-auto flex items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+    <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
       <Button
         type="button"
         variant="secondary"
         onClick={handleMoabButtonClick}
-        disabled={!isPlayerTurnActive}
+        disabled={!isPlayerTurnActive || weaponQuotaReached}
         aria-pressed={armedWeapon === 'moab'}
         className={cn(
           'h-auto gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white',
@@ -668,6 +676,19 @@ const Index = () => {
           {moabCount}
         </span>
       </Button>
+
+      <div
+        className="grid grid-cols-2 grid-rows-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1.5"
+        role="img"
+        aria-label={`${SPECIAL_WEAPON_QUOTA - playerWeaponsUsed} of ${SPECIAL_WEAPON_QUOTA} special weapon uses remaining this game`}
+      >
+        {Array.from({ length: SPECIAL_WEAPON_QUOTA }, (_, index) => (
+          <span
+            key={index}
+            className={cn('h-2 w-2 rounded-full', index < playerWeaponsUsed ? 'bg-red-500' : 'bg-green-500')}
+          />
+        ))}
+      </div>
     </div>
   );
 

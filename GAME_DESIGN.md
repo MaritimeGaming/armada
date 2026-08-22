@@ -178,6 +178,35 @@ one cell every turn regardless of what else happens (see Variable B) — both
 are background world-state advancing independently of the player's chosen
 action for the turn, rather than a discrete "shot" that competes with it.
 
+### Per-game weapon quota
+
+Ads make the standing inventory effectively unlimited over enough sessions,
+which would otherwise let a patient player wallpaper most of the enemy
+grid for free (four un-overlapped MOABs alone reveal ~36 of 100 cells).
+The fix is a hard, separate cap: **`SPECIAL_WEAPON_QUOTA` (4) total special
+weapon shots per side per game, across all weapon types combined** —
+independent of how many charges are sitting in inventory. `playerWeaponsUsed`
+tracks this on `GameState` itself (unlike the standing inventory), so it
+resets to 0 every New Game while the inventory carries over untouched. This
+is what decouples "grind ads to build a deep reserve" (fine, that's the
+intended monetization loop) from "grind ads to win this particular match"
+(not fine — capped regardless of reserve size).
+
+Implemented for the player only so far: the MOAB button (and the same
+per-cell targetability check) also disables once the quota is hit, even
+with charges left, and a small 2x2 grid of dots in the weapons bar (to the
+right of the weapon buttons) tracks it visually — solid green per unused
+shot, turning red as each is spent, no text needed. The computer's side of
+this (its own starting loadout and matching quota, firing at random cells
+and random times, discussed as "2 of each type, then random until the
+quota's spent") is designed but intentionally not yet built — see the
+Implementation note below on shipping player-only first. Worth keeping in
+mind once it is: a computer choosing purely at random when/where to fire
+will likely get less value per shot than a human aiming deliberately (e.g.
+at a partially-sunk ship's remaining cells), so equal quotas alone don't
+fully equalize the advantage — see Variable A's proposed
+"weapon-aware play" for the natural follow-up.
+
 ### UI direction: arm, then tap
 
 Implemented for the MOAB, and the intended pattern for future weapons too:
