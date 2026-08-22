@@ -130,10 +130,15 @@ tuning either mechanic, since they're designed to interact.
 No weapons beyond single-cell targeting exist in the code today — this is
 the most likely direction for new gameplay features. Ideas on the table:
 
-- **Mine**: dropped on a cell, moves to a random adjacent cell every turn;
-  if it lands on a live ship it explodes automatically, in addition to (not
-  instead of) the player's normal shot that turn. Silent and invisible to
-  the opponent.
+- **Mine**: placed on a cell. On every subsequent turn (regardless of who's
+  acting or what else happens that turn) it moves to one random adjacent
+  cell — a pure, unconstrained random walk. It doesn't avoid cells that have
+  already been targeted, and it doesn't avoid cells it has already visited
+  itself; it's just bobbing around in the ocean with no memory. If the cell
+  it moves into is occupied by a live (untargeted, unsunk) ship, it explodes
+  automatically, exactly as if that cell had been targeted directly. Silent
+  and invisible to the opponent — there's no indication a mine is nearby
+  until it goes off.
 - **MOAB (Mother of All Bombs)**: targets one cell plus its 8 neighbors (9
   cells total) in a single shot.
 - **Surveillance Drone**: reveals a cell, a 3x3 block, a full row, or a full
@@ -143,11 +148,61 @@ the most likely direction for new gameplay features. Ideas on the table:
 - **Gravity Bomb**: dropped at the top of a column, travels down until it
   hits an active ship.
 
-Intended model: players start with one or two of each, with refills
-obtainable via rewarded ads (Google Play style: watch a 30-second ad for
-more charges). This fits the "no progression" philosophy above because
-weapons are consumable tools that add variety to a round, not permanent
-unlocks that change the game's baseline difficulty.
+### Turn economy
+
+**Firing MOAB, Torpedo, Gravity Bomb, or the Drone replaces your regular
+shot for that turn** — it's an alternative action, not a bonus one. This
+keeps weapons a meaningful resource-management choice (use it now vs. save
+it) rather than a strictly-additive power boost.
+
+**The Mine is the odd one out.** Placing a mine is itself a turn-consuming
+action, same as the other weapons above. But once placed, its automatic
+one-cell wander on every later turn is *not* something the player (or the
+computer) "fires" — it just happens, passively, alongside whatever regular
+shot or weapon is used that turn. This mirrors how the oil slick spreads by
+one cell every turn regardless of what else happens (see Variable B) — both
+are background world-state advancing independently of the player's chosen
+action for the turn, rather than a discrete "shot" that competes with it.
+
+### UI direction: arm, then tap
+
+Discussed and settled on (not yet built): weapon icons live in the bottom
+"Special Weapons" bar (currently a placeholder, see `weaponsBar` in
+`Index.tsx`), each showing a small remaining-count badge. Tapping an icon
+*arms* that weapon — it's visibly highlighted/selected — and the Enemy Navy
+grid's tap behavior temporarily switches from "fire a regular shot" to
+"deploy this weapon" for the next tap on a legal cell, then disarms back to
+normal. Tapping the armed icon again cancels back to a regular shot.
+
+This was chosen over two alternatives:
+- **Right-click / long-press context menu on the cell itself**: doesn't
+  translate to touch (no mobile equivalent of right-click), and since only
+  some weapons are legal on some cells (Torpedo/Gravity Bomb only at grid
+  edges), a per-cell menu means the player has to tap a cell just to
+  discover what's available there — bad discoverability compared to seeing
+  all weapon icons up front.
+- **Drag-and-drop the weapon onto the grid**: more implementation cost
+  (drag state, hit-testing, cancel-on-drag-away) for no real gameplay
+  benefit, and generally less precise than tap-to-arm on small touchscreens.
+
+Arm-then-tap also reuses the press-and-hold-to-preview / release-to-fire
+interaction already built for regular shots
+(`onCellPressStart`/`onCellPressEnd` in `Index.tsx`) — it's a third mode on
+top of the same primitive, not a new gesture.
+
+Edge-restricted weapons (Torpedo, Gravity Bomb) should extend the existing
+per-cell `isCellTargetable` computation to only mark legal cells (left
+column, top row respectively) as targetable while armed, rather than
+showing an error after the fact.
+
+Intended monetization model: players start with one or two of each weapon,
+with refills obtainable via rewarded ads (Google Play style: watch a
+30-second ad for +3 charges of that type, once connected to a real ad SDK).
+Tapping a weapon icon that's at 0 should offer that flow directly, rather
+than routing through a separate inventory screen. This fits the "no
+progression" philosophy above because weapons are consumable tools that add
+variety to a round, not permanent unlocks that change the game's baseline
+difficulty.
 
 Implementation note for whoever builds this: since the computer AI (Variable
 A) doesn't currently reason about anything beyond cell targeting, weapons
