@@ -223,20 +223,25 @@ The weapons bar is split into two (`WeaponsBar` in `Index.tsx`, one per
 side) precisely so this display is symmetric: a matching "Enemy Weapons"
 bar shows the computer's own MOAB count (`appMoabCount`, starting at
 `APP_MOAB_STARTING_COUNT` (2) each game, unlike the player's ad-driven
-standing inventory) and its own quota dots (`appWeaponsUsed`). Nothing
-increments `appWeaponsUsed` yet, and the computer's MOAB button is wired
-permanently disabled (`moabButtonDisabled` hardcoded `true`) — it's
-display-only, information for the player about what the computer *could*
-still use, not a control. The computer's side of actually *firing*
-weapons (random cell, random timing, discussed as "2 of each type, then
-random until the quota's spent") is designed but intentionally not yet
-built — see the Implementation note below on shipping player-only first.
-Worth keeping in mind once it is: a computer choosing purely at random
+standing inventory) and its own quota dots (`appWeaponsUsed`). The
+computer's MOAB button is wired permanently disabled
+(`moabButtonDisabled` hardcoded `true`) — it's display-only, information
+for the player about what the computer *could* still use, not a control.
+
+The computer's side of actually *firing* weapons is now implemented
+(`selectAppWeaponChoice()` in `armada-game.ts`): once a target cell is
+chosen for its turn, if it hasn't hit `SPECIAL_WEAPON_QUOTA` yet, there's
+a flat 25% chance (`APP_WEAPON_USE_CHANCE`) it fires a special weapon
+instead of a plain shot, picked at random from whatever's currently
+available (skipping Mines while one is already active, and any weapon
+whose standing count is 0). This is the "random cell, random timing"
+version of the idea — purely random, not the more deliberate "2 of each
+type, then random until the quota's spent" pacing that was originally
+discussed. Worth keeping in mind: a computer choosing purely at random
 when/where to fire will likely get less value per shot than a human
 aiming deliberately (e.g. at a partially-sunk ship's remaining cells), so
-equal quotas alone don't
-fully equalize the advantage — see Variable A's proposed
-"weapon-aware play" for the natural follow-up.
+equal quotas alone don't fully equalize the advantage — see Variable A's
+proposed "weapon-aware play" for the natural follow-up.
 
 ### UI direction: arm, then tap
 
@@ -297,7 +302,12 @@ network call yet. This fits the "no progression" philosophy above because
 weapons are consumable tools that add variety to a round, not permanent
 unlocks that change the game's baseline difficulty.
 
-Implementation note for whoever builds this: since the computer AI (Variable
-A) doesn't currently reason about anything beyond cell targeting, weapons
-will likely need to ship as player-only first, with AI usage added later
-once there's a strategy layer for it to plug into.
+Implementation note: this shipped player-only first, as expected, since the
+computer AI (Variable A) didn't reason about anything beyond cell
+targeting. The computer's initial weapon usage (see the Per-game weapon
+quota section above) has since been added, but deliberately as a random
+add-on to its existing target selection rather than a real strategy layer —
+it decides *whether* and *which* weapon to fire independently of where its
+regular shot would land. A smarter version (e.g. preferring MOAB on cells
+adjacent to a hit) is still future work, tracked under Variable A's
+"weapon-aware play."

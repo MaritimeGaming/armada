@@ -18,10 +18,11 @@ import {
   resolveTargetingSequence,
   SPECIAL_WEAPON_QUOTA,
   selectAppTargetIndex,
+  selectAppWeaponChoice,
   setCellState,
   setCellTargeting,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, WeaponType, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -42,8 +43,6 @@ type GameOverState = {
   isOpen: boolean;
   winner: Winner | null;
 };
-
-type WeaponType = 'moab' | 'mine';
 
 const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
@@ -125,6 +124,9 @@ const Index = () => {
   const [moabCount, setMoabCount] = useState<number>(() => readStoredWeaponCount(MOAB_COUNT_STORAGE_KEY, MOAB_STARTING_COUNT));
   const [mineCount, setMineCount] = useState<number>(() => readStoredWeaponCount(MINE_COUNT_STORAGE_KEY, MINE_STARTING_COUNT));
   const appPreviewIndexRef = useRef<number | null>(null);
+  // undefined = not yet decided this turn; null = decided not to use a
+  // weapon; a WeaponType = the weapon it decided to fire.
+  const appWeaponChoiceRef = useRef<WeaponType | null | undefined>(undefined);
   const userPreviewIndexRef = useRef<number | null>(null);
   const playerShotExtendedDelayRef = useRef(false);
   const [explosionCells, setExplosionCells] = useState<Record<NavySide, number[]>>({
@@ -624,6 +626,7 @@ const Index = () => {
   useEffect(() => {
     if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
       appPreviewIndexRef.current = null;
+      appWeaponChoiceRef.current = undefined;
       return;
     }
 
@@ -634,6 +637,17 @@ const Index = () => {
     }
 
     appPreviewIndexRef.current = previewIndex;
+
+    if (appWeaponChoiceRef.current === undefined) {
+      appWeaponChoiceRef.current = selectAppWeaponChoice({
+        appWeaponsUsed: gameState.appWeaponsUsed,
+        appMoabCount: gameState.appMoabCount,
+        appMineCount: gameState.appMineCount,
+        appMineIndex: gameState.appMineIndex,
+      });
+    }
+
+    const weaponChoice = appWeaponChoiceRef.current;
 
     const playerShotExtendedDelay = playerShotExtendedDelayRef.current;
     playerShotExtendedDelayRef.current = false;
@@ -680,8 +694,124 @@ const Index = () => {
         }
 
         appPreviewIndexRef.current = null;
+        appWeaponChoiceRef.current = undefined;
 
-        const playerWithTargetedCell = setCellState(currentState.player, previewIndex, {
+        // An active mine (placed on a prior computer turn) moves automatically
+        // the moment the computer takes any turn, regardless of what that
+        // turn's own action turns out to be.
+        let currentPlayer = currentState.player;
+        let appMineIndex = currentState.appMineIndex;
+        let mineCausedExtendedDelay = false;
+
+        if (appMineIndex !== null) {
+          const moveResult = moveMine(currentPlayer, appMineIndex);
+          currentPlayer = moveResult.navy;
+          appMineIndex = moveResult.mineIndex;
+
+          if (moveResult.hit) {
+            if (moveResult.ignited && moveResult.ignitedCellIndexes) {
+              triggerCellExplosions('player', moveResult.ignitedCellIndexes);
+            } else if (moveResult.hitIndex !== undefined) {
+              triggerCellExplosions('player', [moveResult.hitIndex]);
+            }
+
+            mineCausedExtendedDelay = moveResult.audioSequence.includes('sink') || Boolean(moveResult.ignited);
+
+            if (moveResult.ignited) {
+              playIgnitionSequence(moveResult.audioSequence);
+            } else {
+              playAudioSequence(moveResult.audioSequence);
+            }
+          }
+        }
+
+        if (weaponChoice === 'moab') {
+          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = fireMoab(currentPlayer, previewIndex);
+
+          const moabFootprint = getMoabTargetIndexes(previewIndex);
+          const explosionIndexes = ignited && ignitedCellIndexes
+            ? Array.from(new Set([...moabFootprint, ...ignitedCellIndexes]))
+            : moabFootprint;
+          triggerCellExplosions('player', explosionIndexes);
+
+          const hasStaggered = true;
+
+          const nextState: GameState = {
+            ...currentState,
+            currentTurn: 'player',
+            player: updatedPlayer,
+            appMoabCount: currentState.appMoabCount - 1,
+            appWeaponsUsed: currentState.appWeaponsUsed + 1,
+            appMineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+          if (ignited) {
+            playIgnitionSequence(audioSequence);
+          } else {
+            playMoabSequence(audioSequence);
+          }
+
+          if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
+            concludeGame('app', nextState, hasStaggered);
+          } else {
+            window.setTimeout(() => {
+              setActiveView('enemy');
+            }, hasStaggered ? 2000 : 1000);
+          }
+
+          return nextState;
+        }
+
+        if (weaponChoice === 'mine') {
+          const targetCell = currentPlayer.cells[previewIndex];
+          const playerWithTargetedCell = setCellState(currentPlayer, previewIndex, {
+            effect: 'targeted',
+            targeting: false,
+          });
+          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+
+          if (ignited && ignitedCellIndexes) {
+            triggerCellExplosions('player', ignitedCellIndexes);
+          } else if (targetCell?.occupied) {
+            triggerCellExplosions('player', [previewIndex]);
+          }
+
+          const hasStaggered = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
+
+          // A hit consumes the newly-placed mine immediately - nothing left
+          // to activate. A miss plants it right here, stationary until the
+          // computer's next turn.
+          const nextAppMineIndex = targetCell?.occupied ? appMineIndex : previewIndex;
+
+          const nextState: GameState = {
+            ...currentState,
+            currentTurn: 'player',
+            player: updatedPlayer,
+            appMineCount: currentState.appMineCount - 1,
+            appWeaponsUsed: currentState.appWeaponsUsed + 1,
+            appMineIndex: nextAppMineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+          if (ignited) {
+            playIgnitionSequence(audioSequence);
+          } else {
+            playAudioSequence(audioSequence);
+          }
+
+          if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
+            concludeGame('app', nextState, hasStaggered);
+          } else {
+            window.setTimeout(() => {
+              setActiveView('enemy');
+            }, hasStaggered ? 2000 : 1000);
+          }
+
+          return nextState;
+        }
+
+        const playerWithTargetedCell = setCellState(currentPlayer, previewIndex, {
           effect: 'targeted',
           targeting: false,
         });
@@ -689,13 +819,17 @@ const Index = () => {
 
         if (ignited && ignitedCellIndexes) {
           triggerCellExplosions('player', ignitedCellIndexes);
-        } else if (currentState.player.cells[previewIndex]?.occupied) {
+        } else if (currentPlayer.cells[previewIndex]?.occupied) {
           triggerCellExplosions('player', [previewIndex]);
         }
+
+        const hasStaggered = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
+
         const nextState: GameState = {
           ...currentState,
           currentTurn: 'player',
           player: updatedPlayer,
+          appMineIndex,
         };
 
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
@@ -704,14 +838,13 @@ const Index = () => {
         } else {
           playAudioSequence(audioSequence);
         }
- 
-        if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
 
-          concludeGame('app', nextState, ignited);
+        if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
+          concludeGame('app', nextState, hasStaggered);
         } else {
           window.setTimeout(() => {
             setActiveView('enemy');
-          }, (audioSequence.includes('sink') || ignited) ? 2000 : 1000);
+          }, hasStaggered ? 2000 : 1000);
         }
 
         return nextState;
@@ -757,7 +890,7 @@ const Index = () => {
       explodingCellIndexes={explosionCells[side]}
       showSettings={showSettings}
       reserveArrowSpace={showArrows}
-      mineIndex={side === 'enemy' ? gameState?.playerMineIndex : undefined}
+      mineIndex={side === 'enemy' ? gameState?.playerMineIndex : gameState?.appMineIndex}
       armedWeapon={side === 'enemy' ? armedWeapon : undefined}
       weaponsBarSlot={renderWeaponsBarForSide(side)}
     />

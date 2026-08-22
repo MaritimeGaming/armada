@@ -42,6 +42,7 @@ export type NavyState = {
 
 export type TurnOwner = 'player' | 'app';
 export type Winner = 'player' | 'app';
+export type WeaponType = 'moab' | 'mine';
 
 export type GameState = {
   version: number;
@@ -52,12 +53,14 @@ export type GameState = {
   playerWeaponsUsed: number;
   /** The computer's own MOAB loadout for this game - unlike the player's, this isn't a standing inventory (the computer doesn't watch ads), just a fixed per-game starting count. */
   appMoabCount: number;
-  /** Mirrors appMoabCount for the Mine, for display symmetry. Nothing increments/decrements this yet - the computer doesn't fire weapons. */
+  /** Mirrors appMoabCount for the Mine. */
   appMineCount: number;
-  /** Mirrors playerWeaponsUsed for the computer. Nothing increments this yet - the computer doesn't fire weapons - it's tracked now so the display is symmetric from day one. */
+  /** Mirrors playerWeaponsUsed for the computer. */
   appWeaponsUsed: number;
   /** Index in enemy.cells currently holding the player's active mine, or null if none is placed. Only one mine may be active at a time. */
   playerMineIndex: number | null;
+  /** Mirrors playerMineIndex for the computer's mine, in player.cells. */
+  appMineIndex: number | null;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -78,12 +81,16 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 12;
+export const GAME_STATE_VERSION = 13;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 4;
 export const APP_MOAB_STARTING_COUNT = 2;
 export const APP_MINE_STARTING_COUNT = 2;
+// Chance, per computer turn (once a target cell is chosen), that it fires a
+// special weapon instead of a plain shot - checked only while it's still
+// under its per-game quota and has at least one available weapon.
+const APP_WEAPON_USE_CHANCE = 0.25;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 const OIL_IGNITION_ODDS = 12;
 
@@ -326,6 +333,35 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
   return randomItem(untargetedIndexes);
 }
 
+export function selectAppWeaponChoice(options: {
+  appWeaponsUsed: number;
+  appMoabCount: number;
+  appMineCount: number;
+  appMineIndex: number | null;
+}): WeaponType | null {
+  if (options.appWeaponsUsed >= SPECIAL_WEAPON_QUOTA) {
+    return null;
+  }
+
+  if (Math.random() >= APP_WEAPON_USE_CHANCE) {
+    return null;
+  }
+
+  const availableWeapons: WeaponType[] = [];
+  if (options.appMoabCount > 0) {
+    availableWeapons.push('moab');
+  }
+  if (options.appMineCount > 0 && options.appMineIndex === null) {
+    availableWeapons.push('mine');
+  }
+
+  if (availableWeapons.length === 0) {
+    return null;
+  }
+
+  return randomItem(availableWeapons);
+}
+
 export function areAllShipsSunk(navy: NavyState, options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIONS): boolean {
   return getShips(options).every((ship) => navy.cells.filter((cell) => cell.shipCode === ship.code).every((cell) => cell.effect === 'sunk'));
 }
@@ -343,6 +379,7 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     appMineCount: APP_MINE_STARTING_COUNT,
     appWeaponsUsed: 0,
     playerMineIndex: null,
+    appMineIndex: null,
   };
 }
 
