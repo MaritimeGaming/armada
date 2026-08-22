@@ -125,11 +125,24 @@ oil at that moment. This is the only lever that gives a player *some*
 influence over an otherwise pure-luck endgame — worth keeping in mind when
 tuning either mechanic, since they're designed to interact.
 
-## Variable D: Additional weapons (not yet implemented)
+## Variable D: Additional weapons
 
-No weapons beyond single-cell targeting exist in the code today — this is
-the most likely direction for new gameplay features. Ideas on the table:
+**Implemented today:**
+- **MOAB (Mother of All Bombs)** (`fireMoab()`/`getMoabTargetIndexes()` in
+  `armada-game.ts`): targets one cell plus its 8 neighbors (up to 9 cells
+  total), clipped at grid edges — firing at a corner only resolves 4 cells,
+  not 9. Already-targeted cells within that blast are left alone rather than
+  reprocessed. Replaces the player's regular shot for the turn (see Turn
+  economy below). Player starts with `MOAB_CHARGE_COUNT` (3) charges;
+  firing decrements the count by one, tracked on `GameState.moabCount` so it
+  persists and resets with the rest of the game. Sound is always a double
+  "explosion" cue with a brief pause between them (distinct from the oil
+  slick's triple-explosion ignition cadence), regardless of whether
+  anything was hit, plus any sink/single-ship cues layered on top — unless
+  the blast also ignites the oil slick, in which case the ignition's own
+  triple-explosion sequence takes over instead of stacking two cadences.
 
+**Not yet implemented:**
 - **Mine**: placed on a cell. On every subsequent turn (regardless of who's
   acting or what else happens that turn) it moves to one random adjacent
   cell — a pure, unconstrained random walk. It doesn't avoid cells that have
@@ -139,8 +152,6 @@ the most likely direction for new gameplay features. Ideas on the table:
   automatically, exactly as if that cell had been targeted directly. Silent
   and invisible to the opponent — there's no indication a mine is nearby
   until it goes off.
-- **MOAB (Mother of All Bombs)**: targets one cell plus its 8 neighbors (9
-  cells total) in a single shot.
 - **Surveillance Drone**: reveals a cell, a 3x3 block, a full row, or a full
   column, without targeting any of it.
 - **Torpedo**: dropped at the left edge of a row, travels right until it
@@ -166,13 +177,15 @@ action for the turn, rather than a discrete "shot" that competes with it.
 
 ### UI direction: arm, then tap
 
-Discussed and settled on (not yet built): weapon icons live in the bottom
-"Special Weapons" bar (currently a placeholder, see `weaponsBar` in
+Implemented for the MOAB, and the intended pattern for future weapons too:
+weapon icons live in the bottom "Special Weapons" bar (`weaponsBar` in
 `Index.tsx`), each showing a small remaining-count badge. Tapping an icon
 *arms* that weapon — it's visibly highlighted/selected — and the Enemy Navy
 grid's tap behavior temporarily switches from "fire a regular shot" to
 "deploy this weapon" for the next tap on a legal cell, then disarms back to
-normal. Tapping the armed icon again cancels back to a regular shot.
+normal. Tapping the armed icon again cancels back to a regular shot. As a
+safety net, the armed state also clears automatically if the turn moves on
+or the game ends without it being fired.
 
 This was chosen over two alternatives:
 - **Right-click / long-press context menu on the cell itself**: doesn't
@@ -195,14 +208,16 @@ per-cell `isCellTargetable` computation to only mark legal cells (left
 column, top row respectively) as targetable while armed, rather than
 showing an error after the fact.
 
-Intended monetization model: players start with one or two of each weapon,
-with refills obtainable via rewarded ads (Google Play style: watch a
-30-second ad for +3 charges of that type, once connected to a real ad SDK).
-Tapping a weapon icon that's at 0 should offer that flow directly, rather
-than routing through a separate inventory screen. This fits the "no
-progression" philosophy above because weapons are consumable tools that add
-variety to a round, not permanent unlocks that change the game's baseline
-difficulty.
+Intended monetization model: players start with a handful of charges per
+weapon, with refills obtainable via rewarded ads (Google Play style: watch
+a 30-second ad for +3 charges of that type, once connected to a real ad
+SDK). Tapping a weapon icon that's at 0 offers that flow directly, rather
+than routing through a separate inventory screen — for the MOAB this is
+currently stubbed as a 2-second "Procuring Weapons" overlay that then
+refills to `MOAB_CHARGE_COUNT` and arms the weapon, with no real ad or
+network call yet. This fits the "no progression" philosophy above because
+weapons are consumable tools that add variety to a round, not permanent
+unlocks that change the game's baseline difficulty.
 
 Implementation note for whoever builds this: since the computer AI (Variable
 A) doesn't currently reason about anything beyond cell targeting, weapons

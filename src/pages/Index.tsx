@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
-import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { Bomb, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 
 import {
   areAllShipsSunk,
   AUDIO_FILES,
   createGameState,
   DEFAULT_SHIP_SET_OPTIONS,
+  fireMoab,
   GAME_STATE_VERSION,
   getShips,
   GRID_SIZE,
+  MOAB_CHARGE_COUNT,
   resolveTargetingSequence,
   selectAppTargetIndex,
   setCellState,
@@ -109,6 +111,8 @@ const Index = () => {
   const [panelWidth, setPanelWidth] = useState(0);
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
   const isDesktopLayout = useMediaQuery(DESKTOP_LAYOUT_QUERY);
+  const [armedWeapon, setArmedWeapon] = useState<'moab' | null>(null);
+  const [isProcuringWeapons, setIsProcuringWeapons] = useState(false);
 
   // A callback ref, not an effect: the swipe viewport only exists once
   // gameState is loaded, so an effect with an empty dependency array would
@@ -208,6 +212,16 @@ const Index = () => {
     playAudioSequence(sequence);
   };
 
+  // The MOAB always gets its own double-explosion, hit or miss - any
+  // specialized cues (sink, single-cell-ship sounds) still layer on top, but
+  // the plain per-cell 'explosion'/'splash' cues are dropped so they don't
+  // compete with it.
+  const playMoabSequence = (sequence: AudioSequence) => {
+    playAudioCue('explosion');
+    window.setTimeout(() => playAudioCue('explosion'), 300);
+    playAudioSequence(sequence.filter((cue) => cue !== 'explosion' && cue !== 'splash'));
+  };
+
   const triggerCellExplosions = (side: NavySide, cellIndexes: number[]) => {
     if (cellIndexes.length === 0) {
       return;
@@ -249,6 +263,33 @@ const Index = () => {
     window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
     setShipSetOptions(nextOptions);
     handleNewGame(nextOptions);
+  };
+
+  const handleMoabButtonClick = () => {
+    if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen) {
+      return;
+    }
+
+    if (gameState.moabCount > 0) {
+      setArmedWeapon((current) => (current === 'moab' ? null : 'moab'));
+      return;
+    }
+
+    setIsProcuringWeapons(true);
+
+    window.setTimeout(() => {
+      setIsProcuringWeapons(false);
+      setGameState((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const nextState: GameState = { ...current, moabCount: MOAB_CHARGE_COUNT };
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        return nextState;
+      });
+      setArmedWeapon('moab');
+    }, 2000);
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
@@ -314,6 +355,47 @@ const Index = () => {
       if (targetCell?.targeting) {
         userPreviewIndexRef.current = null;
 
+        if (armedWeapon === 'moab') {
+          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = fireMoab(state.enemy, releaseIndex);
+
+          if (ignited && ignitedCellIndexes) {
+            triggerCellExplosions('enemy', ignitedCellIndexes);
+          } else {
+            const hitIndexes = (targetedIndexes ?? []).filter((index) => state.enemy.cells[index]?.occupied);
+
+            if (hitIndexes.length > 0) {
+              triggerCellExplosions('enemy', hitIndexes);
+            }
+          }
+
+          if (audioSequence.includes('sink') || ignited) {
+            playerShotExtendedDelayRef.current = true;
+          }
+
+          setArmedWeapon(null);
+
+          const nextState: GameState = {
+            ...state,
+            currentTurn: 'app',
+            enemy: updatedEnemy,
+            moabCount: state.moabCount - 1,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          if (ignited) {
+            playIgnitionSequence(audioSequence);
+          } else {
+            playMoabSequence(audioSequence);
+          }
+
+          if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
+            concludeGame('player', nextState);
+          }
+
+          return nextState;
+        }
+
         const enemyWithTargetedCell = setCellState(state.enemy, releaseIndex, {
           effect: 'targeted',
           targeting: false,
@@ -346,7 +428,7 @@ const Index = () => {
       } else {
         playAudioSequence(audioSequence);
       }
- 
+
         if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
           concludeGame('player', nextState);
         }
@@ -509,6 +591,15 @@ const Index = () => {
     };
   }, [difficulty, gameOver.isOpen, gameState, shipSetOptions]);
 
+  // Safety net: an armed weapon only ever makes sense while it's the
+  // player's move. If the turn moves on (or a new game starts) without it
+  // being fired, drop the armed state instead of leaving it stuck armed.
+  useEffect(() => {
+    if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen) {
+      setArmedWeapon(null);
+    }
+  }, [gameState, gameOver.isOpen]);
+
   const renderNavyPanel = (
     side: NavySide,
     navy: NavyState,
@@ -535,9 +626,29 @@ const Index = () => {
     />
   );
 
+  const isPlayerTurnActive = Boolean(gameState) && gameState?.currentTurn === 'player' && !gameOver.isOpen;
+
   const weaponsBar = (
-    <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400 backdrop-blur-md">
-      Special Weapons — Coming Soon
+    <div className="mt-auto flex items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={handleMoabButtonClick}
+        disabled={!isPlayerTurnActive}
+        aria-pressed={armedWeapon === 'moab'}
+        className={cn(
+          'h-auto gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white',
+          armedWeapon === 'moab'
+            ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
+            : 'border-white/10 bg-white/10 hover:bg-white/20',
+        )}
+      >
+        <Bomb className="h-4 w-4" aria-hidden="true" />
+        MOAB
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/60 px-1.5 text-[10px] font-bold">
+          {gameState?.moabCount ?? 0}
+        </span>
+      </Button>
     </div>
   );
 
@@ -637,6 +748,14 @@ const Index = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {isProcuringWeapons ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
+            Procuring Weapons
+          </div>
+        </div>
+      ) : null}
     </>
   );
 };

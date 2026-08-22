@@ -48,6 +48,7 @@ export type GameState = {
   currentTurn: TurnOwner;
   player: NavyState;
   enemy: NavyState;
+  moabCount: number;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -63,10 +64,13 @@ export type TargetingResult = {
   ignited?: boolean;
   /** Every cell resolved this turn, populated only when ignited is true, so the UI can animate the whole chain-reaction at once. */
   ignitedCellIndexes?: number[];
+  /** For a multi-cell weapon like the MOAB: exactly which cells it targeted this call, before any oil chain reaction, so the UI knows which ones to animate as hits. */
+  targetedIndexes?: number[];
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 9;
+export const GAME_STATE_VERSION = 10;
+export const MOAB_CHARGE_COUNT = 3;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 const OIL_IGNITION_ODDS = 12;
 
@@ -171,6 +175,27 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
   };
 }
 
+/** The cell itself plus its up-to-8 neighbors, clipped at grid edges - so a
+ * corner cell yields only 4 total, not 9. */
+export function getMoabTargetIndexes(cellIndex: number): number[] {
+  return [cellIndex, ...getAdjacentIndexes(cellIndex)];
+}
+
+export function fireMoab(navy: NavyState, cellIndex: number): TargetingResult {
+  const targetIndexes = getMoabTargetIndexes(cellIndex).filter(
+    (index) => navy.cells[index]?.effect === 'untargeted',
+  );
+
+  const preparedNavy = targetIndexes.reduce(
+    (currentNavy, index) => setCellState(currentNavy, index, { effect: 'targeted', targeting: false }),
+    navy,
+  );
+
+  const result = resolveTargetingSequence(preparedNavy, targetIndexes);
+
+  return { ...result, targetedIndexes: targetIndexes };
+}
+
 export function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
   const nextCells = navy.cells.map((cell, index) => {
     if (index !== cellIndex) {
@@ -251,6 +276,7 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     currentTurn,
     player: createNavy('player', 'Your Navy', true, options),
     enemy: createNavy('enemy', 'Enemy Navy', false, options),
+    moabCount: MOAB_CHARGE_COUNT,
   };
 }
 
@@ -340,7 +366,7 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
   return sequence;
 }
 
-function getAdjacentIndexes(cellIndex: number): number[] {
+export function getAdjacentIndexes(cellIndex: number): number[] {
   const x = cellIndex % GRID_SIZE;
   const y = Math.floor(cellIndex / GRID_SIZE);
   const adjacentIndexes: number[] = [];
