@@ -1134,6 +1134,18 @@ function NavyPanel({
   // tall column with several single-character rows at the bottom.
   const [leftColumnShips, rightColumnShips] = useMemo(() => {
     const sorted = [...availableShips].sort((a, b) => b.length - a.length || a.code.localeCompare(b.code));
+
+    // Manual aesthetic swap: Oil Tanker into the right column, Garbage Scow
+    // into the left. Both are otherwise "filler" ships in the middle of the
+    // triangle, but swapping them gives each column a cleaner, more
+    // consistently tapering shape (left ends ...,3,3,2 instead of
+    // ...,3,3,3; right becomes 1,1,1,2,3 instead of 1,1,1,2,2).
+    const oilIndex = sorted.findIndex((ship) => ship.code === 'O');
+    const scowIndex = sorted.findIndex((ship) => ship.code === 'G');
+    if (oilIndex !== -1 && scowIndex !== -1) {
+      [sorted[oilIndex], sorted[scowIndex]] = [sorted[scowIndex], sorted[oilIndex]];
+    }
+
     const splitIndex = Math.ceil(sorted.length / 2);
     return [sorted.slice(0, splitIndex), sorted.slice(splitIndex).reverse()];
   }, [availableShips]);
@@ -1229,8 +1241,8 @@ function NavyPanel({
 
       {weaponsBarSlot}
 
-      <div className="px-1">
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+      <div className="px-6">
+        <div className="grid grid-cols-[max-content_max-content] justify-center gap-x-1 gap-y-0.5">
           {Array.from({ length: Math.max(leftColumnShips.length, rightColumnShips.length) }, (_, rowIndex) => {
             const leftShip = leftColumnShips[rowIndex];
             const rightShip = rightColumnShips[rowIndex];
