@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
@@ -21,7 +21,7 @@ import {
   setCellState,
   setCellTargeting,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipSetOptions, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -1129,6 +1129,16 @@ function NavyPanel({
     }, {});
   }, [availableShips, navy.cells]);
 
+  // Length-descending, alphabetical within a tier - a "triangle" - split
+  // roughly in half and the second half mirrored, so the legend reads as
+  // an hourglass (two columns, tapering toward the middle) instead of one
+  // tall column with several single-character rows at the bottom.
+  const [leftColumnShips, rightColumnShips] = useMemo(() => {
+    const sorted = [...availableShips].sort((a, b) => b.length - a.length || a.code.localeCompare(b.code));
+    const splitIndex = Math.ceil(sorted.length / 2);
+    return [sorted.slice(0, splitIndex), sorted.slice(splitIndex).reverse()];
+  }, [availableShips]);
+
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="relative flex min-h-8 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
@@ -1219,53 +1229,88 @@ function NavyPanel({
       </div>
 
       <div className="px-1">
-        <div className="space-y-0.5">
-          {availableShips.map((ship) => {
-            const status = shipStatusByCode[ship.code] ?? { targetedCount: 0, isSunk: false };
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          {Array.from({ length: Math.max(leftColumnShips.length, rightColumnShips.length) }, (_, rowIndex) => {
+            const leftShip = leftColumnShips[rowIndex];
+            const rightShip = rightColumnShips[rowIndex];
 
             return (
-              <div key={`${navy.side}-${ship.code}`} className="relative">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="relative flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-                      aria-label={ship.name}
-                      onClick={() => revealShipTooltip(ship.code)}
-                    >
-                      <span className="relative inline-flex items-center justify-center font-mono text-[12px] tracking-[0.34em]">
-                        {status.isSunk ? (
-                          <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%+0.35rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
-                        ) : null}
-                        {Array.from({ length: ship.length }, (_, index) => (
-                          <span
-                            key={`${ship.code}-${index}`}
-                            className={status.isSunk || index < status.targetedCount ? 'text-red-500' : 'text-cyan-100'}
-                          >
-                            {ship.code}
-                            {index < ship.length - 1 ? '\u00A0' : ''}
-                          </span>
-                        ))}
-                      </span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{ship.name}</p>
-                  </TooltipContent>
-                </Tooltip>
-                {openTooltipCode === ship.code ? (
-                  <div
-                    role="tooltip"
-                    className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 overflow-hidden whitespace-nowrap rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md"
-                  >
-                    {ship.name}
-                  </div>
-                ) : null}
-              </div>
+              <Fragment key={rowIndex}>
+                {leftShip ? (
+                  <ShipRow
+                    ship={leftShip}
+                    status={shipStatusByCode[leftShip.code] ?? { targetedCount: 0, isSunk: false }}
+                    isTooltipOpen={openTooltipCode === leftShip.code}
+                    onReveal={() => revealShipTooltip(leftShip.code)}
+                  />
+                ) : (
+                  <div />
+                )}
+                {rightShip ? (
+                  <ShipRow
+                    ship={rightShip}
+                    status={shipStatusByCode[rightShip.code] ?? { targetedCount: 0, isSunk: false }}
+                    isTooltipOpen={openTooltipCode === rightShip.code}
+                    onReveal={() => revealShipTooltip(rightShip.code)}
+                  />
+                ) : (
+                  <div />
+                )}
+              </Fragment>
             );
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+type ShipRowProps = {
+  ship: ShipDefinition;
+  status: { targetedCount: number; isSunk: boolean };
+  isTooltipOpen: boolean;
+  onReveal: () => void;
+};
+
+function ShipRow({ ship, status, isTooltipOpen, onReveal }: ShipRowProps) {
+  return (
+    <div className="relative">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="relative flex w-full items-center justify-center py-0.5 text-center transition hover:bg-cyan-300/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+            aria-label={ship.name}
+            onClick={onReveal}
+          >
+            <span className="relative inline-flex items-center justify-center font-mono text-[12px] tracking-[0.34em]">
+              {status.isSunk ? (
+                <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%+0.35rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
+              ) : null}
+              {Array.from({ length: ship.length }, (_, index) => (
+                <span
+                  key={`${ship.code}-${index}`}
+                  className={status.isSunk || index < status.targetedCount ? 'text-red-500' : 'text-cyan-100'}
+                >
+                  {ship.code}
+                  {index < ship.length - 1 ? '\u00A0' : ''}
+                </span>
+              ))}
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{ship.name}</p>
+        </TooltipContent>
+      </Tooltip>
+      {isTooltipOpen ? (
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 overflow-hidden whitespace-nowrap rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md"
+        >
+          {ship.name}
+        </div>
+      ) : null}
     </div>
   );
 }
