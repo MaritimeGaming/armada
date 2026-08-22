@@ -59,6 +59,10 @@ const MOAB_REFILL_COUNT = 3;
 const MINE_COUNT_STORAGE_KEY = 'armada:mine-count';
 const MINE_STARTING_COUNT = 2;
 const MINE_REFILL_COUNT = 3;
+// Lifetime record, not part of GameState: survives New Game and browser
+// restarts, and only ever grows as games are completed.
+const GAMES_PLAYED_STORAGE_KEY = 'armada:games-played';
+const GAMES_WON_STORAGE_KEY = 'armada:games-won';
 const DESKTOP_LAYOUT_QUERY = '(min-width: 1024px)';
 
 // Wide enough to show both navies side by side (laptop/desktop) instead of
@@ -78,7 +82,7 @@ function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-function readStoredWeaponCount(storageKey: string, fallback: number): number {
+function readStoredCount(storageKey: string, fallback: number): number {
   const storedCount = window.localStorage.getItem(storageKey);
 
   if (storedCount === null) {
@@ -121,8 +125,10 @@ const Index = () => {
   // Standing inventories, not part of GameState: they must survive a New
   // Game (and browser restarts) untouched. The only way to increase either
   // is through its "Procuring Weapons" refill flow.
-  const [moabCount, setMoabCount] = useState<number>(() => readStoredWeaponCount(MOAB_COUNT_STORAGE_KEY, MOAB_STARTING_COUNT));
-  const [mineCount, setMineCount] = useState<number>(() => readStoredWeaponCount(MINE_COUNT_STORAGE_KEY, MINE_STARTING_COUNT));
+  const [moabCount, setMoabCount] = useState<number>(() => readStoredCount(MOAB_COUNT_STORAGE_KEY, MOAB_STARTING_COUNT));
+  const [mineCount, setMineCount] = useState<number>(() => readStoredCount(MINE_COUNT_STORAGE_KEY, MINE_STARTING_COUNT));
+  const [gamesPlayed, setGamesPlayed] = useState<number>(() => readStoredCount(GAMES_PLAYED_STORAGE_KEY, 0));
+  const [gamesWon, setGamesWon] = useState<number>(() => readStoredCount(GAMES_WON_STORAGE_KEY, 0));
   const appPreviewIndexRef = useRef<number | null>(null);
   // undefined = not yet decided this turn; null = decided not to use a
   // weapon; a WeaponType = the weapon it decided to fire.
@@ -299,6 +305,13 @@ const Index = () => {
     handleNewGame(nextOptions);
   };
 
+  const handleResetStatistics = () => {
+    window.localStorage.setItem(GAMES_PLAYED_STORAGE_KEY, '0');
+    window.localStorage.setItem(GAMES_WON_STORAGE_KEY, '0');
+    setGamesPlayed(0);
+    setGamesWon(0);
+  };
+
   const handleWeaponButtonClick = (weapon: WeaponType) => {
     if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen) {
       return;
@@ -352,6 +365,20 @@ const Index = () => {
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(revealedState));
     setGameState(revealedState);
+
+    setGamesPlayed((current) => {
+      const nextCount = current + 1;
+      window.localStorage.setItem(GAMES_PLAYED_STORAGE_KEY, String(nextCount));
+      return nextCount;
+    });
+
+    if (winner === 'player') {
+      setGamesWon((current) => {
+        const nextCount = current + 1;
+        window.localStorage.setItem(GAMES_WON_STORAGE_KEY, String(nextCount));
+        return nextCount;
+      });
+    }
 
     // An oil ignition (playIgnitionSequence) or a MOAB kill
     // (playMoabSequence) both queue a second/third "explosion" cue 300ms or
@@ -875,6 +902,17 @@ const Index = () => {
     }
   }, [gameState, gameOver.isOpen]);
 
+  // Hidden until at least one game has been completed, then persists for
+  // the lifetime of the install (not reset by New Game).
+  const winsLabel = gamesPlayed > 0
+    ? `Wins: ${gamesWon}/${gamesPlayed} (${Math.round((gamesWon / gamesPlayed) * 100)}%)`
+    : null;
+  const winsBadge = winsLabel ? (
+    <span className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100/70">
+      {winsLabel}
+    </span>
+  ) : null;
+
   const renderNavyPanel = (
     side: NavySide,
     navy: NavyState,
@@ -888,6 +926,7 @@ const Index = () => {
       onDifficultyChange={handleDifficultyChange}
       onSinglesToggle={handleSinglesToggle}
       onNewGame={() => handleNewGame()}
+      onResetStatistics={handleResetStatistics}
       onGoLeft={showArrows && canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
       onGoRight={showArrows && canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
       onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
@@ -900,6 +939,9 @@ const Index = () => {
       reserveArrowSpace={showArrows}
       mineIndex={side === 'enemy' ? gameState?.playerMineIndex : gameState?.appMineIndex}
       armedWeapon={side === 'enemy' ? armedWeapon : undefined}
+      // Only the Enemy Navy panel shows it (mobile has a settings icon on
+      // both swiped panels, so this keeps it off "My Navy" there too).
+      headerExtraSlot={side === 'enemy' ? winsBadge : undefined}
       weaponsBarSlot={renderWeaponsBarForSide(side)}
     />
   );
@@ -1186,6 +1228,7 @@ type NavyPanelProps = {
   onDifficultyChange: (value: string) => void;
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
+  onResetStatistics: () => void;
   onGoLeft?: () => void;
   onGoRight?: () => void;
   onTargetCell?: (cellIndex: number) => void;
@@ -1202,6 +1245,8 @@ type NavyPanelProps = {
   armedWeapon?: WeaponType | null;
   /** Rendered between the grid and the ship registry, so arming/firing a weapon doesn't require hopping over the registry. */
   weaponsBarSlot?: ReactNode;
+  /** Rendered in the header row, to the left of the settings icon. */
+  headerExtraSlot?: ReactNode;
 };
 
 type SettingsMenuProps = {
@@ -1210,9 +1255,10 @@ type SettingsMenuProps = {
   onDifficultyChange: (value: string) => void;
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
+  onResetStatistics: () => void;
 };
 
-function SettingsMenu({ difficulty, shipSetOptions, onDifficultyChange, onSinglesToggle, onNewGame }: SettingsMenuProps) {
+function SettingsMenu({ difficulty, shipSetOptions, onDifficultyChange, onSinglesToggle, onNewGame, onResetStatistics }: SettingsMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -1242,6 +1288,7 @@ function SettingsMenu({ difficulty, shipSetOptions, onDifficultyChange, onSingle
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onResetStatistics}>Reset Statistics</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1254,6 +1301,7 @@ function NavyPanel({
   onDifficultyChange,
   onSinglesToggle,
   onNewGame,
+  onResetStatistics,
   onGoLeft,
   onGoRight,
   onTargetCell,
@@ -1267,6 +1315,7 @@ function NavyPanel({
   mineIndex = null,
   armedWeapon = null,
   weaponsBarSlot = null,
+  headerExtraSlot = null,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
   const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
@@ -1365,20 +1414,22 @@ function NavyPanel({
             ) : null}
           </div>
         ) : (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            {navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}
-          </div>
+          <div>{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
         )}
 
-        {showSettings ? (
-          <div className="ml-auto">
-            <SettingsMenu
-              difficulty={difficulty}
-              shipSetOptions={shipSetOptions}
-              onDifficultyChange={onDifficultyChange}
-              onSinglesToggle={onSinglesToggle}
-              onNewGame={onNewGame}
-            />
+        {showSettings || headerExtraSlot ? (
+          <div className="ml-auto flex items-center gap-3">
+            {headerExtraSlot}
+            {showSettings ? (
+              <SettingsMenu
+                difficulty={difficulty}
+                shipSetOptions={shipSetOptions}
+                onDifficultyChange={onDifficultyChange}
+                onSinglesToggle={onSinglesToggle}
+                onNewGame={onNewGame}
+                onResetStatistics={onResetStatistics}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
