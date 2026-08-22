@@ -747,6 +747,7 @@ const Index = () => {
       showSettings={showSettings}
       reserveArrowSpace={showArrows}
       mineIndex={side === 'enemy' ? gameState?.playerMineIndex : undefined}
+      armedWeapon={side === 'enemy' ? armedWeapon : undefined}
     />
   );
 
@@ -1034,6 +1035,8 @@ type NavyPanelProps = {
   reserveArrowSpace?: boolean;
   /** Index within this navy's cells currently holding an active mine, if any. */
   mineIndex?: number | null;
+  /** Which weapon (if any) is currently armed against this navy's grid. */
+  armedWeapon?: WeaponType | null;
 };
 
 type SettingsMenuProps = {
@@ -1097,6 +1100,7 @@ function NavyPanel({
   showSettings = true,
   reserveArrowSpace = true,
   mineIndex = null,
+  armedWeapon = null,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
   const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
@@ -1208,6 +1212,7 @@ function NavyPanel({
               onPressCancel={onCellPressCancel ? () => onCellPressCancel(index) : undefined}
               isExploding={explodingCellIndexes?.includes(index) ?? false}
               hasMine={index === mineIndex}
+              armedWeapon={armedWeapon}
             />
           ))}
         </div>
@@ -1265,6 +1270,16 @@ function NavyPanel({
   );
 }
 
+const WEAPON_CURSOR_FILES: Record<WeaponType, string> = {
+  moab: 'moab-cursor.svg',
+  mine: 'mine-cursor.svg',
+};
+
+const WEAPON_ICONS: Record<WeaponType, typeof Bomb> = {
+  moab: Bomb,
+  mine: CircleDot,
+};
+
 function GridCell({
   cell,
   isTargetable,
@@ -1274,6 +1289,7 @@ function GridCell({
   onPressCancel,
   isExploding,
   hasMine,
+  armedWeapon,
 }: {
   cell: CellState;
   isTargetable?: boolean;
@@ -1283,9 +1299,11 @@ function GridCell({
   onPressCancel?: () => void;
   isExploding?: boolean;
   hasMine?: boolean;
+  armedWeapon?: WeaponType | null;
 }) {
   const exposure = cell.exposure;
   const { className, value, label } = getCellPresentation(cell, hasMine ?? false);
+  const WeaponIcon = armedWeapon ? WEAPON_ICONS[armedWeapon] : null;
 
   if (onClick) {
     const handlePressStart = () => {
@@ -1319,12 +1337,21 @@ function GridCell({
         )}
         style={{
           cursor: (isTargetable || cell.targeting)
-            ? `url(${import.meta.env.BASE_URL}crosshair-cursor.svg) 12 12, crosshair`
+            ? `url(${import.meta.env.BASE_URL}${armedWeapon ? WEAPON_CURSOR_FILES[armedWeapon] : 'crosshair-cursor.svg'}) 12 12, crosshair`
             : 'default',
         }}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
       >
         <div className="flex h-full items-center justify-center text-white">{value}</div>
+        {cell.targeting && WeaponIcon ? (
+          // Mobile has no hover cursor to preview the armed weapon with, so
+          // while the player is pressing-and-holding the target cell, show
+          // the weapon's own icon in place of the plain preview highlight -
+          // the closest mobile equivalent of "you're about to drop this here".
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-slate-950">
+            <WeaponIcon className="h-4 w-4" aria-hidden="true" />
+          </span>
+        ) : null}
         {isExploding ? (
           <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <span className="cell-explosion">

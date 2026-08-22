@@ -250,6 +250,21 @@ normal. Tapping the armed icon again cancels back to a regular shot. As a
 safety net, the armed state also clears automatically if the turn moves on
 or the game ends without it being fired.
 
+Two device-specific reinforcements of "you're about to place this weapon
+right here," both keyed off `armedWeapon`, threaded down through
+`NavyPanel` into `GridCell`:
+- **Desktop**: the mouse cursor swaps to that weapon's own icon
+  (`public/moab-cursor.svg`, `public/mine-cursor.svg`) over any legal
+  target cell, replacing the plain crosshair cursor used for a normal shot.
+  Same `cursor: url(...) 12 12, crosshair` mechanism the crosshair already
+  used, just a different file chosen by `armedWeapon`.
+- **Mobile** (and anywhere else without a hover cursor): while the player
+  is pressing-and-holding the target cell (the existing preview-before-fire
+  step), that weapon's icon renders inside the cyan preview highlight
+  instead of the plain empty fill - the closest touch equivalent of a
+  cursor, delivered at the one moment touch actually has an analogous
+  state.
+
 This was chosen over two alternatives:
 - **Right-click / long-press context menu on the cell itself**: doesn't
   translate to touch (no mobile equivalent of right-click), and since only
