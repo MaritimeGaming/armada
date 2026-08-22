@@ -804,41 +804,56 @@ type WeaponsBarProps = {
   onMoabClick?: () => void;
 };
 
+// 6 slots (3 across, 2 rows) reserved for weapon buttons; only MOAB exists
+// so far, in the first slot, with the rest left as empty spacers so the
+// grid geometry is already right for whichever weapons come next.
+const WEAPON_BUTTON_SLOT_COUNT = 6;
+
 function WeaponsBar({ label, moabCount, weaponsUsed, isArmed, moabButtonDisabled, onMoabClick }: WeaponsBarProps) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">{label}</span>
+    <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+      <div className="relative flex min-h-8 items-center">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">
+          {label}
+        </div>
 
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={onMoabClick}
-        disabled={moabButtonDisabled}
-        aria-pressed={isArmed}
-        className={cn(
-          'h-auto gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white',
-          isArmed
-            ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
-            : 'border-white/10 bg-white/10 hover:bg-white/20',
-        )}
-      >
-        <Bomb className="h-4 w-4" aria-hidden="true" />
-        MOAB
-        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/60 px-1.5 text-[10px] font-bold">
-          {moabCount}
-        </span>
-      </Button>
+        <div
+          className="ml-auto grid grid-cols-2 grid-rows-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1.5"
+          role="img"
+          aria-label={`${SPECIAL_WEAPON_QUOTA - weaponsUsed} of ${SPECIAL_WEAPON_QUOTA} special weapon uses remaining this game`}
+        >
+          {Array.from({ length: SPECIAL_WEAPON_QUOTA }, (_, index) => (
+            <span
+              key={index}
+              className={cn('h-2 w-2 rounded-full', index < weaponsUsed ? 'bg-red-500' : 'bg-green-500')}
+            />
+          ))}
+        </div>
+      </div>
 
-      <div
-        className="grid grid-cols-2 grid-rows-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1.5"
-        role="img"
-        aria-label={`${SPECIAL_WEAPON_QUOTA - weaponsUsed} of ${SPECIAL_WEAPON_QUOTA} special weapon uses remaining this game`}
-      >
-        {Array.from({ length: SPECIAL_WEAPON_QUOTA }, (_, index) => (
-          <span
-            key={index}
-            className={cn('h-2 w-2 rounded-full', index < weaponsUsed ? 'bg-red-500' : 'bg-green-500')}
-          />
+      <div className="grid grid-cols-3 grid-rows-2 gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onMoabClick}
+          disabled={moabButtonDisabled}
+          aria-pressed={isArmed}
+          className={cn(
+            'h-auto w-full gap-1 rounded-full border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white',
+            isArmed
+              ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
+              : 'border-white/10 bg-white/10 hover:bg-white/20',
+          )}
+        >
+          <Bomb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          MOAB
+          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
+            {moabCount}
+          </span>
+        </Button>
+
+        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 1 }, (_, index) => (
+          <div key={index} aria-hidden="true" />
         ))}
       </div>
     </div>
