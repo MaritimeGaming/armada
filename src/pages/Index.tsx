@@ -748,6 +748,7 @@ const Index = () => {
       reserveArrowSpace={showArrows}
       mineIndex={side === 'enemy' ? gameState?.playerMineIndex : undefined}
       armedWeapon={side === 'enemy' ? armedWeapon : undefined}
+      weaponsBarSlot={renderWeaponsBarForSide(side)}
     />
   );
 
@@ -814,10 +815,6 @@ const Index = () => {
                     )}
                   </div>
                 </div>
-
-                <div className="mt-auto grid grid-cols-2 gap-6 px-2.5">
-                  {navyViewOrder.map((side) => renderWeaponsBarForSide(side))}
-                </div>
               </section>
             ) : (
               <section className="flex min-h-0 flex-1 flex-col gap-2">
@@ -840,7 +837,6 @@ const Index = () => {
                           showArrows: true,
                           showSettings: true,
                         })}
-                        {renderWeaponsBarForSide(side)}
                       </div>
                     ))}
                   </div>
@@ -1037,6 +1033,8 @@ type NavyPanelProps = {
   mineIndex?: number | null;
   /** Which weapon (if any) is currently armed against this navy's grid. */
   armedWeapon?: WeaponType | null;
+  /** Rendered between the grid and the ship registry, so arming/firing a weapon doesn't require hopping over the registry. */
+  weaponsBarSlot?: ReactNode;
 };
 
 type SettingsMenuProps = {
@@ -1101,6 +1099,7 @@ function NavyPanel({
   reserveArrowSpace = true,
   mineIndex = null,
   armedWeapon = null,
+  weaponsBarSlot = null,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
   const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
@@ -1227,6 +1226,8 @@ function NavyPanel({
           ))}
         </div>
       </div>
+
+      {weaponsBarSlot}
 
       <div className="px-1">
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
