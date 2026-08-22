@@ -242,7 +242,10 @@ export function moveMine(navy: NavyState, mineIndex: number): MineMoveResult {
   const newIndex = randomItem(getAdjacentIndexes(mineIndex));
   const candidateCell = navy.cells[newIndex];
 
-  if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
+  // A floating mine can't score a hit on the Helicopter by drifting under
+  // it - it's airborne, not on the water. A mine deliberately dropped on
+  // its cell still hits normally; this only guards the passive wander.
+  if (candidateCell.effect === 'untargeted' && candidateCell.occupied && candidateCell.shipCode !== 'H') {
     const preparedNavy = setCellState(navy, newIndex, { effect: 'targeted', targeting: false });
     const result = resolveTargetingSequence(preparedNavy, [newIndex]);
 
