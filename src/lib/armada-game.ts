@@ -133,8 +133,9 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
     result.audioSequence.forEach((cue) => playedCues.add(cue));
 
     const targetedCell = currentNavy.cells[cellIndex];
+    const cellHadOil = targetedCell?.oil ?? false;
 
-    if (targetedCell?.oil && targetedCell.effect === 'targeted' && randomInt(1, OIL_IGNITION_ODDS) === 1) {
+    if (cellHadOil && targetedCell.effect === 'targeted' && randomInt(1, OIL_IGNITION_ODDS) === 1) {
       ignited = true;
 
       currentNavy.cells.forEach((cell, index) => {
@@ -147,6 +148,12 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
           pendingIndexes.push(index);
         }
       });
+    } else if (cellHadOil && targetedCell.occupied) {
+      // An explosion on an oiled ship cell burns the oil off at that spot,
+      // even when it doesn't ignite the whole slick. A shot that just
+      // splashes into oil over an empty cell has nothing to ignite, so the
+      // oil there is undisturbed and stays part of the slick.
+      currentNavy = setCellState(currentNavy, cellIndex, { oil: false });
     }
   }
 

@@ -981,7 +981,11 @@ function GridCell({
 }
 
 function getCellPresentation(cell: CellState): { className: string; value: string; label: string } {
-  const value = cell.oil && cell.effect === 'untargeted'
+  // Oil hides a ship's identity only while the cell itself is still hidden
+  // by fog of war. Once a cell is visible (the player's own navy, or a
+  // future reveal effect on the enemy's), a ship under the oil should still
+  // show its letter.
+  const value = cell.oil && cell.effect === 'untargeted' && cell.exposure === 'unknown'
     ? ''
     : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
@@ -1014,6 +1018,17 @@ function getCellPresentation(cell: CellState): { className: string; value: strin
   }
 
   if (!cell.occupied && cell.effect === 'targeted') {
+    // A splash into oil over an empty cell has nothing to burn off, so the
+    // oil survives the shot and still reads as oil, just with the hyphen
+    // for "targeted" layered on top of it.
+    if (cell.oil) {
+      return {
+        className: 'border-[#404040] bg-[#404040] text-white',
+        value,
+        label: 'empty with oil, targeted',
+      };
+    }
+
     return {
       className: 'border-[#0000FF] bg-[#0000FF] text-white',
       value,
