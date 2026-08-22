@@ -656,39 +656,22 @@ const Index = () => {
   const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
 
   const weaponsBar = (
-    <div className="mt-auto flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={handleMoabButtonClick}
-        disabled={!isPlayerTurnActive || weaponQuotaReached}
-        aria-pressed={armedWeapon === 'moab'}
-        className={cn(
-          'h-auto gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white',
-          armedWeapon === 'moab'
-            ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
-            : 'border-white/10 bg-white/10 hover:bg-white/20',
-        )}
-      >
-        <Bomb className="h-4 w-4" aria-hidden="true" />
-        MOAB
-        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/60 px-1.5 text-[10px] font-bold">
-          {moabCount}
-        </span>
-      </Button>
-
-      <div
-        className="grid grid-cols-2 grid-rows-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1.5"
-        role="img"
-        aria-label={`${SPECIAL_WEAPON_QUOTA - playerWeaponsUsed} of ${SPECIAL_WEAPON_QUOTA} special weapon uses remaining this game`}
-      >
-        {Array.from({ length: SPECIAL_WEAPON_QUOTA }, (_, index) => (
-          <span
-            key={index}
-            className={cn('h-2 w-2 rounded-full', index < playerWeaponsUsed ? 'bg-red-500' : 'bg-green-500')}
-          />
-        ))}
-      </div>
+    <div className="mt-auto flex flex-col gap-2">
+      <WeaponsBar
+        label="My Weapons"
+        moabCount={moabCount}
+        weaponsUsed={playerWeaponsUsed}
+        isArmed={armedWeapon === 'moab'}
+        moabButtonDisabled={!isPlayerTurnActive || weaponQuotaReached}
+        onMoabClick={handleMoabButtonClick}
+      />
+      <WeaponsBar
+        label="Enemy Weapons"
+        moabCount={gameState?.appMoabCount ?? 0}
+        weaponsUsed={gameState?.appWeaponsUsed ?? 0}
+        isArmed={false}
+        moabButtonDisabled
+      />
     </div>
   );
 
@@ -799,6 +782,56 @@ const Index = () => {
     </>
   );
 };
+
+type WeaponsBarProps = {
+  label: string;
+  moabCount: number;
+  weaponsUsed: number;
+  isArmed: boolean;
+  moabButtonDisabled: boolean;
+  onMoabClick?: () => void;
+};
+
+function WeaponsBar({ label, moabCount, weaponsUsed, isArmed, moabButtonDisabled, onMoabClick }: WeaponsBarProps) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">{label}</span>
+
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={onMoabClick}
+        disabled={moabButtonDisabled}
+        aria-pressed={isArmed}
+        className={cn(
+          'h-auto gap-2 rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white',
+          isArmed
+            ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
+            : 'border-white/10 bg-white/10 hover:bg-white/20',
+        )}
+      >
+        <Bomb className="h-4 w-4" aria-hidden="true" />
+        MOAB
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/60 px-1.5 text-[10px] font-bold">
+          {moabCount}
+        </span>
+      </Button>
+
+      <div
+        className="grid grid-cols-2 grid-rows-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1.5"
+        role="img"
+        aria-label={`${SPECIAL_WEAPON_QUOTA - weaponsUsed} of ${SPECIAL_WEAPON_QUOTA} special weapon uses remaining this game`}
+      >
+        {Array.from({ length: SPECIAL_WEAPON_QUOTA }, (_, index) => (
+          <span
+            key={index}
+            className={cn('h-2 w-2 rounded-full', index < weaponsUsed ? 'bg-red-500' : 'bg-green-500')}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 type NavyPanelProps = {
   navy: NavyState;

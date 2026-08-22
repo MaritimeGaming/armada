@@ -50,6 +50,10 @@ export type GameState = {
   enemy: NavyState;
   /** Special weapon shots fired this game, capped at SPECIAL_WEAPON_QUOTA regardless of standing inventory. Resets with a new game, unlike the inventory itself. */
   playerWeaponsUsed: number;
+  /** The computer's own MOAB loadout for this game - unlike the player's, this isn't a standing inventory (the computer doesn't watch ads), just a fixed per-game starting count. */
+  appMoabCount: number;
+  /** Mirrors playerWeaponsUsed for the computer. Nothing increments this yet - the computer doesn't fire weapons - it's tracked now so the display is symmetric from day one. */
+  appWeaponsUsed: number;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -70,10 +74,11 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 10;
+export const GAME_STATE_VERSION = 11;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 4;
+export const APP_MOAB_STARTING_COUNT = 2;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 const OIL_IGNITION_ODDS = 12;
 
@@ -280,6 +285,8 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     player: createNavy('player', 'Your Navy', true, options),
     enemy: createNavy('enemy', 'Enemy Navy', false, options),
     playerWeaponsUsed: 0,
+    appMoabCount: APP_MOAB_STARTING_COUNT,
+    appWeaponsUsed: 0,
   };
 }
 

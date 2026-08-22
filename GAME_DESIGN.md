@@ -192,18 +192,28 @@ is what decouples "grind ads to build a deep reserve" (fine, that's the
 intended monetization loop) from "grind ads to win this particular match"
 (not fine — capped regardless of reserve size).
 
-Implemented for the player only so far: the MOAB button (and the same
-per-cell targetability check) also disables once the quota is hit, even
-with charges left, and a small 2x2 grid of dots in the weapons bar (to the
-right of the weapon buttons) tracks it visually — solid green per unused
-shot, turning red as each is spent, no text needed. The computer's side of
-this (its own starting loadout and matching quota, firing at random cells
-and random times, discussed as "2 of each type, then random until the
-quota's spent") is designed but intentionally not yet built — see the
-Implementation note below on shipping player-only first. Worth keeping in
-mind once it is: a computer choosing purely at random when/where to fire
-will likely get less value per shot than a human aiming deliberately (e.g.
-at a partially-sunk ship's remaining cells), so equal quotas alone don't
+Implemented for the player: the MOAB button (and the same per-cell
+targetability check) also disables once the quota is hit, even with
+charges left, and a small 2x2 grid of dots in a "My Weapons" bar tracks
+it visually — solid green per unused shot, turning red as each is spent,
+no text needed.
+
+The weapons bar is split into two (`WeaponsBar` in `Index.tsx`, one per
+side) precisely so this display is symmetric: a matching "Enemy Weapons"
+bar shows the computer's own MOAB count (`appMoabCount`, starting at
+`APP_MOAB_STARTING_COUNT` (2) each game, unlike the player's ad-driven
+standing inventory) and its own quota dots (`appWeaponsUsed`). Nothing
+increments `appWeaponsUsed` yet, and the computer's MOAB button is wired
+permanently disabled (`moabButtonDisabled` hardcoded `true`) — it's
+display-only, information for the player about what the computer *could*
+still use, not a control. The computer's side of actually *firing*
+weapons (random cell, random timing, discussed as "2 of each type, then
+random until the quota's spent") is designed but intentionally not yet
+built — see the Implementation note below on shipping player-only first.
+Worth keeping in mind once it is: a computer choosing purely at random
+when/where to fire will likely get less value per shot than a human
+aiming deliberately (e.g. at a partially-sunk ship's remaining cells), so
+equal quotas alone don't
 fully equalize the advantage — see Variable A's proposed
 "weapon-aware play" for the natural follow-up.
 
