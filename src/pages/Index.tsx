@@ -655,9 +655,27 @@ const Index = () => {
   const playerWeaponsUsed = gameState?.playerWeaponsUsed ?? 0;
   const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
 
-  const weaponsBar = (
-    <div className="mt-auto flex flex-col gap-2">
+  // Each grid gets the weapons bar relevant to looking at it: the enemy
+  // grid is where you'd arm and fire, so it gets "My Weapons"; your own
+  // grid is where the computer's shots land, so it gets "Enemy Weapons" to
+  // watch its count/dots change if it ever fires one.
+  const renderWeaponsBarForSide = (side: NavySide) => {
+    if (side === 'player') {
+      return (
+        <WeaponsBar
+          key="enemy-weapons"
+          label="Enemy Weapons"
+          moabCount={gameState?.appMoabCount ?? 0}
+          weaponsUsed={gameState?.appWeaponsUsed ?? 0}
+          isArmed={false}
+          moabButtonDisabled
+        />
+      );
+    }
+
+    return (
       <WeaponsBar
+        key="my-weapons"
         label="My Weapons"
         moabCount={moabCount}
         weaponsUsed={playerWeaponsUsed}
@@ -665,15 +683,8 @@ const Index = () => {
         moabButtonDisabled={!isPlayerTurnActive || weaponQuotaReached}
         onMoabClick={handleMoabButtonClick}
       />
-      <WeaponsBar
-        label="Enemy Weapons"
-        moabCount={gameState?.appMoabCount ?? 0}
-        weaponsUsed={gameState?.appWeaponsUsed ?? 0}
-        isArmed={false}
-        moabButtonDisabled
-      />
-    </div>
-  );
+    );
+  };
 
   return (
     <>
@@ -694,7 +705,9 @@ const Index = () => {
                   </div>
                 </div>
 
-                {weaponsBar}
+                <div className="mt-auto grid grid-cols-2 gap-6 px-2.5">
+                  {navyViewOrder.map((side) => renderWeaponsBarForSide(side))}
+                </div>
               </section>
             ) : (
               <section className="flex min-h-0 flex-1 flex-col gap-2">
@@ -710,19 +723,18 @@ const Index = () => {
                     {navyViewOrder.map((side) => (
                       <div
                         key={side}
-                        className="w-1/2 shrink-0 p-2.5"
+                        className="flex w-1/2 shrink-0 flex-col gap-2 p-2.5"
                         style={panelWidth ? { width: panelWidth } : undefined}
                       >
                         {renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
                           showArrows: true,
                           showSettings: true,
                         })}
+                        {renderWeaponsBarForSide(side)}
                       </div>
                     ))}
                   </div>
                 </div>
-
-                {weaponsBar}
               </section>
             )
           ) : (
