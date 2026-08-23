@@ -68,9 +68,18 @@ selectable in Settings, persisted to localStorage):
   when it decides to fire a special weapon (Variable D): the weapon just
   rides along with wherever the normal random target would have landed,
   same as if no weapon had been picked at all.
-- **Level 2**: If a ship has been hit but not sunk, target its (8-neighbor,
-  including diagonal) adjacent cells to finish it off before falling back to
-  random targeting. This same "play shrewdly" character now also covers
+- **Level 2**: If a ship has exactly one hit that isn't yet sunk, target its
+  (8-neighbor, including diagonal) adjacent cells to find the rest of it.
+  Once **two or more** hits land on the same ship, its position is fully
+  known — it's a straight line — so targeting switches to just that ship's
+  own remaining untargeted cells instead of guessing via adjacency, which
+  would otherwise waste shots perpendicular to the ship's actual line. This
+  naturally bounds the search to the ship's true length without needing a
+  separate min/max heuristic, and handles gaps correctly too (e.g. cells 0
+  and 2 hit but not 1, from a MOAB or scattered random shots) since it
+  simply targets whichever of the ship's own cells are still untargeted,
+  in any order. See `hitIndexesByShipCode` in `selectAppTargetIndex()`.
+  This same "play shrewdly" character now also covers
   weapon use: whenever Level 2 decides to fire a MOAB, Mine, Torpedo, or
   Rocket, it picks whichever untargeted cell maximizes that weapon's
   "blast zone" — the count of still-untargeted cells within its footprint
@@ -88,9 +97,6 @@ selectable in Settings, persisted to localStorage):
   every decision, Level 2 is shrewd in every decision.
 
 **Proposed future levels** (not yet implemented):
-- **Line-following hunt logic**: once two hits land on the same ship, target
-  along the inferred line instead of all adjacent cells, using the ship's
-  known/possible length to bound the search.
 - **Oil-slick-aware play**: prioritize sinking the Oil Tanker early, then
   deliberately let the slick spread as wide as possible before trying to
   ignite it (mirrors the human's own best strategy — see Variable B).
@@ -161,29 +167,70 @@ tuning either mechanic, since they're designed to interact.
   the blast also ignites the oil slick, in which case the ignition's own
   triple-explosion sequence takes over instead of stacking two cadences.
 
-- **Mine** (`moveMine()` in `armada-game.ts`): only one may be active at a
-  time — the Mines button disables itself while `GameState.playerMineIndex`
-  is non-null. Firing it at an untargeted cell runs the normal targeting
-  sequence there (splash, or explosion/sink if occupied) and always costs
-  one charge and one quota dot, same as MOAB. If that placement shot was a
-  *hit*, the mine is spent immediately — nothing further to activate. If it
-  was a *miss*, a mine is planted at that cell (`playerMineIndex` is set);
-  no further charge/quota cost is ever taken for it again.
+- **Mine** (`resolveMineHit()`/`moveMine()` in `armada-game.ts`): only one
+  may be active at a time — the Mines button disables itself while
+  `GameState.playerMineIndex` is non-null. Firing it at an untargeted cell
+  runs the normal targeting sequence there (splash, or explosion/sink if
+  occupied) and always costs one charge and one quota dot, same as MOAB. If
+  that placement shot was a *hit*, the mine is spent immediately — nothing
+  further to activate. If it was a *miss*, a mine is planted at that cell
+  (`playerMineIndex` is set); no further charge/quota cost is ever taken
+  for it again.
+
+  A Mine detonation always takes out **two** cells of whatever ship it
+  hits, not one: the impact cell, plus the nearest other still-untargeted
+  cell of that same ship (`findNearestUntargetedShipCell()`), measured by
+  position along the ship rather than raw grid distance — so it can (and
+  does) skip past cells that are already hit to reach the closer
+  *untargeted* one. This was a deliberate buff — the Mine's single-cell hit
+  was judged too weak next to the other weapons. Boundary cases fall out of
+  that one rule for free, with no extra logic needed: a single-cell ship
+  gets no bonus (there's no other cell to reach); a ship with only one
+  other untargeted cell left is sunk outright by a single Mine; and a ship
+  hit somewhere in the middle with no prior hits ties between its two
+  neighbors, broken randomly. The bonus cell gets its own independent
+  oil-ignition roll, same as any other hit — a Mine can now trigger two
+  separate ignition chances in one detonation. This applies identically
+  whether the Mine detonates from a direct drop or from its automatic
+  wander (below); both funnel through the same `resolveMineHit()`.
 
   On every later turn the player takes (any shot or weapon, not just
-  another mine), the active mine automatically moves to one random adjacent
-  cell first (`getAdjacentIndexes`, silently, before the turn's own action
-  resolves) — clipped at grid edges, no memory of where it's already been.
-  A move only does anything if the new cell is both untargeted and
-  occupied: that's a hit, resolved through the same normal-targeting path
-  (including standard oil-ignition-on-hit odds), and the mine is consumed,
-  re-enabling the button. Landing on an already-targeted cell (occupied or
-  not) or an untargeted empty cell is a total no-op — the cell's state
-  doesn't change and nothing plays. This is *why* a mine's movement can
-  never ignite the oil slick by itself, per the request that shaped this:
-  an empty oil cell is never actually targeted by a move, only a hit is,
-  and a hit is always a real ship cell, so the ignition roll only ever
-  happens through the same path as any other hit.
+  another mine), the active mine automatically moves to one adjacent cell
+  first (`selectMineWanderIndex()`, silently, before the turn's own action
+  resolves) — clipped at grid edges. This isn't a uniformly random walk:
+  with probability `MINE_WANDER_UNTARGETED_BIAS` (75%), it moves to a
+  random still-*untargeted* neighbor if at least one exists, only falling
+  back to a uniformly random neighbor (targeted or not) the other 25% of
+  the time, or whenever every neighbor is already targeted. This was a
+  deliberate second buff, on top of the double-detonation above — a pure
+  random walk too often just re-treaded cells everyone already knew about.
+  It's weighted rather than an absolute "always chase untargeted" rule
+  for a specific reason: an absolute rule would let the mine greedily fix
+  on whatever small local pocket of untargeted cells it's already next to,
+  never willing to cross a stretch of already-targeted ground to reach a
+  completely different, richer unexplored region elsewhere on the board.
+  The occasional "wrong" move is what lets it break out of a dead end.
+
+  A move only *detonates* if the new cell is both untargeted and occupied
+  (see the double-detonation above), consuming the mine and re-enabling
+  the button. Otherwise, if the new cell is still untargeted and empty,
+  it's silently marked targeted anyway (no sound, exposure flipped to
+  `known` same as a normal miss reveal) even though nothing was actually
+  fired there: the mine quietly rules the cell out, so the player doesn't
+  have to spend a shot confirming what it already found. Landing on a cell
+  that's already targeted is a true no-op - completely untouched, nothing
+  to reveal that isn't already known. This silent reveal deliberately
+  bypasses the normal targeting pipeline (a raw cell update, not
+  `resolveTargetingSequence`), which is *why* a mine's movement can still
+  never ignite the oil slick by itself, preserving the original principle
+  that shaped this: only an actual hit (always a real ship cell) ever
+  risks ignition, never a passive reveal.
+
+  The Helicopter is the one occupied cell a mine's wander can never
+  resolve either way, hit or reveal - it drifts past completely
+  undetected, exactly as airborne implies, leaving that cell's
+  `untargeted`/`unknown` state entirely alone, same as if nothing were
+  there at all.
 
   A debug aid for validating this during development: any cell currently
   holding a mine renders an asterisk (alone if the cell is still hidden by

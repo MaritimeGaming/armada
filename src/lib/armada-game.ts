@@ -226,52 +226,175 @@ export function fireMoab(navy: NavyState, cellIndex: number): TargetingResult {
   return { ...result, targetedIndexes: targetIndexes };
 }
 
+/**
+ * The nearest other untargeted cell belonging to the same ship as
+ * cellIndex, measured by position along the ship's own cell list (not raw
+ * grid distance, though for a straight-line ship they agree) - ties broken
+ * randomly. Returns null if cellIndex isn't occupied, or there's no other
+ * untargeted cell left on that ship (a single-cell ship, or one already
+ * fully spent elsewhere).
+ */
+function findNearestUntargetedShipCell(navy: NavyState, cellIndex: number): number | null {
+  const shipCode = navy.cells[cellIndex]?.shipCode;
+
+  if (!shipCode) {
+    return null;
+  }
+
+  const ship = navy.ships.find((candidateShip) => candidateShip.code === shipCode);
+
+  if (!ship) {
+    return null;
+  }
+
+  const impactPosition = ship.cells.findIndex((point) => point.y * GRID_SIZE + point.x === cellIndex);
+
+  if (impactPosition === -1) {
+    return null;
+  }
+
+  let nearestIndexes: number[] = [];
+  let nearestDistance = Infinity;
+
+  ship.cells.forEach((point, position) => {
+    if (position === impactPosition) {
+      return;
+    }
+
+    const candidateIndex = point.y * GRID_SIZE + point.x;
+
+    if (navy.cells[candidateIndex]?.effect !== 'untargeted') {
+      return;
+    }
+
+    const distance = Math.abs(position - impactPosition);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndexes = [candidateIndex];
+    } else if (distance === nearestDistance) {
+      nearestIndexes.push(candidateIndex);
+    }
+  });
+
+  if (nearestIndexes.length === 0) {
+    return null;
+  }
+
+  return randomItem(nearestIndexes);
+}
+
+/**
+ * Resolves a Mine detonation at cellIndex: the impact cell itself, plus -
+ * if it's occupied and belongs to a multi-cell ship - the nearest other
+ * untargeted cell of that same ship (see findNearestUntargetedShipCell),
+ * so a Mine always takes out two cells of whatever ship it finds rather
+ * than one. A single-cell ship gets no bonus (there's no other cell to
+ * reach), and a ship with two or fewer untargeted cells left is sunk
+ * outright. Each detonated cell gets its own independent oil-ignition
+ * roll, same as any other hit. A miss (cellIndex unoccupied) resolves
+ * exactly like a normal single-cell shot.
+ */
+export function resolveMineHit(navy: NavyState, cellIndex: number): TargetingResult {
+  const extraIndex = findNearestUntargetedShipCell(navy, cellIndex);
+  const targetIndexes = extraIndex === null ? [cellIndex] : [cellIndex, extraIndex];
+
+  const preparedNavy = targetIndexes.reduce(
+    (currentNavy, index) => setCellState(currentNavy, index, { effect: 'targeted', targeting: false }),
+    navy,
+  );
+
+  const result = resolveTargetingSequence(preparedNavy, targetIndexes);
+
+  return { ...result, targetedIndexes: targetIndexes };
+}
+
 export type MineMoveResult = {
   navy: NavyState;
   /** The mine's new position, or null if this move detonated it (hit a ship - a mine is consumed on its first hit, freeing the "one active mine" slot). */
   mineIndex: number | null;
   hit: boolean;
-  hitIndex?: number;
+  /** The impact cell plus its extra same-ship detonation, if any (see resolveMineHit). */
+  hitIndexes?: number[];
   audioSequence: AudioSequence;
   ignited?: boolean;
   ignitedCellIndexes?: number[];
 };
 
+// Chance, per mine wander step, that it moves toward an untargeted
+// neighbor rather than a uniformly random one (when at least one
+// untargeted neighbor exists). Weighted rather than absolute so the mine
+// can still occasionally cut across already-targeted territory - an
+// absolute "always chase the nearest untargeted cell" rule would trap it
+// hugging whatever small local pocket it's already next to, never willing
+// to cross explored ground to reach a completely different, richer
+// unexplored region elsewhere on the board.
+const MINE_WANDER_UNTARGETED_BIAS = 0.75;
+
+function selectMineWanderIndex(navy: NavyState, mineIndex: number): number {
+  const adjacentIndexes = getAdjacentIndexes(mineIndex);
+  const untargetedAdjacentIndexes = adjacentIndexes.filter((index) => navy.cells[index]?.effect === 'untargeted');
+
+  if (untargetedAdjacentIndexes.length > 0 && Math.random() < MINE_WANDER_UNTARGETED_BIAS) {
+    return randomItem(untargetedAdjacentIndexes);
+  }
+
+  return randomItem(adjacentIndexes);
+}
+
 /**
- * A mine's automatic per-turn wander: moves to one random adjacent cell,
- * regardless of whether that cell has already been targeted or the mine has
- * already visited it. Only detonates (and is only ever processed through
- * the normal targeting/oil-ignition machinery) if the new cell is both
- * untargeted and occupied - an untargeted empty cell, or any already-
- * targeted cell, is a silent no-op move. This is why a mine's movement
- * can never ignite the oil slick by itself: an empty oil cell never gets
- * targeted by a move, only a hit does, and a hit always reflects a real
- * ship cell.
+ * A mine's automatic per-turn wander: moves to one adjacent cell, weighted
+ * toward still-untargeted ones (see MINE_WANDER_UNTARGETED_BIAS) so it
+ * tends to push into unexplored territory rather than retread cells it or
+ * a regular shot has already settled. Detonates (see resolveMineHit) if
+ * the new cell is both untargeted and occupied. Otherwise - an untargeted
+ * empty cell, or any already-targeted cell - it's not a hit, but if the
+ * cell was still untargeted, it's silently marked targeted anyway (no
+ * sound, no ignition risk): the mine quietly confirms there's nothing
+ * there, so the player doesn't have to spend a shot finding that out
+ * themselves. The one cell a mine can never resolve this way is the
+ * Helicopter's - it's airborne, so the mine drifts past without ever
+ * detecting it, hit or reveal.
+ *
+ * This silent reveal deliberately bypasses the normal oil-ignition check
+ * (a raw cell update, not resolveTargetingSequence): a mine's movement
+ * still can never ignite the oil slick by itself, matching the same
+ * principle as before - only an actual hit (always a real ship cell) ever
+ * risks ignition.
  */
 export function moveMine(navy: NavyState, mineIndex: number): MineMoveResult {
-  const newIndex = randomItem(getAdjacentIndexes(mineIndex));
+  const newIndex = selectMineWanderIndex(navy, mineIndex);
   const candidateCell = navy.cells[newIndex];
 
   // A floating mine can't score a hit on the Helicopter by drifting under
   // it - it's airborne, not on the water. A mine deliberately dropped on
   // its cell still hits normally; this only guards the passive wander.
-  if (candidateCell.effect === 'untargeted' && candidateCell.occupied && candidateCell.shipCode !== 'H') {
-    const preparedNavy = setCellState(navy, newIndex, { effect: 'targeted', targeting: false });
-    const result = resolveTargetingSequence(preparedNavy, [newIndex]);
+  const isDetectable = !(candidateCell.occupied && candidateCell.shipCode === 'H');
+
+  if (candidateCell.effect === 'untargeted' && candidateCell.occupied && isDetectable) {
+    const result = resolveMineHit(navy, newIndex);
 
     return {
       navy: result.navy,
       mineIndex: null,
       hit: true,
-      hitIndex: newIndex,
+      hitIndexes: result.targetedIndexes,
       audioSequence: result.audioSequence,
       ignited: result.ignited,
       ignitedCellIndexes: result.ignitedCellIndexes,
     };
   }
 
+  const nextNavy = candidateCell.effect === 'untargeted' && isDetectable
+    ? setCellState(navy, newIndex, {
+        effect: 'targeted',
+        targeting: false,
+        exposure: candidateCell.exposure === 'unknown' ? 'known' : candidateCell.exposure,
+      })
+    : navy;
+
   return {
-    navy,
+    navy: nextNavy,
     mineIndex: newIndex,
     hit: false,
     audioSequence: [],
@@ -443,26 +566,52 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
 
   if (difficulty === 'level2') {
     const candidateIndexes = new Set<number>();
+    const hitIndexesByShipCode = new Map<string, number[]>();
 
     navy.cells.forEach((cell, index) => {
-      if (cell.effect !== 'targeted' || !cell.occupied) {
+      if (cell.effect !== 'targeted' || !cell.occupied || !cell.shipCode) {
         return;
       }
 
-      const isPartOfSunkShip = cell.shipCode
-        ? navy.cells
-            .filter((candidateCell) => candidateCell.shipCode === cell.shipCode)
-            .every((candidateCell) => candidateCell.effect === 'sunk')
-        : false;
+      const isPartOfSunkShip = navy.cells
+        .filter((candidateCell) => candidateCell.shipCode === cell.shipCode)
+        .every((candidateCell) => candidateCell.effect === 'sunk');
 
       if (isPartOfSunkShip) {
         return;
       }
 
-      getAdjacentIndexes(index).forEach((adjacentIndex) => {
-        if (navy.cells[adjacentIndex]?.effect === 'untargeted') {
-          candidateIndexes.add(adjacentIndex);
-        }
+      const hitIndexes = hitIndexesByShipCode.get(cell.shipCode) ?? [];
+      hitIndexes.push(index);
+      hitIndexesByShipCode.set(cell.shipCode, hitIndexes);
+    });
+
+    hitIndexesByShipCode.forEach((hitIndexes, shipCode) => {
+      // Two or more confirmed hits on the same ship mean the whole ship's
+      // position is known - it's a straight line, so target its own
+      // remaining cells directly instead of guessing via 8-neighbor
+      // adjacency, which would waste shots perpendicular to the ship's
+      // actual line. A single hit isn't enough to know the line yet, so
+      // that case still falls through to plain adjacency below.
+      if (hitIndexes.length >= 2) {
+        const ship = navy.ships.find((candidateShip) => candidateShip.code === shipCode);
+
+        ship?.cells.forEach((point) => {
+          const cellIndex = point.y * GRID_SIZE + point.x;
+          if (navy.cells[cellIndex]?.effect === 'untargeted') {
+            candidateIndexes.add(cellIndex);
+          }
+        });
+
+        return;
+      }
+
+      hitIndexes.forEach((index) => {
+        getAdjacentIndexes(index).forEach((adjacentIndex) => {
+          if (navy.cells[adjacentIndex]?.effect === 'untargeted') {
+            candidateIndexes.add(adjacentIndex);
+          }
+        });
       });
     });
 

@@ -17,6 +17,7 @@ import {
   getShips,
   GRID_SIZE,
   moveMine,
+  resolveMineHit,
   resolveTargetingSequence,
   SPECIAL_WEAPON_QUOTA,
   selectAppTargetIndex,
@@ -572,8 +573,8 @@ const Index = () => {
           if (moveResult.hit) {
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
               triggerCellExplosions('enemy', moveResult.ignitedCellIndexes);
-            } else if (moveResult.hitIndex !== undefined) {
-              triggerCellExplosions('enemy', [moveResult.hitIndex]);
+            } else if (moveResult.hitIndexes) {
+              triggerCellExplosions('enemy', moveResult.hitIndexes);
             }
 
             mineCausedExtendedDelay = moveResult.audioSequence.includes('sink') || Boolean(moveResult.ignited);
@@ -636,16 +637,15 @@ const Index = () => {
         }
 
         if (armedWeapon === 'mine') {
-          const enemyWithTargetedCell = setCellState(currentEnemy, releaseIndex, {
-            effect: 'targeted',
-            targeting: false,
-          });
-          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = resolveMineHit(currentEnemy, releaseIndex);
 
           if (ignited && ignitedCellIndexes) {
             triggerCellExplosions('enemy', ignitedCellIndexes);
-          } else if (targetCell.occupied) {
-            triggerCellExplosions('enemy', [releaseIndex]);
+          } else {
+            const hitIndexes = (targetedIndexes ?? []).filter((index) => currentEnemy.cells[index]?.occupied);
+            if (hitIndexes.length > 0) {
+              triggerCellExplosions('enemy', hitIndexes);
+            }
           }
 
           playerShotExtendedDelayRef.current = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
@@ -1049,8 +1049,8 @@ const Index = () => {
           if (moveResult.hit) {
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
               triggerCellExplosions('player', moveResult.ignitedCellIndexes);
-            } else if (moveResult.hitIndex !== undefined) {
-              triggerCellExplosions('player', [moveResult.hitIndex]);
+            } else if (moveResult.hitIndexes) {
+              triggerCellExplosions('player', moveResult.hitIndexes);
             }
 
             mineCausedExtendedDelay = moveResult.audioSequence.includes('sink') || Boolean(moveResult.ignited);
@@ -1104,16 +1104,15 @@ const Index = () => {
 
         if (weaponChoice === 'mine') {
           const targetCell = currentPlayer.cells[previewIndex];
-          const playerWithTargetedCell = setCellState(currentPlayer, previewIndex, {
-            effect: 'targeted',
-            targeting: false,
-          });
-          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = resolveMineHit(currentPlayer, previewIndex);
 
           if (ignited && ignitedCellIndexes) {
             triggerCellExplosions('player', ignitedCellIndexes);
-          } else if (targetCell?.occupied) {
-            triggerCellExplosions('player', [previewIndex]);
+          } else {
+            const hitIndexes = (targetedIndexes ?? []).filter((index) => currentPlayer.cells[index]?.occupied);
+            if (hitIndexes.length > 0) {
+              triggerCellExplosions('player', hitIndexes);
+            }
           }
 
           const hasStaggered = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
