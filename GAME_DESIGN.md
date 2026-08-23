@@ -391,6 +391,21 @@ right here," both keyed off `armedWeapon`, threaded down through
   cursor, delivered at the one moment touch actually has an analogous
   state.
 
+For the Torpedo and Rocket specifically, both the cursor and the mobile
+preview icon are direction-aware, not a single fixed asset: the Torpedo's
+arrow points right over columns 0-4 and left over columns 5-9
+(`torpedo-cursor.svg`/`torpedo-cursor-left.svg`), the Rocket's points down
+over rows 0-4 and up over rows 5-9 (`rocket-cursor.svg`/
+`rocket-cursor-up.svg`) - mirroring exactly which direction that weapon
+would actually travel from the hovered/pressed cell (see
+`getWeaponTravelIndexes()`'s own column/row <= 4 split). `WEAPON_CURSOR_FILES`
+and `WEAPON_PREVIEW_ICONS` (`Index.tsx`) hold a `{ default, flipped }` pair
+per weapon - MOAB and Mine have no direction, so they only ever use
+`default`. The weapons bar's own button icons are unaffected (still the
+plain bidirectional `ArrowRightLeft`/`ArrowUpDown`), since a button has no
+cell position to point a direction at - only `GridCell`'s cursor and
+preview icon need to know which cell they're over.
+
 This was chosen over two alternatives:
 - **Right-click / long-press context menu on the cell itself**: doesn't
   translate to touch (no mobile equivalent of right-click), and if some

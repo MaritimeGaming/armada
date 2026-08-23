@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
-import { ArrowRightLeft, ArrowUpDown, Bomb, ChevronLeft, ChevronRight, CircleDot, Settings } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowRightLeft, ArrowUp, ArrowUpDown, Bomb, ChevronLeft, ChevronRight, CircleDot, Settings } from 'lucide-react';
 
 import {
   areAllShipsSunk,
@@ -1959,6 +1959,7 @@ function NavyPanel({
             <GridCell
               key={`${navy.side}-${index}`}
               cell={cell}
+              cellIndex={index}
               isTargetable={isCellTargetable?.(cell) ?? false}
               onClick={onTargetCell ? () => onTargetCell(index) : undefined}
               onPressStart={onCellPressStart ? () => onCellPressStart(index) : undefined}
@@ -2061,22 +2062,58 @@ function ShipRow({ ship, status, isTooltipOpen, onReveal }: ShipRowProps) {
   );
 }
 
-const WEAPON_CURSOR_FILES: Record<WeaponType, string> = {
-  moab: 'moab-cursor.svg',
-  mine: 'mine-cursor.svg',
-  torpedo: 'torpedo-cursor.svg',
-  rocket: 'rocket-cursor.svg',
+type DirectionalAsset<T> = { default: T; flipped?: T };
+
+const WEAPON_CURSOR_FILES: Record<WeaponType, DirectionalAsset<string>> = {
+  moab: { default: 'moab-cursor.svg' },
+  mine: { default: 'mine-cursor.svg' },
+  torpedo: { default: 'torpedo-cursor.svg', flipped: 'torpedo-cursor-left.svg' },
+  rocket: { default: 'rocket-cursor.svg', flipped: 'rocket-cursor-up.svg' },
 };
 
-const WEAPON_ICONS: Record<WeaponType, typeof Bomb> = {
-  moab: Bomb,
-  mine: CircleDot,
-  torpedo: ArrowRightLeft,
-  rocket: ArrowUpDown,
+// Used only for the grid cell's own mobile press-and-hold preview (see
+// GridCell) - the weapons bar buttons hardcode their own icons directly,
+// since a button has no cell position to point a direction at.
+const WEAPON_PREVIEW_ICONS: Record<WeaponType, DirectionalAsset<typeof Bomb>> = {
+  moab: { default: Bomb },
+  mine: { default: CircleDot },
+  torpedo: { default: ArrowRight, flipped: ArrowLeft },
+  rocket: { default: ArrowDown, flipped: ArrowUp },
 };
+
+/**
+ * Torpedo travels rightward from columns 0-4 but leftward from 5-9;
+ * Rocket downward from rows 0-4 but upward from 5-9 (see
+ * getWeaponTravelIndexes() in armada-game.ts, same split). The cursor and
+ * mobile preview icon flip to match whichever direction that weapon would
+ * actually travel if fired at cellIndex - MOAB and Mine have no
+ * direction, so this is always false for them.
+ */
+function isFlippedWeaponDirection(weapon: WeaponType, cellIndex: number): boolean {
+  if (weapon === 'torpedo') {
+    return cellIndex % GRID_SIZE > 4;
+  }
+
+  if (weapon === 'rocket') {
+    return Math.floor(cellIndex / GRID_SIZE) > 4;
+  }
+
+  return false;
+}
+
+function getWeaponCursorFile(weapon: WeaponType, cellIndex: number): string {
+  const asset = WEAPON_CURSOR_FILES[weapon];
+  return isFlippedWeaponDirection(weapon, cellIndex) && asset.flipped ? asset.flipped : asset.default;
+}
+
+function getWeaponPreviewIcon(weapon: WeaponType, cellIndex: number): typeof Bomb {
+  const asset = WEAPON_PREVIEW_ICONS[weapon];
+  return isFlippedWeaponDirection(weapon, cellIndex) && asset.flipped ? asset.flipped : asset.default;
+}
 
 function GridCell({
   cell,
+  cellIndex,
   isTargetable,
   onClick,
   onPressStart,
@@ -2087,6 +2124,7 @@ function GridCell({
   armedWeapon,
 }: {
   cell: CellState;
+  cellIndex: number;
   isTargetable?: boolean;
   onClick?: () => void;
   onPressStart?: () => void;
@@ -2098,7 +2136,7 @@ function GridCell({
 }) {
   const exposure = cell.exposure;
   const { className, value, label } = getCellPresentation(cell, hasMine ?? false);
-  const WeaponIcon = armedWeapon ? WEAPON_ICONS[armedWeapon] : null;
+  const WeaponIcon = armedWeapon ? getWeaponPreviewIcon(armedWeapon, cellIndex) : null;
 
   if (onClick) {
     const handlePressStart = () => {
@@ -2132,7 +2170,7 @@ function GridCell({
         )}
         style={{
           cursor: (isTargetable || cell.targeting)
-            ? `url(${import.meta.env.BASE_URL}${armedWeapon ? WEAPON_CURSOR_FILES[armedWeapon] : 'crosshair-cursor.svg'}) 12 12, crosshair`
+            ? `url(${import.meta.env.BASE_URL}${armedWeapon ? getWeaponCursorFile(armedWeapon, cellIndex) : 'crosshair-cursor.svg'}) 12 12, crosshair`
             : 'default',
         }}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
