@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
-import { ArrowRightLeft, Bomb, ChevronLeft, ChevronRight, CircleDot, Settings } from 'lucide-react';
+import { ArrowRightLeft, ArrowUpDown, Bomb, ChevronLeft, ChevronRight, CircleDot, Settings } from 'lucide-react';
 
 import {
   areAllShipsSunk,
@@ -10,6 +10,7 @@ import {
   createGameState,
   DEFAULT_SHIP_SET_OPTIONS,
   fireMoab,
+  fireRocket,
   fireTorpedo,
   GAME_STATE_VERSION,
   getMoabTargetIndexes,
@@ -23,7 +24,7 @@ import {
   setCellState,
   setCellTargeting,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, TorpedoStep, WeaponType, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -63,9 +64,13 @@ const MINE_REFILL_COUNT = 3;
 const TORPEDO_COUNT_STORAGE_KEY = 'armada:torpedo-count';
 const TORPEDO_STARTING_COUNT = 2;
 const TORPEDO_REFILL_COUNT = 3;
+const ROCKET_COUNT_STORAGE_KEY = 'armada:rocket-count';
+const ROCKET_STARTING_COUNT = 2;
+const ROCKET_REFILL_COUNT = 3;
 // How long each traveled cell (beyond the launch cell) stays lit with the
-// targeting highlight before it resolves and the torpedo moves on.
-const TORPEDO_STEP_DELAY_MS = 500;
+// targeting highlight before it resolves and the weapon moves on. Shared by
+// the Torpedo and Rocket - direct counterparts, differing only in orientation.
+const WEAPON_TRAVEL_STEP_DELAY_MS = 500;
 // Lifetime record, not part of GameState: survives New Game and browser
 // restarts, and only ever grows as games are completed.
 const GAMES_PLAYED_STORAGE_KEY = 'armada:games-played';
@@ -100,10 +105,10 @@ function readStoredCount(storageKey: string, fallback: number): number {
   return Number.isFinite(parsedCount) ? parsedCount : fallback;
 }
 
-// A torpedo can now hit more than one ship in a single run, so whether the
-// dialog/view-switch needs the longer "staggered explosion" pause has to
-// scan every step it took, not just the last one.
-function torpedoHasStaggeredOutcome(steps: TorpedoStep[]): boolean {
+// A Torpedo or Rocket can now hit more than one ship in a single run, so
+// whether the dialog/view-switch needs the longer "staggered explosion"
+// pause has to scan every step it took, not just the last one.
+function weaponHasStaggeredOutcome(steps: WeaponTravelStep[]): boolean {
   return steps.some((step) => Boolean(step.ignited) || step.audioSequence.includes('sink'));
 }
 
@@ -142,22 +147,24 @@ const Index = () => {
   const [moabCount, setMoabCount] = useState<number>(() => readStoredCount(MOAB_COUNT_STORAGE_KEY, MOAB_STARTING_COUNT));
   const [mineCount, setMineCount] = useState<number>(() => readStoredCount(MINE_COUNT_STORAGE_KEY, MINE_STARTING_COUNT));
   const [torpedoCount, setTorpedoCount] = useState<number>(() => readStoredCount(TORPEDO_COUNT_STORAGE_KEY, TORPEDO_STARTING_COUNT));
+  const [rocketCount, setRocketCount] = useState<number>(() => readStoredCount(ROCKET_COUNT_STORAGE_KEY, ROCKET_STARTING_COUNT));
   const [gamesPlayed, setGamesPlayed] = useState<number>(() => readStoredCount(GAMES_PLAYED_STORAGE_KEY, 0));
   const [gamesWon, setGamesWon] = useState<number>(() => readStoredCount(GAMES_WON_STORAGE_KEY, 0));
-  // A torpedo's travel can take several seconds; turn ownership deliberately
-  // doesn't pass to the computer until it fully resolves (see
-  // handleEnemyCellPressEnd's torpedo branch), so this blocks the player
-  // from acting again mid-flight the way "currentTurn !== 'player'" would
+  // A Torpedo's or Rocket's travel can take several seconds; turn ownership
+  // deliberately doesn't pass to the computer until it fully resolves (see
+  // handleEnemyCellPressEnd's torpedo/rocket branches), so this blocks the
+  // player from acting again mid-flight the way "currentTurn !== 'player'" would
   // for every other weapon.
-  const [isTorpedoInFlight, setIsTorpedoInFlight] = useState(false);
+  const [isWeaponInFlight, setIsWeaponInFlight] = useState(false);
   const appPreviewIndexRef = useRef<number | null>(null);
   // undefined = not yet decided this turn; null = decided not to use a
   // weapon; a WeaponType = the weapon it decided to fire.
   const appWeaponChoiceRef = useRef<WeaponType | null | undefined>(undefined);
   // Blocks the AI-turn effect from re-entering while the computer's own
-  // torpedo is still traveling (currentTurn stays 'app' throughout, so the
-  // effect's usual currentTurn guard wouldn't otherwise stop it).
-  const appTorpedoInFlightRef = useRef(false);
+  // torpedo or rocket is still traveling (currentTurn stays 'app'
+  // throughout, so the effect's usual currentTurn guard wouldn't otherwise
+  // stop it).
+  const appWeaponInFlightRef = useRef(false);
   const userPreviewIndexRef = useRef<number | null>(null);
   const playerShotExtendedDelayRef = useRef(false);
   const [explosionCells, setExplosionCells] = useState<Record<NavySide, number[]>>({
@@ -305,14 +312,15 @@ const Index = () => {
     }, 380);
   };
 
-  // Animates a torpedo's travel steps (everything after the launch cell)
-  // one at a time: highlight the cell for TORPEDO_STEP_DELAY_MS, then apply
-  // its resolved state and any hit effects, then move on to the next step.
-  // Only called with the steps *after* the launch cell - the launch itself
-  // resolves immediately, like any other shot, before this ever runs.
-  const runTorpedoTravelSteps = (
+  // Animates a Torpedo's or Rocket's travel steps (everything after the
+  // launch cell) one at a time: highlight the cell for
+  // WEAPON_TRAVEL_STEP_DELAY_MS, then apply its resolved state and any hit
+  // effects, then move on to the next step. Only called with the steps
+  // *after* the launch cell - the launch itself resolves immediately, like
+  // any other shot, before this ever runs.
+  const runWeaponTravelSteps = (
     navySide: NavySide,
-    steps: TorpedoStep[],
+    steps: WeaponTravelStep[],
     stepIndex: number,
     onComplete: () => void,
   ) => {
@@ -360,16 +368,16 @@ const Index = () => {
         }
       }
 
-      runTorpedoTravelSteps(navySide, steps, stepIndex + 1, onComplete);
-    }, TORPEDO_STEP_DELAY_MS);
+      runWeaponTravelSteps(navySide, steps, stepIndex + 1, onComplete);
+    }, WEAPON_TRAVEL_STEP_DELAY_MS);
   };
 
   const handleNewGame = (nextOptions: ShipSetOptions = shipSetOptions) => {
       const nextState = createGameState(nextOptions);
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
-      appTorpedoInFlightRef.current = false;
-      setIsTorpedoInFlight(false);
+      appWeaponInFlightRef.current = false;
+      setIsWeaponInFlight(false);
       setExplosionCells({ player: [], enemy: [] });
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       setGameState(nextState);
@@ -399,7 +407,7 @@ const Index = () => {
   };
 
   const handleWeaponButtonClick = (weapon: WeaponType) => {
-    if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen || isTorpedoInFlight) {
+    if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen || isWeaponInFlight) {
       return;
     }
 
@@ -417,16 +425,36 @@ const Index = () => {
       return;
     }
 
-    const count = weapon === 'moab' ? moabCount : weapon === 'mine' ? mineCount : torpedoCount;
+    const counts: Record<WeaponType, number> = { moab: moabCount, mine: mineCount, torpedo: torpedoCount, rocket: rocketCount };
+    const count = counts[weapon];
 
     if (count > 0) {
       setArmedWeapon((current) => (current === weapon ? null : weapon));
       return;
     }
 
-    const storageKey = weapon === 'moab' ? MOAB_COUNT_STORAGE_KEY : weapon === 'mine' ? MINE_COUNT_STORAGE_KEY : TORPEDO_COUNT_STORAGE_KEY;
-    const refillCount = weapon === 'moab' ? MOAB_REFILL_COUNT : weapon === 'mine' ? MINE_REFILL_COUNT : TORPEDO_REFILL_COUNT;
-    const setCount = weapon === 'moab' ? setMoabCount : weapon === 'mine' ? setMineCount : setTorpedoCount;
+    const storageKeys: Record<WeaponType, string> = {
+      moab: MOAB_COUNT_STORAGE_KEY,
+      mine: MINE_COUNT_STORAGE_KEY,
+      torpedo: TORPEDO_COUNT_STORAGE_KEY,
+      rocket: ROCKET_COUNT_STORAGE_KEY,
+    };
+    const refillCounts: Record<WeaponType, number> = {
+      moab: MOAB_REFILL_COUNT,
+      mine: MINE_REFILL_COUNT,
+      torpedo: TORPEDO_REFILL_COUNT,
+      rocket: ROCKET_REFILL_COUNT,
+    };
+    const setCounts: Record<WeaponType, (value: number) => void> = {
+      moab: setMoabCount,
+      mine: setMineCount,
+      torpedo: setTorpedoCount,
+      rocket: setRocketCount,
+    };
+
+    const storageKey = storageKeys[weapon];
+    const refillCount = refillCounts[weapon];
+    const setCount = setCounts[weapon];
 
     setProcuringWeapon(weapon);
 
@@ -481,7 +509,7 @@ const Index = () => {
   };
 
   const handleEnemyCellPressStart = (cellIndex: number) => {
-    if (activeView !== 'enemy' || isTorpedoInFlight) {
+    if (activeView !== 'enemy' || isWeaponInFlight) {
       return;
     }
 
@@ -512,7 +540,7 @@ const Index = () => {
   };
 
   const handleEnemyCellPressEnd = (cellIndex: number) => {
-    if (isTorpedoInFlight) {
+    if (isWeaponInFlight) {
       return;
     }
 
@@ -685,14 +713,14 @@ const Index = () => {
           const hasTravel = travelSteps.length > 0;
 
           if (hasTravel) {
-            setIsTorpedoInFlight(true);
+            setIsWeaponInFlight(true);
           }
 
           const nextState: GameState = {
             ...state,
             // A miss keeps travelling for several more seconds of animation -
             // turn ownership doesn't pass to the computer until that finishes,
-            // so its own turn can't start mid-flight (see runTorpedoTravelSteps).
+            // so its own turn can't start mid-flight (see runWeaponTravelSteps).
             currentTurn: hasTravel ? 'player' : 'app',
             enemy: launchStep.navy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
@@ -702,24 +730,105 @@ const Index = () => {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
           if (!hasTravel) {
-            playerShotExtendedDelayRef.current = mineCausedExtendedDelay || torpedoHasStaggeredOutcome(result.steps);
+            playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('player', nextState, torpedoHasStaggeredOutcome(result.steps));
+              concludeGame('player', nextState, weaponHasStaggeredOutcome(result.steps));
             }
 
             return nextState;
           }
 
-          runTorpedoTravelSteps('enemy', travelSteps, 0, () => {
+          runWeaponTravelSteps('enemy', travelSteps, 0, () => {
             setGameState((current) => {
               if (!current) {
                 return current;
               }
 
-              const hasStaggered = torpedoHasStaggeredOutcome(result.steps);
+              const hasStaggered = weaponHasStaggeredOutcome(result.steps);
 
-              setIsTorpedoInFlight(false);
+              setIsWeaponInFlight(false);
+
+              if (areAllShipsSunk(current.enemy, shipSetOptions)) {
+                concludeGame('player', current, hasStaggered);
+                return current;
+              }
+
+              playerShotExtendedDelayRef.current = mineCausedExtendedDelay || hasStaggered;
+
+              const resolvedState: GameState = { ...current, currentTurn: 'app' };
+              window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resolvedState));
+              return resolvedState;
+            });
+          });
+
+          return nextState;
+        }
+
+        if (armedWeapon === 'rocket') {
+          const result = fireRocket(currentEnemy, releaseIndex);
+          const [launchStep, ...travelSteps] = result.steps;
+
+          if (launchStep.isHit) {
+            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
+              triggerCellExplosions('enemy', launchStep.ignitedCellIndexes);
+            } else {
+              triggerCellExplosions('enemy', [launchStep.cellIndex]);
+            }
+          }
+          if (launchStep.audioSequence.length > 0) {
+            if (launchStep.ignited) {
+              playIgnitionSequence(launchStep.audioSequence);
+            } else {
+              playAudioSequence(launchStep.audioSequence);
+            }
+          }
+
+          setArmedWeapon(null);
+          setRocketCount((current) => {
+            const nextCount = current - 1;
+            window.localStorage.setItem(ROCKET_COUNT_STORAGE_KEY, String(nextCount));
+            return nextCount;
+          });
+
+          const hasTravel = travelSteps.length > 0;
+
+          if (hasTravel) {
+            setIsWeaponInFlight(true);
+          }
+
+          const nextState: GameState = {
+            ...state,
+            // A miss keeps travelling for several more seconds of animation -
+            // turn ownership doesn't pass to the computer until that finishes,
+            // so its own turn can't start mid-flight (see runWeaponTravelSteps).
+            currentTurn: hasTravel ? 'player' : 'app',
+            enemy: launchStep.navy,
+            playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerMineIndex: mineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          if (!hasTravel) {
+            playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+
+            if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
+              concludeGame('player', nextState, weaponHasStaggeredOutcome(result.steps));
+            }
+
+            return nextState;
+          }
+
+          runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+            setGameState((current) => {
+              if (!current) {
+                return current;
+              }
+
+              const hasStaggered = weaponHasStaggeredOutcome(result.steps);
+
+              setIsWeaponInFlight(false);
 
               if (areAllShipsSunk(current.enemy, shipSetOptions)) {
                 concludeGame('player', current, hasStaggered);
@@ -800,7 +909,7 @@ const Index = () => {
   };
 
   const handleEnemyCellPressCancel = (cellIndex: number) => {
-    if (isTorpedoInFlight) {
+    if (isWeaponInFlight) {
       return;
     }
 
@@ -836,7 +945,7 @@ const Index = () => {
     // are driven by their own setTimeout chain, outside this effect) while
     // currentTurn is still 'app' - don't let this effect re-enter and start
     // a second turn on top of it.
-    if (appTorpedoInFlightRef.current) {
+    if (appWeaponInFlightRef.current) {
       return;
     }
 
@@ -862,6 +971,7 @@ const Index = () => {
         appMineCount: gameState.appMineCount,
         appMineIndex: gameState.appMineIndex,
         appTorpedoCount: gameState.appTorpedoCount,
+        appRocketCount: gameState.appRocketCount,
       });
     }
 
@@ -1055,7 +1165,7 @@ const Index = () => {
             // Keeps currentTurn at 'app' through the whole travel animation,
             // so the player can't act (or this effect re-enter) until the
             // torpedo fully resolves - see the top-of-effect guard above.
-            appTorpedoInFlightRef.current = true;
+            appWeaponInFlightRef.current = true;
           }
 
           const nextState: GameState = {
@@ -1070,7 +1180,7 @@ const Index = () => {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
           if (!hasTravel) {
-            const hasStaggered = mineCausedExtendedDelay || torpedoHasStaggeredOutcome(result.steps);
+            const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('app', nextState, hasStaggered);
@@ -1083,15 +1193,97 @@ const Index = () => {
             return nextState;
           }
 
-          runTorpedoTravelSteps('player', travelSteps, 0, () => {
+          runWeaponTravelSteps('player', travelSteps, 0, () => {
             setGameState((current) => {
               if (!current) {
                 return current;
               }
 
-              const hasStaggered = mineCausedExtendedDelay || torpedoHasStaggeredOutcome(result.steps);
+              const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
-              appTorpedoInFlightRef.current = false;
+              appWeaponInFlightRef.current = false;
+
+              if (areAllShipsSunk(current.player, shipSetOptions)) {
+                concludeGame('app', current, hasStaggered);
+                return current;
+              }
+
+              const resolvedState: GameState = { ...current, currentTurn: 'player' };
+              window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resolvedState));
+
+              window.setTimeout(() => {
+                setActiveView('enemy');
+              }, hasStaggered ? 2000 : 1000);
+
+              return resolvedState;
+            });
+          });
+
+          return nextState;
+        }
+
+        if (weaponChoice === 'rocket') {
+          const result = fireRocket(currentPlayer, previewIndex);
+          const [launchStep, ...travelSteps] = result.steps;
+
+          if (launchStep.isHit) {
+            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
+              triggerCellExplosions('player', launchStep.ignitedCellIndexes);
+            } else {
+              triggerCellExplosions('player', [launchStep.cellIndex]);
+            }
+          }
+          if (launchStep.audioSequence.length > 0) {
+            if (launchStep.ignited) {
+              playIgnitionSequence(launchStep.audioSequence);
+            } else {
+              playAudioSequence(launchStep.audioSequence);
+            }
+          }
+
+          const hasTravel = travelSteps.length > 0;
+
+          if (hasTravel) {
+            // Keeps currentTurn at 'app' through the whole travel animation,
+            // so the player can't act (or this effect re-enter) until the
+            // rocket fully resolves - see the top-of-effect guard above.
+            appWeaponInFlightRef.current = true;
+          }
+
+          const nextState: GameState = {
+            ...currentState,
+            currentTurn: hasTravel ? 'app' : 'player',
+            player: launchStep.navy,
+            appRocketCount: currentState.appRocketCount - 1,
+            appWeaponsUsed: currentState.appWeaponsUsed + 1,
+            appMineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          if (!hasTravel) {
+            const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+
+            if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
+              concludeGame('app', nextState, hasStaggered);
+            } else {
+              window.setTimeout(() => {
+                setActiveView('enemy');
+              }, hasStaggered ? 2000 : 1000);
+            }
+
+            return nextState;
+          }
+
+          runWeaponTravelSteps('player', travelSteps, 0, () => {
+            setGameState((current) => {
+              if (!current) {
+                return current;
+              }
+
+              const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+
+              appWeaponInFlightRef.current = false;
 
               if (areAllShipsSunk(current.player, shipSetOptions)) {
                 concludeGame('app', current, hasStaggered);
@@ -1199,7 +1391,7 @@ const Index = () => {
       onCellPressStart={side === 'enemy' ? handleEnemyCellPressStart : undefined}
       onCellPressEnd={side === 'enemy' ? handleEnemyCellPressEnd : undefined}
       onCellPressCancel={side === 'enemy' ? handleEnemyCellPressCancel : undefined}
-      isCellTargetable={side === 'enemy' ? (cell) => !isTorpedoInFlight && cell.effect === 'untargeted' && !cell.targeting : undefined}
+      isCellTargetable={side === 'enemy' ? (cell) => !isWeaponInFlight && cell.effect === 'untargeted' && !cell.targeting : undefined}
       explodingCellIndexes={explosionCells[side]}
       showSettings={showSettings}
       reserveArrowSpace={showArrows}
@@ -1212,7 +1404,7 @@ const Index = () => {
     />
   );
 
-  const isPlayerTurnActive = Boolean(gameState) && gameState?.currentTurn === 'player' && !gameOver.isOpen && !isTorpedoInFlight;
+  const isPlayerTurnActive = Boolean(gameState) && gameState?.currentTurn === 'player' && !gameOver.isOpen && !isWeaponInFlight;
   const playerWeaponsUsed = gameState?.playerWeaponsUsed ?? 0;
   const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
   const hasActiveMine = (gameState?.playerMineIndex ?? null) !== null;
@@ -1220,6 +1412,7 @@ const Index = () => {
   const moabButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || playerMoabUsedThisGame;
   const mineButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || hasActiveMine;
   const torpedoButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
+  const rocketButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
 
   // Each grid gets the weapons bar relevant to looking at it: the enemy
   // grid is where you'd arm and fire, so it gets "My Weapons"; your own
@@ -1242,6 +1435,9 @@ const Index = () => {
           torpedoCount={gameState?.appTorpedoCount ?? 0}
           isTorpedoArmed={false}
           torpedoButtonDisabled
+          rocketCount={gameState?.appRocketCount ?? 0}
+          isRocketArmed={false}
+          rocketButtonDisabled
         />
       );
     }
@@ -1264,6 +1460,10 @@ const Index = () => {
         isTorpedoArmed={armedWeapon === 'torpedo'}
         torpedoButtonDisabled={torpedoButtonDisabled}
         onTorpedoClick={() => handleWeaponButtonClick('torpedo')}
+        rocketCount={rocketCount}
+        isRocketArmed={armedWeapon === 'rocket'}
+        rocketButtonDisabled={rocketButtonDisabled}
+        onRocketClick={() => handleWeaponButtonClick('rocket')}
       />
     );
   };
@@ -1389,11 +1589,16 @@ type WeaponsBarProps = {
   isTorpedoArmed: boolean;
   torpedoButtonDisabled: boolean;
   onTorpedoClick?: () => void;
+  rocketCount: number;
+  isRocketArmed: boolean;
+  rocketButtonDisabled: boolean;
+  onRocketClick?: () => void;
 };
 
-// 6 slots (3 across, 2 rows) reserved for weapon buttons; MOAB, Mines, and
-// Torpedo occupy the first three, with the rest left as empty spacers so
-// the grid geometry is already right for whichever weapons come next.
+// 6 slots (3 across, 2 rows) reserved for weapon buttons; MOAB, Mines,
+// Torpedo, and Rocket occupy the first four, with the rest left as empty
+// spacers so the grid geometry is already right for whichever weapons
+// come next.
 const WEAPON_BUTTON_SLOT_COUNT = 6;
 
 type WeaponButtonProps = {
@@ -1453,6 +1658,10 @@ function WeaponsBar({
   isTorpedoArmed,
   torpedoButtonDisabled,
   onTorpedoClick,
+  rocketCount,
+  isRocketArmed,
+  rocketButtonDisabled,
+  onRocketClick,
 }: WeaponsBarProps) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
@@ -1501,8 +1710,16 @@ function WeaponsBar({
           disabled={torpedoButtonDisabled}
           onClick={onTorpedoClick}
         />
+        <WeaponButton
+          icon={<ArrowUpDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          label="ROCKET"
+          count={rocketCount}
+          isArmed={isRocketArmed}
+          disabled={rocketButtonDisabled}
+          onClick={onRocketClick}
+        />
 
-        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 3 }, (_, index) => (
+        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 4 }, (_, index) => (
           <div key={index} aria-hidden="true" />
         ))}
       </div>
@@ -1839,12 +2056,14 @@ const WEAPON_CURSOR_FILES: Record<WeaponType, string> = {
   moab: 'moab-cursor.svg',
   mine: 'mine-cursor.svg',
   torpedo: 'torpedo-cursor.svg',
+  rocket: 'rocket-cursor.svg',
 };
 
 const WEAPON_ICONS: Record<WeaponType, typeof Bomb> = {
   moab: Bomb,
   mine: CircleDot,
   torpedo: ArrowRightLeft,
+  rocket: ArrowUpDown,
 };
 
 function GridCell({
