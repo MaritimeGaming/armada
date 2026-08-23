@@ -177,24 +177,30 @@ tuning either mechanic, since they're designed to interact.
 
 - **Torpedo** (`fireTorpedo()` in `armada-game.ts`): can be launched at any
   untargeted cell, unlike the edge-only concept originally sketched below.
-  If that cell is occupied, it's a direct hit - same as any other weapon,
-  no travel. Otherwise it travels one cell at a time down the row -
-  rightward if launched from columns 0-4, leftward from columns 5-9 -
-  silently marking each untargeted empty cell it crosses as targeted (no
-  sound, matching the request that the whole row shouldn't play a splash
-  per cell) and passing straight over any cell already targeted, hit, or
-  sunk without touching its state, until it either reaches an untargeted
-  occupied cell (a normal hit, including oil-ignition odds, which consumes
-  it) or runs off the edge of the board and fizzles with nothing. Costs one
-  charge and one quota dot up front, at launch, regardless of how far it
-  travels or whether it ever hits anything.
+  It always travels exactly `TORPEDO_TRAVEL_DISTANCE` (5) further cells
+  down the row - rightward from columns 0-4, leftward from columns 5-9 -
+  regardless of whether the launch cell (or any cell along the way) was a
+  hit. This replaced an earlier "stop at the first hit" version: in
+  practice the very first or second cell was a live ship often enough that
+  the travel animation rarely got to play, which defeated the point of it.
+  Fixed-distance means a torpedo can now hit more than one ship in a
+  single run. Along the way, cells already targeted (miss, hit, or sunk)
+  are passed over untouched, an untargeted empty cell is silently marked
+  targeted (no sound, matching the request that the whole row shouldn't
+  play a splash per cell), and every untargeted occupied cell in the run
+  detonates (a normal hit, including its own independent oil-ignition
+  odds). Costs one charge and one quota dot up front, at launch,
+  regardless of how many cells it crosses or how many ships it hits.
+  Given the board is 10 wide and the direction split falls exactly at
+  columns 4/5, the 5-cell run is never actually clipped by the edge -
+  every launch column has exactly 5 valid cells in its travel direction.
 
   The travel is animated one cell at a time (`runTorpedoTravelSteps()` in
   `Index.tsx`): each traveled cell lights up with the normal targeting
   highlight for `TORPEDO_STEP_DELAY_MS` (500ms) before resolving and moving
-  to the next, so a long miss reads as a wave sweeping across the row
-  rather than an instant reveal. Because that can take several seconds
-  (worst case, nearly the full width of the board), turn ownership
+  to the next, so a shot reads as a wave sweeping across the row rather
+  than an instant reveal. Because that always takes a few seconds (5 steps
+  at 500ms each, on top of the instant launch resolution), turn ownership
   deliberately does *not* pass to the other side until the whole sequence
   finishes - unlike every other weapon, which hands off the turn the
   instant it resolves. Otherwise the computer's own turn could start

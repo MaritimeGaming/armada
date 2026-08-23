@@ -100,6 +100,13 @@ function readStoredCount(storageKey: string, fallback: number): number {
   return Number.isFinite(parsedCount) ? parsedCount : fallback;
 }
 
+// A torpedo can now hit more than one ship in a single run, so whether the
+// dialog/view-switch needs the longer "staggered explosion" pause has to
+// scan every step it took, not just the last one.
+function torpedoHasStaggeredOutcome(steps: TorpedoStep[]): boolean {
+  return steps.some((step) => Boolean(step.ignited) || step.audioSequence.includes('sink'));
+}
+
 const Index = () => {
   useSeoMeta({
     title: 'Armada',
@@ -695,10 +702,10 @@ const Index = () => {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
           if (!hasTravel) {
-            playerShotExtendedDelayRef.current = mineCausedExtendedDelay || Boolean(launchStep.ignited);
+            playerShotExtendedDelayRef.current = mineCausedExtendedDelay || torpedoHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('player', nextState, Boolean(launchStep.ignited));
+              concludeGame('player', nextState, torpedoHasStaggeredOutcome(result.steps));
             }
 
             return nextState;
@@ -710,16 +717,16 @@ const Index = () => {
                 return current;
               }
 
-              const finalStep = travelSteps[travelSteps.length - 1];
+              const hasStaggered = torpedoHasStaggeredOutcome(result.steps);
 
               setIsTorpedoInFlight(false);
 
               if (areAllShipsSunk(current.enemy, shipSetOptions)) {
-                concludeGame('player', current, Boolean(finalStep.ignited));
+                concludeGame('player', current, hasStaggered);
                 return current;
               }
 
-              playerShotExtendedDelayRef.current = mineCausedExtendedDelay || Boolean(finalStep.ignited);
+              playerShotExtendedDelayRef.current = mineCausedExtendedDelay || hasStaggered;
 
               const resolvedState: GameState = { ...current, currentTurn: 'app' };
               window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resolvedState));
@@ -1063,7 +1070,7 @@ const Index = () => {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
           if (!hasTravel) {
-            const hasStaggered = mineCausedExtendedDelay || Boolean(launchStep.ignited);
+            const hasStaggered = mineCausedExtendedDelay || torpedoHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('app', nextState, hasStaggered);
@@ -1082,8 +1089,7 @@ const Index = () => {
                 return current;
               }
 
-              const finalStep = travelSteps[travelSteps.length - 1];
-              const hasStaggered = mineCausedExtendedDelay || Boolean(finalStep.ignited);
+              const hasStaggered = mineCausedExtendedDelay || torpedoHasStaggeredOutcome(result.steps);
 
               appTorpedoInFlightRef.current = false;
 

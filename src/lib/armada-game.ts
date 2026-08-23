@@ -291,16 +291,22 @@ export type TorpedoFireResult = {
   steps: TorpedoStep[];
 };
 
+// How many cells beyond the launch cell a torpedo always travels, hit or
+// miss - fixed rather than "until the first hit," so it reliably shows its
+// travel animation instead of frequently resolving on the very first or
+// second cell.
+export const TORPEDO_TRAVEL_DISTANCE = 5;
+
 /**
- * Fires a torpedo at cellIndex. If that cell is occupied, it detonates
- * immediately (standard hit, same as any other weapon). Otherwise it
- * travels down the row - rightward from columns 0-4, leftward from columns
- * 5-9 - one cell at a time: cells that are already targeted (miss, hit, or
- * sunk) are passed over untouched, an untargeted empty cell is silently
- * marked targeted (no sound) and the torpedo continues, and the first
- * untargeted occupied cell it reaches detonates it (standard hit,
- * including oil-ignition odds) and ends the run. Running off the edge of
- * the board without finding a target ends the run with no hit.
+ * Fires a torpedo at cellIndex, then always travels exactly
+ * TORPEDO_TRAVEL_DISTANCE further cells down the row - rightward from
+ * columns 0-4, leftward from columns 5-9 - regardless of whether the
+ * launch cell (or any cell along the way) was a hit. Cells that are
+ * already targeted (miss, hit, or sunk) are passed over untouched, an
+ * untargeted empty cell is silently marked targeted (no sound), and every
+ * untargeted occupied cell in the run detonates (standard hit, including
+ * oil-ignition odds) - so a single torpedo can hit more than one ship.
+ * Running off the edge of the board just ends the run early.
  */
 export function fireTorpedo(navy: NavyState, cellIndex: number): TorpedoFireResult {
   const launchWithTargetedCell = setCellState(navy, cellIndex, { effect: 'targeted', targeting: false });
@@ -317,34 +323,37 @@ export function fireTorpedo(navy: NavyState, cellIndex: number): TorpedoFireResu
     },
   ];
 
-  if (navy.cells[cellIndex].occupied) {
-    return { steps };
-  }
-
   const column = cellIndex % GRID_SIZE;
   const row = Math.floor(cellIndex / GRID_SIZE);
   const direction = column <= 4 ? 1 : -1;
 
   let currentNavy = launchResult.navy;
 
-  for (let nextColumn = column + direction; nextColumn >= 0 && nextColumn < GRID_SIZE; nextColumn += direction) {
+  for (let distance = 1; distance <= TORPEDO_TRAVEL_DISTANCE; distance += 1) {
+    const nextColumn = column + direction * distance;
+
+    if (nextColumn < 0 || nextColumn >= GRID_SIZE) {
+      break;
+    }
+
     const nextIndex = row * GRID_SIZE + nextColumn;
     const candidateCell = currentNavy.cells[nextIndex];
 
     if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
       const preparedNavy = setCellState(currentNavy, nextIndex, { effect: 'targeted', targeting: false });
       const hitResult = resolveTargetingSequence(preparedNavy, [nextIndex]);
+      currentNavy = hitResult.navy;
 
       steps.push({
         cellIndex: nextIndex,
-        navy: hitResult.navy,
+        navy: currentNavy,
         isHit: true,
         audioSequence: hitResult.audioSequence,
         ignited: hitResult.ignited,
         ignitedCellIndexes: hitResult.ignitedCellIndexes,
       });
 
-      return { steps };
+      continue;
     }
 
     if (candidateCell.effect === 'untargeted') {
