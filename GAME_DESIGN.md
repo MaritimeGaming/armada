@@ -80,11 +80,12 @@ selectable in Settings, persisted to localStorage):
   simply targets whichever of the ship's own cells are still untargeted,
   in any order. See `hitIndexesByShipCode` in `selectAppTargetIndex()`.
   This same "play shrewdly" character now also covers
-  weapon use: whenever Level 2 decides to fire a MOAB, Mine, Torpedo, or
-  Rocket, it picks whichever untargeted cell maximizes that weapon's
-  "blast zone" — the count of still-untargeted cells within its footprint
-  (the 8-neighbor adjacency for MOAB/Mine, or the up-to-5 cells it would
-  travel through for Torpedo/Rocket; see `getWeaponBlastZoneIndexes()` and
+  weapon use: whenever Level 2 decides to fire a MOAB, Mine, Torpedo,
+  Rocket, or Harpoon, it picks whichever untargeted cell maximizes that
+  weapon's "blast zone" — the count of still-untargeted cells within its
+  footprint (the 8-neighbor adjacency for MOAB/Mine, or the up-to-5 cells
+  it would travel through for Torpedo/Rocket/Harpoon; see
+  `getWeaponBlastZoneIndexes()` and
   `selectAppWeaponTargetIndex()`) — breaking ties randomly. This reorders
   the turn's decision: weapon choice (`selectAppWeaponChoice()`) now
   happens *before* target selection, since the target search only makes
@@ -238,48 +239,68 @@ tuning either mechanic, since they're designed to interact.
   visible) - see the `hasMine` plumbing through `NavyPanel`/`GridCell`/
   `getCellPresentation` in `Index.tsx`.
 
-- **Torpedo and Rocket** (`fireTorpedo()`/`fireRocket()` in
-  `armada-game.ts`, both thin wrappers around a shared `fireTravelingWeapon()`
-  engine): direct counterparts differing only in orientation - Torpedo
-  travels horizontally, Rocket vertically - so they're documented together.
-  Rocket replaced an original "Gravity Bomb" concept - dropped at the top
-  of a column, travels down until it hits an active ship - with the exact
-  same mechanic as the Torpedo, just turned 90 degrees.
+- **Torpedo, Rocket, and Harpoon** (`fireTorpedo()`/`fireRocket()`/
+  `fireHarpoon()` in `armada-game.ts`, all thin wrappers around a shared
+  `fireTravelingWeapon()` engine, parameterized by a `WeaponTravelAxis` of
+  `'horizontal' | 'vertical' | 'diagonal'`): three variants on the same
+  mechanic, differing only in which axis (or both) they travel - Torpedo
+  horizontally, Rocket vertically, Harpoon diagonally - so they're
+  documented together. Rocket replaced an original "Gravity Bomb" concept -
+  dropped at the top of a column, travels down until it hits an active
+  ship - with the exact same mechanic as the Torpedo, just turned 90
+  degrees.
 
-  Either can be launched at any untargeted cell, unlike that edge-only
-  concept originally sketched for Gravity Bomb. It always travels exactly
-  `WEAPON_TRAVEL_DISTANCE` (5) further cells - Torpedo rightward from
-  columns 0-4 and leftward from columns 5-9; Rocket downward from rows 0-4
-  and upward from rows 5-9 - regardless of whether the launch cell (or any
-  cell along the way) was a hit. This replaced an earlier "stop at the
-  first hit" version of the Torpedo: in practice the very first or second
-  cell was a live ship often enough that the travel animation rarely got
-  to play, which defeated the point of it. Fixed-distance means a single
-  shot can now hit more than one ship. Along the way, cells already
-  targeted (miss, hit, or sunk) are passed over untouched, an untargeted
-  empty cell is silently marked targeted (no sound, matching the request
-  that the whole run shouldn't play a splash per cell), and every
-  untargeted occupied cell detonates (a normal hit, including its own
-  independent oil-ignition odds). Costs one charge and one quota dot up
-  front, at launch, regardless of how many cells it crosses or how many
-  ships it hits. Given the board is 10 wide/tall and the direction split
-  falls exactly at index 4/5 on whichever axis, the 5-cell run is never
-  actually clipped by the edge - every launch position has exactly 5 valid
-  cells in its travel direction.
+  Any of the three can be launched at any untargeted cell, unlike that
+  edge-only concept originally sketched for Gravity Bomb. Each always
+  travels exactly `WEAPON_TRAVEL_DISTANCE` (5) further cells - Torpedo
+  rightward from columns 0-4 and leftward from columns 5-9; Rocket downward
+  from rows 0-4 and upward from rows 5-9 - regardless of whether the launch
+  cell (or any cell along the way) was a hit. This replaced an earlier
+  "stop at the first hit" version of the Torpedo: in practice the very
+  first or second cell was a live ship often enough that the travel
+  animation rarely got to play, which defeated the point of it.
+  Fixed-distance means a single shot can now hit more than one ship. Along
+  the way, cells already targeted (miss, hit, or sunk) are passed over
+  untouched, an untargeted empty cell is silently marked targeted (no
+  sound, matching the request that the whole run shouldn't play a splash
+  per cell), and every untargeted occupied cell detonates (a normal hit,
+  including its own independent oil-ignition odds). Costs one charge and
+  one quota dot up front, at launch, regardless of how many cells it
+  crosses or how many ships it hits. Given the board is 10 wide/tall and
+  the direction split falls exactly at index 4/5 on whichever axis, the
+  5-cell run is never actually clipped by the edge - every launch position
+  has exactly 5 valid cells in its travel direction, on every axis this
+  engine supports.
+
+  **Harpoon** travels diagonally, and moves both axes at once -
+  `getWeaponTravelIndexes()` steps the column *and* the row independently,
+  each using the exact same 0-4-vs-5-9 split as Torpedo/Rocket use on their
+  single axis. This was chosen over a single fixed diagonal direction
+  (e.g. always down-right) because that would leave two of the board's
+  four quadrants with no full-length run available in *either* diagonal
+  direction - a cell in the top-right corner has no room to travel
+  down-right, and no room to travel up-left either, since both run off the
+  board almost immediately. Deriving the direction independently per axis
+  instead gives every cell its own quadrant-appropriate diagonal: top-left
+  always down-right, bottom-right always up-left, top-right always
+  down-left, bottom-left always up-right - so, like Torpedo and Rocket,
+  every cell still gets the full 5-cell run, just diagonally, using only
+  one weapon slot instead of needing two "NW-SE" and "NE-SW" variants.
 
   The travel is animated one cell at a time (`runWeaponTravelSteps()` in
-  `Index.tsx`, shared by both weapons): each traveled cell lights up with
-  the normal targeting highlight for `WEAPON_TRAVEL_STEP_DELAY_MS` (500ms)
-  before resolving and moving to the next, so a shot reads as a wave
-  sweeping across the row or column rather than an instant reveal. Because
-  that always takes a few seconds (5 steps at 500ms each, on top of the
-  instant launch resolution), turn ownership deliberately does *not* pass
-  to the other side until the whole sequence finishes - unlike every other
-  weapon, which hands off the turn the instant it resolves. Otherwise the
-  computer's own turn could start firing mid-animation. `isWeaponInFlight`
-  (player) and `appWeaponInFlightRef` (computer) exist solely to block
-  input/re-entry during that window, shared by both weapons since only one
-  can ever be traveling for a given side at a time.
+  `Index.tsx`, shared by all three weapons): each traveled cell lights up
+  with the normal targeting highlight for `WEAPON_TRAVEL_STEP_DELAY_MS`
+  (500ms) before resolving and moving to the next, so a shot reads as a
+  wave sweeping across the row, column, or diagonal rather than an instant
+  reveal. Because that always takes a few seconds (5 steps at 500ms each,
+  on top of the instant launch resolution), turn ownership deliberately
+  does *not* pass to the other side until the whole sequence finishes -
+  unlike every other weapon, which hands off the turn the instant it
+  resolves. Otherwise the computer's own turn could start firing
+  mid-animation. `isWeaponInFlight` (player) and `appWeaponInFlightRef`
+  (computer) exist solely to block input/re-entry during that window,
+  shared by all three weapons since only one can ever be traveling for a
+  given side at a time.
 
 **Not yet implemented:**
 - **Surveillance Drone**: reveals a cell, a 3x3 block, a full row, or a full
@@ -287,8 +308,8 @@ tuning either mechanic, since they're designed to interact.
 
 ### Turn economy
 
-**Firing MOAB, Torpedo, Rocket, or the Drone replaces your regular shot
-for that turn** — it's an alternative action, not a bonus one. This
+**Firing MOAB, Torpedo, Rocket, Harpoon, or the Drone replaces your regular
+shot for that turn** — it's an alternative action, not a bonus one. This
 keeps weapons a meaningful resource-management choice (use it now vs. save
 it) rather than a strictly-additive power boost.
 
@@ -391,20 +412,28 @@ right here," both keyed off `armedWeapon`, threaded down through
   cursor, delivered at the one moment touch actually has an analogous
   state.
 
-For the Torpedo and Rocket specifically, both the cursor and the mobile
-preview icon are direction-aware, not a single fixed asset: the Torpedo's
-arrow points right over columns 0-4 and left over columns 5-9
+For the Torpedo, Rocket, and Harpoon specifically, both the cursor and the
+mobile preview icon are direction-aware, not a single fixed asset: the
+Torpedo's arrow points right over columns 0-4 and left over columns 5-9
 (`torpedo-cursor.svg`/`torpedo-cursor-left.svg`), the Rocket's points down
 over rows 0-4 and up over rows 5-9 (`rocket-cursor.svg`/
 `rocket-cursor-up.svg`) - mirroring exactly which direction that weapon
 would actually travel from the hovered/pressed cell (see
-`getWeaponTravelIndexes()`'s own column/row <= 4 split). `WEAPON_CURSOR_FILES`
-and `WEAPON_PREVIEW_ICONS` (`Index.tsx`) hold a `{ default, flipped }` pair
-per weapon - MOAB and Mine have no direction, so they only ever use
-`default`. The weapons bar's own button icons are unaffected (still the
-plain bidirectional `ArrowRightLeft`/`ArrowUpDown`), since a button has no
-cell position to point a direction at - only `GridCell`'s cursor and
-preview icon need to know which cell they're over.
+`getWeaponTravelIndexes()`'s own column/row <= 4 split). Harpoon needs four
+variants, not two, one per quadrant
+(`harpoon-cursor-down-right.svg`/`harpoon-cursor-up-left.svg`/
+`harpoon-cursor-down-left.svg`/`harpoon-cursor-up-right.svg`), so the
+original two-way `{ default, flipped }` asset structure built for
+Torpedo/Rocket was generalized into `getWeaponDirectionKey(weapon,
+cellIndex)`, returning one of `'none' | 'right' | 'left' | 'down' | 'up' |
+'down-right' | 'up-left' | 'down-left' | 'up-right'`; `WEAPON_CURSOR_FILES`
+and `WEAPON_PREVIEW_ICONS` (`Index.tsx`) key off that string instead of a
+fixed `{ default, flipped }` shape - MOAB and Mine have no direction, so
+they only ever use `'none'`. The weapons bar's own button icons are
+unaffected (still the plain bidirectional `ArrowRightLeft`/`ArrowUpDown`/
+`MoveDiagonal`), since a button has no cell position to point a direction
+at - only `GridCell`'s cursor and preview icon need to know which cell
+they're over.
 
 This was chosen over two alternatives:
 - **Right-click / long-press context menu on the cell itself**: doesn't
@@ -423,9 +452,10 @@ top of the same primitive, not a new gesture.
 
 A hypothetical edge-restricted weapon should extend the existing per-cell
 `isCellTargetable` computation to only mark legal cells as targetable
-while armed, rather than showing an error after the fact. Neither the
-Torpedo nor the Rocket needed this in the end: both can launch from
-anywhere on the board, so neither ever restricts `isCellTargetable`.
+while armed, rather than showing an error after the fact. None of the
+Torpedo, Rocket, or Harpoon needed this in the end: all three can launch
+from anywhere on the board, so none of them ever restricts
+`isCellTargetable`.
 
 Intended monetization model: players start with a handful of charges per
 weapon, with refills obtainable via rewarded ads (Google Play style: watch

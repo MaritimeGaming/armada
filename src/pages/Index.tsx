@@ -2,13 +2,31 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useSeoMeta } from '@unhead/react';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowRightLeft, ArrowUp, ArrowUpDown, Bomb, ChevronLeft, ChevronRight, CircleDot, Settings } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowDownLeft,
+  ArrowDownRight,
+  ArrowLeft,
+  ArrowRight,
+  ArrowRightLeft,
+  ArrowUp,
+  ArrowUpDown,
+  ArrowUpLeft,
+  ArrowUpRight,
+  Bomb,
+  ChevronLeft,
+  ChevronRight,
+  CircleDot,
+  MoveDiagonal,
+  Settings,
+} from 'lucide-react';
 
 import {
   areAllShipsSunk,
   AUDIO_FILES,
   createGameState,
   DEFAULT_SHIP_SET_OPTIONS,
+  fireHarpoon,
   fireMoab,
   fireRocket,
   fireTorpedo,
@@ -69,9 +87,13 @@ const TORPEDO_REFILL_COUNT = 3;
 const ROCKET_COUNT_STORAGE_KEY = 'armada:rocket-count';
 const ROCKET_STARTING_COUNT = 2;
 const ROCKET_REFILL_COUNT = 3;
+const HARPOON_COUNT_STORAGE_KEY = 'armada:harpoon-count';
+const HARPOON_STARTING_COUNT = 2;
+const HARPOON_REFILL_COUNT = 3;
 // How long each traveled cell (beyond the launch cell) stays lit with the
 // targeting highlight before it resolves and the weapon moves on. Shared by
-// the Torpedo and Rocket - direct counterparts, differing only in orientation.
+// the Torpedo, Rocket, and Harpoon - direct counterparts, differing only in
+// orientation.
 const WEAPON_TRAVEL_STEP_DELAY_MS = 500;
 // Lifetime record, not part of GameState: survives New Game and browser
 // restarts, and only ever grows as games are completed.
@@ -150,6 +172,7 @@ const Index = () => {
   const [mineCount, setMineCount] = useState<number>(() => readStoredCount(MINE_COUNT_STORAGE_KEY, MINE_STARTING_COUNT));
   const [torpedoCount, setTorpedoCount] = useState<number>(() => readStoredCount(TORPEDO_COUNT_STORAGE_KEY, TORPEDO_STARTING_COUNT));
   const [rocketCount, setRocketCount] = useState<number>(() => readStoredCount(ROCKET_COUNT_STORAGE_KEY, ROCKET_STARTING_COUNT));
+  const [harpoonCount, setHarpoonCount] = useState<number>(() => readStoredCount(HARPOON_COUNT_STORAGE_KEY, HARPOON_STARTING_COUNT));
   const [gamesPlayed, setGamesPlayed] = useState<number>(() => readStoredCount(GAMES_PLAYED_STORAGE_KEY, 0));
   const [gamesWon, setGamesWon] = useState<number>(() => readStoredCount(GAMES_WON_STORAGE_KEY, 0));
   // A Torpedo's or Rocket's travel can take several seconds; turn ownership
@@ -427,7 +450,13 @@ const Index = () => {
       return;
     }
 
-    const counts: Record<WeaponType, number> = { moab: moabCount, mine: mineCount, torpedo: torpedoCount, rocket: rocketCount };
+    const counts: Record<WeaponType, number> = {
+      moab: moabCount,
+      mine: mineCount,
+      torpedo: torpedoCount,
+      rocket: rocketCount,
+      harpoon: harpoonCount,
+    };
     const count = counts[weapon];
 
     if (count > 0) {
@@ -440,18 +469,21 @@ const Index = () => {
       mine: MINE_COUNT_STORAGE_KEY,
       torpedo: TORPEDO_COUNT_STORAGE_KEY,
       rocket: ROCKET_COUNT_STORAGE_KEY,
+      harpoon: HARPOON_COUNT_STORAGE_KEY,
     };
     const refillCounts: Record<WeaponType, number> = {
       moab: MOAB_REFILL_COUNT,
       mine: MINE_REFILL_COUNT,
       torpedo: TORPEDO_REFILL_COUNT,
       rocket: ROCKET_REFILL_COUNT,
+      harpoon: HARPOON_REFILL_COUNT,
     };
     const setCounts: Record<WeaponType, (value: number) => void> = {
       moab: setMoabCount,
       mine: setMineCount,
       torpedo: setTorpedoCount,
       rocket: setRocketCount,
+      harpoon: setHarpoonCount,
     };
 
     const storageKey = storageKeys[weapon];
@@ -847,6 +879,87 @@ const Index = () => {
           return nextState;
         }
 
+        if (armedWeapon === 'harpoon') {
+          const result = fireHarpoon(currentEnemy, releaseIndex);
+          const [launchStep, ...travelSteps] = result.steps;
+
+          if (launchStep.isHit) {
+            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
+              triggerCellExplosions('enemy', launchStep.ignitedCellIndexes);
+            } else {
+              triggerCellExplosions('enemy', [launchStep.cellIndex]);
+            }
+          }
+          if (launchStep.audioSequence.length > 0) {
+            if (launchStep.ignited) {
+              playIgnitionSequence(launchStep.audioSequence);
+            } else {
+              playAudioSequence(launchStep.audioSequence);
+            }
+          }
+
+          setArmedWeapon(null);
+          setHarpoonCount((current) => {
+            const nextCount = current - 1;
+            window.localStorage.setItem(HARPOON_COUNT_STORAGE_KEY, String(nextCount));
+            return nextCount;
+          });
+
+          const hasTravel = travelSteps.length > 0;
+
+          if (hasTravel) {
+            setIsWeaponInFlight(true);
+          }
+
+          const nextState: GameState = {
+            ...state,
+            // A miss keeps travelling for several more seconds of animation -
+            // turn ownership doesn't pass to the computer until that finishes,
+            // so its own turn can't start mid-flight (see runWeaponTravelSteps).
+            currentTurn: hasTravel ? 'player' : 'app',
+            enemy: launchStep.navy,
+            playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerMineIndex: mineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          if (!hasTravel) {
+            playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+
+            if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
+              concludeGame('player', nextState, weaponHasStaggeredOutcome(result.steps));
+            }
+
+            return nextState;
+          }
+
+          runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+            setGameState((current) => {
+              if (!current) {
+                return current;
+              }
+
+              const hasStaggered = weaponHasStaggeredOutcome(result.steps);
+
+              setIsWeaponInFlight(false);
+
+              if (areAllShipsSunk(current.enemy, shipSetOptions)) {
+                concludeGame('player', current, hasStaggered);
+                return current;
+              }
+
+              playerShotExtendedDelayRef.current = mineCausedExtendedDelay || hasStaggered;
+
+              const resolvedState: GameState = { ...current, currentTurn: 'app' };
+              window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resolvedState));
+              return resolvedState;
+            });
+          });
+
+          return nextState;
+        }
+
         const enemyWithTargetedCell = setCellState(currentEnemy, releaseIndex, {
           effect: 'targeted',
           targeting: false,
@@ -965,6 +1078,7 @@ const Index = () => {
         appMineIndex: gameState.appMineIndex,
         appTorpedoCount: gameState.appTorpedoCount,
         appRocketCount: gameState.appRocketCount,
+        appHarpoonCount: gameState.appHarpoonCount,
       });
     }
 
@@ -1313,6 +1427,88 @@ const Index = () => {
           return nextState;
         }
 
+        if (weaponChoice === 'harpoon') {
+          const result = fireHarpoon(currentPlayer, previewIndex);
+          const [launchStep, ...travelSteps] = result.steps;
+
+          if (launchStep.isHit) {
+            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
+              triggerCellExplosions('player', launchStep.ignitedCellIndexes);
+            } else {
+              triggerCellExplosions('player', [launchStep.cellIndex]);
+            }
+          }
+          if (launchStep.audioSequence.length > 0) {
+            if (launchStep.ignited) {
+              playIgnitionSequence(launchStep.audioSequence);
+            } else {
+              playAudioSequence(launchStep.audioSequence);
+            }
+          }
+
+          const hasTravel = travelSteps.length > 0;
+
+          if (hasTravel) {
+            // Keeps currentTurn at 'app' through the whole travel animation,
+            // so the player can't act (or this effect re-enter) until the
+            // harpoon fully resolves - see the top-of-effect guard above.
+            appWeaponInFlightRef.current = true;
+          }
+
+          const nextState: GameState = {
+            ...currentState,
+            currentTurn: hasTravel ? 'app' : 'player',
+            player: launchStep.navy,
+            appHarpoonCount: currentState.appHarpoonCount - 1,
+            appWeaponsUsed: currentState.appWeaponsUsed + 1,
+            appMineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          if (!hasTravel) {
+            const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+
+            if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
+              concludeGame('app', nextState, hasStaggered);
+            } else {
+              window.setTimeout(() => {
+                setActiveView('enemy');
+              }, hasStaggered ? 2000 : 1000);
+            }
+
+            return nextState;
+          }
+
+          runWeaponTravelSteps('player', travelSteps, 0, () => {
+            setGameState((current) => {
+              if (!current) {
+                return current;
+              }
+
+              const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+
+              appWeaponInFlightRef.current = false;
+
+              if (areAllShipsSunk(current.player, shipSetOptions)) {
+                concludeGame('app', current, hasStaggered);
+                return current;
+              }
+
+              const resolvedState: GameState = { ...current, currentTurn: 'player' };
+              window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resolvedState));
+
+              window.setTimeout(() => {
+                setActiveView('enemy');
+              }, hasStaggered ? 2000 : 1000);
+
+              return resolvedState;
+            });
+          });
+
+          return nextState;
+        }
+
         const playerWithTargetedCell = setCellState(currentPlayer, previewIndex, {
           effect: 'targeted',
           targeting: false,
@@ -1422,6 +1618,7 @@ const Index = () => {
   const mineButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || hasActiveMine;
   const torpedoButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
   const rocketButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
+  const harpoonButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
 
   // Each grid gets the weapons bar relevant to looking at it: the enemy
   // grid is where you'd arm and fire, so it gets "My Weapons"; your own
@@ -1447,6 +1644,9 @@ const Index = () => {
           rocketCount={gameState?.appRocketCount ?? 0}
           isRocketArmed={false}
           rocketButtonDisabled
+          harpoonCount={gameState?.appHarpoonCount ?? 0}
+          isHarpoonArmed={false}
+          harpoonButtonDisabled
         />
       );
     }
@@ -1473,6 +1673,10 @@ const Index = () => {
         isRocketArmed={armedWeapon === 'rocket'}
         rocketButtonDisabled={rocketButtonDisabled}
         onRocketClick={() => handleWeaponButtonClick('rocket')}
+        harpoonCount={harpoonCount}
+        isHarpoonArmed={armedWeapon === 'harpoon'}
+        harpoonButtonDisabled={harpoonButtonDisabled}
+        onHarpoonClick={() => handleWeaponButtonClick('harpoon')}
       />
     );
   };
@@ -1602,12 +1806,16 @@ type WeaponsBarProps = {
   isRocketArmed: boolean;
   rocketButtonDisabled: boolean;
   onRocketClick?: () => void;
+  harpoonCount: number;
+  isHarpoonArmed: boolean;
+  harpoonButtonDisabled: boolean;
+  onHarpoonClick?: () => void;
 };
 
 // 6 slots (3 across, 2 rows) reserved for weapon buttons; MOAB, Mines,
-// Torpedo, and Rocket occupy the first four, with the rest left as empty
-// spacers so the grid geometry is already right for whichever weapons
-// come next.
+// Torpedo, Rocket, and Harpoon occupy the first five, with the rest left
+// as empty spacers so the grid geometry is already right for whichever
+// weapons come next.
 const WEAPON_BUTTON_SLOT_COUNT = 6;
 
 type WeaponButtonProps = {
@@ -1671,6 +1879,10 @@ function WeaponsBar({
   isRocketArmed,
   rocketButtonDisabled,
   onRocketClick,
+  harpoonCount,
+  isHarpoonArmed,
+  harpoonButtonDisabled,
+  onHarpoonClick,
 }: WeaponsBarProps) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
@@ -1727,8 +1939,16 @@ function WeaponsBar({
           disabled={rocketButtonDisabled}
           onClick={onRocketClick}
         />
+        <WeaponButton
+          icon={<MoveDiagonal className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          label="HARPOON"
+          count={harpoonCount}
+          isArmed={isHarpoonArmed}
+          disabled={harpoonButtonDisabled}
+          onClick={onHarpoonClick}
+        />
 
-        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 4 }, (_, index) => (
+        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 5 }, (_, index) => (
           <div key={index} aria-hidden="true" />
         ))}
       </div>
@@ -2062,53 +2282,82 @@ function ShipRow({ ship, status, isTooltipOpen, onReveal }: ShipRowProps) {
   );
 }
 
-type DirectionalAsset<T> = { default: T; flipped?: T };
+// 'none' for MOAB/Mine (no travel direction). Torpedo/Rocket only ever use
+// the two axis-aligned keys; Harpoon uses the four diagonal quadrant keys.
+type WeaponDirectionKey = 'none' | 'right' | 'left' | 'down' | 'up' | 'down-right' | 'up-left' | 'down-left' | 'up-right';
 
-const WEAPON_CURSOR_FILES: Record<WeaponType, DirectionalAsset<string>> = {
-  moab: { default: 'moab-cursor.svg' },
-  mine: { default: 'mine-cursor.svg' },
-  torpedo: { default: 'torpedo-cursor.svg', flipped: 'torpedo-cursor-left.svg' },
-  rocket: { default: 'rocket-cursor.svg', flipped: 'rocket-cursor-up.svg' },
+const WEAPON_CURSOR_FILES: Record<WeaponType, Partial<Record<WeaponDirectionKey, string>>> = {
+  moab: { none: 'moab-cursor.svg' },
+  mine: { none: 'mine-cursor.svg' },
+  torpedo: { right: 'torpedo-cursor.svg', left: 'torpedo-cursor-left.svg' },
+  rocket: { down: 'rocket-cursor.svg', up: 'rocket-cursor-up.svg' },
+  harpoon: {
+    'down-right': 'harpoon-cursor-down-right.svg',
+    'up-left': 'harpoon-cursor-up-left.svg',
+    'down-left': 'harpoon-cursor-down-left.svg',
+    'up-right': 'harpoon-cursor-up-right.svg',
+  },
 };
 
 // Used only for the grid cell's own mobile press-and-hold preview (see
 // GridCell) - the weapons bar buttons hardcode their own icons directly,
 // since a button has no cell position to point a direction at.
-const WEAPON_PREVIEW_ICONS: Record<WeaponType, DirectionalAsset<typeof Bomb>> = {
-  moab: { default: Bomb },
-  mine: { default: CircleDot },
-  torpedo: { default: ArrowRight, flipped: ArrowLeft },
-  rocket: { default: ArrowDown, flipped: ArrowUp },
+const WEAPON_PREVIEW_ICONS: Record<WeaponType, Partial<Record<WeaponDirectionKey, typeof Bomb>>> = {
+  moab: { none: Bomb },
+  mine: { none: CircleDot },
+  torpedo: { right: ArrowRight, left: ArrowLeft },
+  rocket: { down: ArrowDown, up: ArrowUp },
+  harpoon: {
+    'down-right': ArrowDownRight,
+    'up-left': ArrowUpLeft,
+    'down-left': ArrowDownLeft,
+    'up-right': ArrowUpRight,
+  },
 };
 
 /**
  * Torpedo travels rightward from columns 0-4 but leftward from 5-9;
- * Rocket downward from rows 0-4 but upward from 5-9 (see
- * getWeaponTravelIndexes() in armada-game.ts, same split). The cursor and
- * mobile preview icon flip to match whichever direction that weapon would
- * actually travel if fired at cellIndex - MOAB and Mine have no
- * direction, so this is always false for them.
+ * Rocket downward from rows 0-4 but upward from 5-9. Harpoon travels
+ * diagonally, with the direction on each axis determined independently by
+ * the same column/row split, giving four quadrants (see
+ * getWeaponTravelIndexes() in armada-game.ts, same splits). The cursor and
+ * mobile preview icon match whichever direction that weapon would actually
+ * travel if fired at cellIndex - MOAB and Mine have no direction.
  */
-function isFlippedWeaponDirection(weapon: WeaponType, cellIndex: number): boolean {
+function getWeaponDirectionKey(weapon: WeaponType, cellIndex: number): WeaponDirectionKey {
+  const column = cellIndex % GRID_SIZE;
+  const row = Math.floor(cellIndex / GRID_SIZE);
+
   if (weapon === 'torpedo') {
-    return cellIndex % GRID_SIZE > 4;
+    return column > 4 ? 'left' : 'right';
   }
 
   if (weapon === 'rocket') {
-    return Math.floor(cellIndex / GRID_SIZE) > 4;
+    return row > 4 ? 'up' : 'down';
   }
 
-  return false;
+  if (weapon === 'harpoon') {
+    const goesLeft = column > 4;
+    const goesUp = row > 4;
+    if (!goesLeft && !goesUp) return 'down-right';
+    if (goesLeft && goesUp) return 'up-left';
+    if (goesLeft && !goesUp) return 'down-left';
+    return 'up-right';
+  }
+
+  return 'none';
 }
 
 function getWeaponCursorFile(weapon: WeaponType, cellIndex: number): string {
   const asset = WEAPON_CURSOR_FILES[weapon];
-  return isFlippedWeaponDirection(weapon, cellIndex) && asset.flipped ? asset.flipped : asset.default;
+  const key = getWeaponDirectionKey(weapon, cellIndex);
+  return asset[key] ?? Object.values(asset)[0]!;
 }
 
 function getWeaponPreviewIcon(weapon: WeaponType, cellIndex: number): typeof Bomb {
   const asset = WEAPON_PREVIEW_ICONS[weapon];
-  return isFlippedWeaponDirection(weapon, cellIndex) && asset.flipped ? asset.flipped : asset.default;
+  const key = getWeaponDirectionKey(weapon, cellIndex);
+  return asset[key] ?? Object.values(asset)[0]!;
 }
 
 function GridCell({

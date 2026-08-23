@@ -42,7 +42,7 @@ export type NavyState = {
 
 export type TurnOwner = 'player' | 'app';
 export type Winner = 'player' | 'app';
-export type WeaponType = 'moab' | 'mine' | 'torpedo' | 'rocket';
+export type WeaponType = 'moab' | 'mine' | 'torpedo' | 'rocket' | 'harpoon';
 
 export type GameState = {
   version: number;
@@ -59,6 +59,8 @@ export type GameState = {
   appTorpedoCount: number;
   /** Mirrors appMoabCount for the Rocket. */
   appRocketCount: number;
+  /** Mirrors appMoabCount for the Harpoon. */
+  appHarpoonCount: number;
   /** Mirrors playerWeaponsUsed for the computer. */
   appWeaponsUsed: number;
   /** Index in enemy.cells currently holding the player's active mine, or null if none is placed. Only one mine may be active at a time. */
@@ -89,7 +91,7 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 16;
+export const GAME_STATE_VERSION = 17;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 4;
@@ -97,6 +99,7 @@ export const APP_MOAB_STARTING_COUNT = 2;
 export const APP_MINE_STARTING_COUNT = 2;
 export const APP_TORPEDO_STARTING_COUNT = 2;
 export const APP_ROCKET_STARTING_COUNT = 2;
+export const APP_HARPOON_STARTING_COUNT = 2;
 // Chance, per computer turn (once a target cell is chosen), that it fires a
 // special weapon instead of a plain shot - checked only while it's still
 // under its per-game quota and has at least one available weapon.
@@ -424,48 +427,59 @@ export type WeaponTravelResult = {
 // direct counterparts, differing only in orientation.
 export const WEAPON_TRAVEL_DISTANCE = 5;
 
-export type WeaponTravelAxis = 'horizontal' | 'vertical';
+export type WeaponTravelAxis = 'horizontal' | 'vertical' | 'diagonal';
 
 /**
- * The cells a Torpedo (horizontal) or Rocket (vertical) would cross from
- * cellIndex, in travel order, clipped at the board edge: increasing from
- * the first half of the axis (row/column 0-4), decreasing from the second
- * half (5-9). Doesn't consider what's actually in those cells - just the
- * geometry of the run, up to WEAPON_TRAVEL_DISTANCE cells (never clipped in
- * practice on a 10-wide/tall board, since the split falls exactly at 4/5).
+ * The cells a Torpedo (horizontal), Rocket (vertical), or Harpoon
+ * (diagonal) would cross from cellIndex, in travel order, clipped at the
+ * board edge. Each axis that applies moves toward the far edge from
+ * whichever half of that axis cellIndex falls in - increasing from the
+ * first half (row/column 0-4), decreasing from the second half (5-9) -
+ * and diagonal moves both axes at once, so a single fixed "always
+ * down-right" rule would leave two of the board's four quadrants with no
+ * full-length run in either diagonal direction (e.g. the top-right corner
+ * has no room to go down-right, and no room to go up-left either). Moving
+ * both axes independently instead means every cell's quadrant gets its
+ * own diagonal - top-left always down-right, bottom-right always up-left,
+ * top-right always down-left, bottom-left always up-right - so every
+ * cell, on every axis this function supports, always has a full
+ * WEAPON_TRAVEL_DISTANCE cells of room (never clipped in practice on a
+ * 10-wide/tall board, since every split falls exactly at 4/5). Doesn't
+ * consider what's actually in those cells - just the geometry of the run.
  */
 export function getWeaponTravelIndexes(cellIndex: number, axis: WeaponTravelAxis): number[] {
   const column = cellIndex % GRID_SIZE;
   const row = Math.floor(cellIndex / GRID_SIZE);
-  const primary = axis === 'horizontal' ? column : row;
-  const direction = primary <= 4 ? 1 : -1;
+  const columnStep = axis === 'vertical' ? 0 : column <= 4 ? 1 : -1;
+  const rowStep = axis === 'horizontal' ? 0 : row <= 4 ? 1 : -1;
 
   const indexes: number[] = [];
 
   for (let distance = 1; distance <= WEAPON_TRAVEL_DISTANCE; distance += 1) {
-    const nextPrimary = primary + direction * distance;
+    const nextColumn = column + columnStep * distance;
+    const nextRow = row + rowStep * distance;
 
-    if (nextPrimary < 0 || nextPrimary >= GRID_SIZE) {
+    if (nextColumn < 0 || nextColumn >= GRID_SIZE || nextRow < 0 || nextRow >= GRID_SIZE) {
       break;
     }
 
-    indexes.push(axis === 'horizontal' ? row * GRID_SIZE + nextPrimary : nextPrimary * GRID_SIZE + column);
+    indexes.push(nextRow * GRID_SIZE + nextColumn);
   }
 
   return indexes;
 }
 
 /**
- * Shared engine for the Torpedo (horizontal) and Rocket (vertical):
- * launches at cellIndex, then always travels exactly WEAPON_TRAVEL_DISTANCE
- * further cells along axis (see getWeaponTravelIndexes), regardless of
- * whether the launch cell (or any cell along the way) was a hit. Cells
- * that are already targeted (miss, hit, or sunk) are passed over
- * untouched, an untargeted empty cell is silently marked targeted (no
- * sound), and every untargeted occupied cell in the run detonates
- * (standard hit, including oil-ignition odds) - so a single shot can hit
- * more than one ship. Running off the edge of the board just ends the run
- * early.
+ * Shared engine for the Torpedo (horizontal), Rocket (vertical), and
+ * Harpoon (diagonal): launches at cellIndex, then always travels exactly
+ * WEAPON_TRAVEL_DISTANCE further cells along axis (see
+ * getWeaponTravelIndexes), regardless of whether the launch cell (or any
+ * cell along the way) was a hit. Cells that are already targeted (miss,
+ * hit, or sunk) are passed over untouched, an untargeted empty cell is
+ * silently marked targeted (no sound), and every untargeted occupied cell
+ * in the run detonates (standard hit, including oil-ignition odds) - so a
+ * single shot can hit more than one ship. Running off the edge of the
+ * board just ends the run early.
  */
 function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTravelAxis): WeaponTravelResult {
   const launchWithTargetedCell = setCellState(navy, cellIndex, { effect: 'targeted', targeting: false });
@@ -527,6 +541,16 @@ export function fireTorpedo(navy: NavyState, cellIndex: number): WeaponTravelRes
 /** Travels vertically: downward from rows 0-4, upward from rows 5-9. */
 export function fireRocket(navy: NavyState, cellIndex: number): WeaponTravelResult {
   return fireTravelingWeapon(navy, cellIndex, 'vertical');
+}
+
+/**
+ * Travels diagonally: which of the four diagonal directions depends on
+ * the launch cell's quadrant (see getWeaponTravelIndexes) - down-right
+ * from the top-left quadrant, up-left from the bottom-right, down-left
+ * from the top-right, up-right from the bottom-left.
+ */
+export function fireHarpoon(navy: NavyState, cellIndex: number): WeaponTravelResult {
+  return fireTravelingWeapon(navy, cellIndex, 'diagonal');
 }
 
 export function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
@@ -629,14 +653,15 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
  * gets processed when it's fired. MOAB and Mine share the same 8-adjacent-
  * cells footprint (a Mine isn't an instant blast, but placing it where more
  * neighbors are still untargeted maximizes its odds of a wander-hit later).
- * Torpedo and Rocket use the cells they'd travel through.
+ * Torpedo, Rocket, and Harpoon use the cells they'd travel through.
  */
 export function getWeaponBlastZoneIndexes(cellIndex: number, weapon: WeaponType): number[] {
   if (weapon === 'moab' || weapon === 'mine') {
     return getAdjacentIndexes(cellIndex);
   }
 
-  return getWeaponTravelIndexes(cellIndex, weapon === 'torpedo' ? 'horizontal' : 'vertical');
+  const axis: WeaponTravelAxis = weapon === 'torpedo' ? 'horizontal' : weapon === 'rocket' ? 'vertical' : 'diagonal';
+  return getWeaponTravelIndexes(cellIndex, axis);
 }
 
 /**
@@ -685,6 +710,7 @@ export function selectAppWeaponChoice(options: {
   appMineIndex: number | null;
   appTorpedoCount: number;
   appRocketCount: number;
+  appHarpoonCount: number;
 }): WeaponType | null {
   if (options.appWeaponsUsed >= SPECIAL_WEAPON_QUOTA) {
     return null;
@@ -706,6 +732,9 @@ export function selectAppWeaponChoice(options: {
   }
   if (options.appRocketCount > 0) {
     availableWeapons.push('rocket');
+  }
+  if (options.appHarpoonCount > 0) {
+    availableWeapons.push('harpoon');
   }
 
   if (availableWeapons.length === 0) {
@@ -732,6 +761,7 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     appMineCount: APP_MINE_STARTING_COUNT,
     appTorpedoCount: APP_TORPEDO_STARTING_COUNT,
     appRocketCount: APP_ROCKET_STARTING_COUNT,
+    appHarpoonCount: APP_HARPOON_STARTING_COUNT,
     appWeaponsUsed: 0,
     playerMineIndex: null,
     appMineIndex: null,
