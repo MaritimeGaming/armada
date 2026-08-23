@@ -175,11 +175,36 @@ tuning either mechanic, since they're designed to interact.
   visible) - see the `hasMine` plumbing through `NavyPanel`/`GridCell`/
   `getCellPresentation` in `Index.tsx`.
 
+- **Torpedo** (`fireTorpedo()` in `armada-game.ts`): can be launched at any
+  untargeted cell, unlike the edge-only concept originally sketched below.
+  If that cell is occupied, it's a direct hit - same as any other weapon,
+  no travel. Otherwise it travels one cell at a time down the row -
+  rightward if launched from columns 0-4, leftward from columns 5-9 -
+  silently marking each untargeted empty cell it crosses as targeted (no
+  sound, matching the request that the whole row shouldn't play a splash
+  per cell) and passing straight over any cell already targeted, hit, or
+  sunk without touching its state, until it either reaches an untargeted
+  occupied cell (a normal hit, including oil-ignition odds, which consumes
+  it) or runs off the edge of the board and fizzles with nothing. Costs one
+  charge and one quota dot up front, at launch, regardless of how far it
+  travels or whether it ever hits anything.
+
+  The travel is animated one cell at a time (`runTorpedoTravelSteps()` in
+  `Index.tsx`): each traveled cell lights up with the normal targeting
+  highlight for `TORPEDO_STEP_DELAY_MS` (500ms) before resolving and moving
+  to the next, so a long miss reads as a wave sweeping across the row
+  rather than an instant reveal. Because that can take several seconds
+  (worst case, nearly the full width of the board), turn ownership
+  deliberately does *not* pass to the other side until the whole sequence
+  finishes - unlike every other weapon, which hands off the turn the
+  instant it resolves. Otherwise the computer's own turn could start
+  firing mid-animation. `isTorpedoInFlight` (player) and
+  `appTorpedoInFlightRef` (computer) exist solely to block input/re-entry
+  during that window.
+
 **Not yet implemented:**
 - **Surveillance Drone**: reveals a cell, a 3x3 block, a full row, or a full
   column, without targeting any of it.
-- **Torpedo**: dropped at the left edge of a row, travels right until it
-  hits an active ship.
 - **Gravity Bomb**: dropped at the top of a column, travels down until it
   hits an active ship.
 
@@ -292,9 +317,9 @@ right here," both keyed off `armedWeapon`, threaded down through
 
 This was chosen over two alternatives:
 - **Right-click / long-press context menu on the cell itself**: doesn't
-  translate to touch (no mobile equivalent of right-click), and since only
-  some weapons are legal on some cells (Torpedo/Gravity Bomb only at grid
-  edges), a per-cell menu means the player has to tap a cell just to
+  translate to touch (no mobile equivalent of right-click), and since some
+  weapons are only legal on some cells (Gravity Bomb would only be at the
+  top row), a per-cell menu means the player has to tap a cell just to
   discover what's available there — bad discoverability compared to seeing
   all weapon icons up front.
 - **Drag-and-drop the weapon onto the grid**: more implementation cost
@@ -306,10 +331,11 @@ interaction already built for regular shots
 (`onCellPressStart`/`onCellPressEnd` in `Index.tsx`) — it's a third mode on
 top of the same primitive, not a new gesture.
 
-Edge-restricted weapons (Torpedo, Gravity Bomb) should extend the existing
-per-cell `isCellTargetable` computation to only mark legal cells (left
-column, top row respectively) as targetable while armed, rather than
-showing an error after the fact.
+An edge-restricted weapon like the still-hypothetical Gravity Bomb should
+extend the existing per-cell `isCellTargetable` computation to only mark
+legal cells (top row) as targetable while armed, rather than showing an
+error after the fact. The Torpedo turned out not to need this: it can
+launch from anywhere, so it never restricted `isCellTargetable` at all.
 
 Intended monetization model: players start with a handful of charges per
 weapon, with refills obtainable via rewarded ads (Google Play style: watch

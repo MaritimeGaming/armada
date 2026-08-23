@@ -42,7 +42,7 @@ export type NavyState = {
 
 export type TurnOwner = 'player' | 'app';
 export type Winner = 'player' | 'app';
-export type WeaponType = 'moab' | 'mine';
+export type WeaponType = 'moab' | 'mine' | 'torpedo';
 
 export type GameState = {
   version: number;
@@ -55,6 +55,8 @@ export type GameState = {
   appMoabCount: number;
   /** Mirrors appMoabCount for the Mine. */
   appMineCount: number;
+  /** Mirrors appMoabCount for the Torpedo. */
+  appTorpedoCount: number;
   /** Mirrors playerWeaponsUsed for the computer. */
   appWeaponsUsed: number;
   /** Index in enemy.cells currently holding the player's active mine, or null if none is placed. Only one mine may be active at a time. */
@@ -85,12 +87,13 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 14;
+export const GAME_STATE_VERSION = 15;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 4;
 export const APP_MOAB_STARTING_COUNT = 2;
 export const APP_MINE_STARTING_COUNT = 2;
+export const APP_TORPEDO_STARTING_COUNT = 2;
 // Chance, per computer turn (once a target cell is chosen), that it fires a
 // special weapon instead of a plain shot - checked only while it's still
 // under its per-game quota and has at least one available weapon.
@@ -272,6 +275,93 @@ export function moveMine(navy: NavyState, mineIndex: number): MineMoveResult {
   };
 }
 
+export type TorpedoStep = {
+  cellIndex: number;
+  /** Navy state after this step resolves. */
+  navy: NavyState;
+  isHit: boolean;
+  /** Empty when this step is a silent pass-through or a silent miss during travel. */
+  audioSequence: AudioSequence;
+  ignited?: boolean;
+  ignitedCellIndexes?: number[];
+};
+
+export type TorpedoFireResult = {
+  /** Every step the torpedo took, launch cell first, in order. */
+  steps: TorpedoStep[];
+};
+
+/**
+ * Fires a torpedo at cellIndex. If that cell is occupied, it detonates
+ * immediately (standard hit, same as any other weapon). Otherwise it
+ * travels down the row - rightward from columns 0-4, leftward from columns
+ * 5-9 - one cell at a time: cells that are already targeted (miss, hit, or
+ * sunk) are passed over untouched, an untargeted empty cell is silently
+ * marked targeted (no sound) and the torpedo continues, and the first
+ * untargeted occupied cell it reaches detonates it (standard hit,
+ * including oil-ignition odds) and ends the run. Running off the edge of
+ * the board without finding a target ends the run with no hit.
+ */
+export function fireTorpedo(navy: NavyState, cellIndex: number): TorpedoFireResult {
+  const launchWithTargetedCell = setCellState(navy, cellIndex, { effect: 'targeted', targeting: false });
+  const launchResult = resolveTargetingSequence(launchWithTargetedCell, [cellIndex]);
+
+  const steps: TorpedoStep[] = [
+    {
+      cellIndex,
+      navy: launchResult.navy,
+      isHit: navy.cells[cellIndex].occupied,
+      audioSequence: launchResult.audioSequence,
+      ignited: launchResult.ignited,
+      ignitedCellIndexes: launchResult.ignitedCellIndexes,
+    },
+  ];
+
+  if (navy.cells[cellIndex].occupied) {
+    return { steps };
+  }
+
+  const column = cellIndex % GRID_SIZE;
+  const row = Math.floor(cellIndex / GRID_SIZE);
+  const direction = column <= 4 ? 1 : -1;
+
+  let currentNavy = launchResult.navy;
+
+  for (let nextColumn = column + direction; nextColumn >= 0 && nextColumn < GRID_SIZE; nextColumn += direction) {
+    const nextIndex = row * GRID_SIZE + nextColumn;
+    const candidateCell = currentNavy.cells[nextIndex];
+
+    if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
+      const preparedNavy = setCellState(currentNavy, nextIndex, { effect: 'targeted', targeting: false });
+      const hitResult = resolveTargetingSequence(preparedNavy, [nextIndex]);
+
+      steps.push({
+        cellIndex: nextIndex,
+        navy: hitResult.navy,
+        isHit: true,
+        audioSequence: hitResult.audioSequence,
+        ignited: hitResult.ignited,
+        ignitedCellIndexes: hitResult.ignitedCellIndexes,
+      });
+
+      return { steps };
+    }
+
+    if (candidateCell.effect === 'untargeted') {
+      currentNavy = setCellState(currentNavy, nextIndex, { effect: 'targeted', targeting: false });
+    }
+
+    steps.push({
+      cellIndex: nextIndex,
+      navy: currentNavy,
+      isHit: false,
+      audioSequence: [],
+    });
+  }
+
+  return { steps };
+}
+
 export function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
   const nextCells = navy.cells.map((cell, index) => {
     if (index !== cellIndex) {
@@ -346,6 +436,7 @@ export function selectAppWeaponChoice(options: {
   appMoabUsedThisGame: boolean;
   appMineCount: number;
   appMineIndex: number | null;
+  appTorpedoCount: number;
 }): WeaponType | null {
   if (options.appWeaponsUsed >= SPECIAL_WEAPON_QUOTA) {
     return null;
@@ -361,6 +452,9 @@ export function selectAppWeaponChoice(options: {
   }
   if (options.appMineCount > 0 && options.appMineIndex === null) {
     availableWeapons.push('mine');
+  }
+  if (options.appTorpedoCount > 0) {
+    availableWeapons.push('torpedo');
   }
 
   if (availableWeapons.length === 0) {
@@ -385,6 +479,7 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     playerWeaponsUsed: 0,
     appMoabCount: APP_MOAB_STARTING_COUNT,
     appMineCount: APP_MINE_STARTING_COUNT,
+    appTorpedoCount: APP_TORPEDO_STARTING_COUNT,
     appWeaponsUsed: 0,
     playerMineIndex: null,
     appMineIndex: null,
