@@ -21,6 +21,7 @@ import {
   SPECIAL_WEAPON_QUOTA,
   selectAppTargetIndex,
   selectAppWeaponChoice,
+  selectAppWeaponTargetIndex,
   setCellState,
   setCellTargeting,
 } from '@/lib/armada-game';
@@ -955,14 +956,6 @@ const Index = () => {
       return;
     }
 
-    const previewIndex = appPreviewIndexRef.current ?? selectAppTargetIndex(gameState.player, difficulty);
-
-    if (previewIndex === null) {
-      return;
-    }
-
-    appPreviewIndexRef.current = previewIndex;
-
     if (appWeaponChoiceRef.current === undefined) {
       appWeaponChoiceRef.current = selectAppWeaponChoice({
         appWeaponsUsed: gameState.appWeaponsUsed,
@@ -976,6 +969,23 @@ const Index = () => {
     }
 
     const weaponChoice = appWeaponChoiceRef.current;
+
+    // Weapon-aware targeting (pick whichever cell maximizes the weapon's
+    // blast zone) only kicks in at level2, matching its existing "hunts an
+    // adjacent cell after a hit" shrewdness for plain shots. Level1 stays
+    // pure chaos either way: a weapon just rides along with wherever its
+    // normal random target would have landed.
+    const previewIndex = appPreviewIndexRef.current ?? (
+      weaponChoice && difficulty === 'level2'
+        ? selectAppWeaponTargetIndex(gameState.player, weaponChoice)
+        : selectAppTargetIndex(gameState.player, difficulty)
+    );
+
+    if (previewIndex === null) {
+      return;
+    }
+
+    appPreviewIndexRef.current = previewIndex;
 
     const playerShotExtendedDelay = playerShotExtendedDelayRef.current;
     playerShotExtendedDelayRef.current = false;

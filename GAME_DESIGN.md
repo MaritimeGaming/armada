@@ -64,10 +64,28 @@ player's fleet, which affects who finishes first.
 
 **Implemented today** (`selectAppTargetIndex()` in `armada-game.ts`,
 selectable in Settings, persisted to localStorage):
-- **Level 1**: Pure random targeting across all untargeted cells.
+- **Level 1**: Pure random targeting across all untargeted cells — including
+  when it decides to fire a special weapon (Variable D): the weapon just
+  rides along with wherever the normal random target would have landed,
+  same as if no weapon had been picked at all.
 - **Level 2**: If a ship has been hit but not sunk, target its (8-neighbor,
   including diagonal) adjacent cells to finish it off before falling back to
-  random targeting.
+  random targeting. This same "play shrewdly" character now also covers
+  weapon use: whenever Level 2 decides to fire a MOAB, Mine, Torpedo, or
+  Rocket, it picks whichever untargeted cell maximizes that weapon's
+  "blast zone" — the count of still-untargeted cells within its footprint
+  (the 8-neighbor adjacency for MOAB/Mine, or the up-to-5 cells it would
+  travel through for Torpedo/Rocket; see `getWeaponBlastZoneIndexes()` and
+  `selectAppWeaponTargetIndex()`) — breaking ties randomly. This reorders
+  the turn's decision: weapon choice (`selectAppWeaponChoice()`) now
+  happens *before* target selection, since the target search only makes
+  sense once the weapon (and therefore the footprint shape) is known.
+  Weapon-aware play was originally sketched below as a separate, later
+  difficulty tier, but landed as part of Level 2 instead: introducing a
+  third rung risked a distinction most players couldn't articulate ("hunts
+  ships but wastes MOABs" vs. "hunts ships and uses them well"), where
+  folding it into Level 2 keeps the story simple — Level 1 is chaos in
+  every decision, Level 2 is shrewd in every decision.
 
 **Proposed future levels** (not yet implemented):
 - **Line-following hunt logic**: once two hits land on the same ship, target
@@ -76,8 +94,6 @@ selectable in Settings, persisted to localStorage):
 - **Oil-slick-aware play**: prioritize sinking the Oil Tanker early, then
   deliberately let the slick spread as wide as possible before trying to
   ignite it (mirrors the human's own best strategy — see Variable B).
-- **Weapon-aware play**: use additional weapons (Variable D) intelligently
-  once those exist, to widen the computer's advantage at higher difficulty.
 - **Outright cheating**: e.g. a flat 25% chance per shot that the computer
   looks at the true board state and targets a cell it knows contains a ship.
   The player would experience this as "the computer seems better," without
@@ -276,11 +292,10 @@ available (skipping Mines while one is already active, and any weapon
 whose standing count is 0). This is the "random cell, random timing"
 version of the idea — purely random, not the more deliberate "2 of each
 type, then random until the quota's spent" pacing that was originally
-discussed. Worth keeping in mind: a computer choosing purely at random
-when/where to fire will likely get less value per shot than a human
-aiming deliberately (e.g. at a partially-sunk ship's remaining cells), so
-equal quotas alone don't fully equalize the advantage — see Variable A's
-proposed "weapon-aware play" for the natural follow-up.
+discussed. *Which* weapon fires is still random at both difficulty levels;
+it's *where* it fires that now differs — Level 1 rides along with a plain
+random target same as always, while Level 2 picks the target that
+maximizes the weapon's blast zone (see Variable A's "weapon-aware play").
 
 ### One MOAB per side per game
 
@@ -364,9 +379,10 @@ unlocks that change the game's baseline difficulty.
 Implementation note: this shipped player-only first, as expected, since the
 computer AI (Variable A) didn't reason about anything beyond cell
 targeting. The computer's initial weapon usage (see the Per-game weapon
-quota section above) has since been added, but deliberately as a random
-add-on to its existing target selection rather than a real strategy layer —
-it decides *whether* and *which* weapon to fire independently of where its
-regular shot would land. A smarter version (e.g. preferring MOAB on cells
-adjacent to a hit) is still future work, tracked under Variable A's
-"weapon-aware play."
+quota section above) shipped as a random add-on to its existing target
+selection — it decided *whether* and *which* weapon to fire independently
+of where its regular shot would land. Variable A's "weapon-aware play"
+has since closed that gap for Level 2: it now picks *where* to fire a
+chosen weapon based on maximizing that weapon's blast zone, rather than
+firing wherever its regular shot happened to land. Level 1 still fires
+wherever its plain random target lands, weapon or not.

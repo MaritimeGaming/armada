@@ -301,19 +301,50 @@ export type WeaponTravelResult = {
 // direct counterparts, differing only in orientation.
 export const WEAPON_TRAVEL_DISTANCE = 5;
 
+export type WeaponTravelAxis = 'horizontal' | 'vertical';
+
+/**
+ * The cells a Torpedo (horizontal) or Rocket (vertical) would cross from
+ * cellIndex, in travel order, clipped at the board edge: increasing from
+ * the first half of the axis (row/column 0-4), decreasing from the second
+ * half (5-9). Doesn't consider what's actually in those cells - just the
+ * geometry of the run, up to WEAPON_TRAVEL_DISTANCE cells (never clipped in
+ * practice on a 10-wide/tall board, since the split falls exactly at 4/5).
+ */
+export function getWeaponTravelIndexes(cellIndex: number, axis: WeaponTravelAxis): number[] {
+  const column = cellIndex % GRID_SIZE;
+  const row = Math.floor(cellIndex / GRID_SIZE);
+  const primary = axis === 'horizontal' ? column : row;
+  const direction = primary <= 4 ? 1 : -1;
+
+  const indexes: number[] = [];
+
+  for (let distance = 1; distance <= WEAPON_TRAVEL_DISTANCE; distance += 1) {
+    const nextPrimary = primary + direction * distance;
+
+    if (nextPrimary < 0 || nextPrimary >= GRID_SIZE) {
+      break;
+    }
+
+    indexes.push(axis === 'horizontal' ? row * GRID_SIZE + nextPrimary : nextPrimary * GRID_SIZE + column);
+  }
+
+  return indexes;
+}
+
 /**
  * Shared engine for the Torpedo (horizontal) and Rocket (vertical):
  * launches at cellIndex, then always travels exactly WEAPON_TRAVEL_DISTANCE
- * further cells along axis - increasing from the first half (row/column
- * 0-4), decreasing from the second half (5-9) - regardless of whether the
- * launch cell (or any cell along the way) was a hit. Cells that are
- * already targeted (miss, hit, or sunk) are passed over untouched, an
- * untargeted empty cell is silently marked targeted (no sound), and every
- * untargeted occupied cell in the run detonates (standard hit, including
- * oil-ignition odds) - so a single shot can hit more than one ship.
- * Running off the edge of the board just ends the run early.
+ * further cells along axis (see getWeaponTravelIndexes), regardless of
+ * whether the launch cell (or any cell along the way) was a hit. Cells
+ * that are already targeted (miss, hit, or sunk) are passed over
+ * untouched, an untargeted empty cell is silently marked targeted (no
+ * sound), and every untargeted occupied cell in the run detonates
+ * (standard hit, including oil-ignition odds) - so a single shot can hit
+ * more than one ship. Running off the edge of the board just ends the run
+ * early.
  */
-function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: 'horizontal' | 'vertical'): WeaponTravelResult {
+function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTravelAxis): WeaponTravelResult {
   const launchWithTargetedCell = setCellState(navy, cellIndex, { effect: 'targeted', targeting: false });
   const launchResult = resolveTargetingSequence(launchWithTargetedCell, [cellIndex]);
 
@@ -328,21 +359,9 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: 'horizont
     },
   ];
 
-  const column = cellIndex % GRID_SIZE;
-  const row = Math.floor(cellIndex / GRID_SIZE);
-  const primary = axis === 'horizontal' ? column : row;
-  const direction = primary <= 4 ? 1 : -1;
-
   let currentNavy = launchResult.navy;
 
-  for (let distance = 1; distance <= WEAPON_TRAVEL_DISTANCE; distance += 1) {
-    const nextPrimary = primary + direction * distance;
-
-    if (nextPrimary < 0 || nextPrimary >= GRID_SIZE) {
-      break;
-    }
-
-    const nextIndex = axis === 'horizontal' ? row * GRID_SIZE + nextPrimary : nextPrimary * GRID_SIZE + column;
+  for (const nextIndex of getWeaponTravelIndexes(cellIndex, axis)) {
     const candidateCell = currentNavy.cells[nextIndex];
 
     if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
@@ -453,6 +472,60 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
   }
 
   return randomItem(untargetedIndexes);
+}
+
+/**
+ * The cells a weapon would affect if fired at cellIndex, for the purpose of
+ * picking the most efficient target - not the same thing as what actually
+ * gets processed when it's fired. MOAB and Mine share the same 8-adjacent-
+ * cells footprint (a Mine isn't an instant blast, but placing it where more
+ * neighbors are still untargeted maximizes its odds of a wander-hit later).
+ * Torpedo and Rocket use the cells they'd travel through.
+ */
+export function getWeaponBlastZoneIndexes(cellIndex: number, weapon: WeaponType): number[] {
+  if (weapon === 'moab' || weapon === 'mine') {
+    return getAdjacentIndexes(cellIndex);
+  }
+
+  return getWeaponTravelIndexes(cellIndex, weapon === 'torpedo' ? 'horizontal' : 'vertical');
+}
+
+/**
+ * Picks the most efficient cell to fire weapon at: whichever untargeted
+ * cell(s) have the most still-untargeted cells in their blast zone (see
+ * getWeaponBlastZoneIndexes), breaking ties randomly. Used only for
+ * "weapon-aware" play - level1 always fires a weapon at a plain random
+ * target instead, same as its regular shots.
+ */
+export function selectAppWeaponTargetIndex(navy: NavyState, weapon: WeaponType): number | null {
+  const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
+    if (cell.effect === 'untargeted') {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+
+  if (untargetedIndexes.length === 0) {
+    return null;
+  }
+
+  let bestIndexes: number[] = [];
+  let bestBlastZoneSize = -1;
+
+  untargetedIndexes.forEach((index) => {
+    const blastZoneSize = getWeaponBlastZoneIndexes(index, weapon).filter(
+      (candidateIndex) => navy.cells[candidateIndex]?.effect === 'untargeted',
+    ).length;
+
+    if (blastZoneSize > bestBlastZoneSize) {
+      bestBlastZoneSize = blastZoneSize;
+      bestIndexes = [index];
+    } else if (blastZoneSize === bestBlastZoneSize) {
+      bestIndexes.push(index);
+    }
+  });
+
+  return randomItem(bestIndexes);
 }
 
 export function selectAppWeaponChoice(options: {
