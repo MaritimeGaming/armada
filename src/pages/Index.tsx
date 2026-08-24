@@ -54,9 +54,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -2092,15 +2092,14 @@ function SettingsMenu({ shipSetOptions, onSinglesToggle, onNewGame, onResetStati
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Ships</DropdownMenuLabel>
-        <DropdownMenuItem onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}>
-          <div className="flex w-full items-center justify-between gap-3">
-            <span>Singles (E H L)</span>
-            <span className="text-xs text-muted-foreground">{shipSetOptions.includeSingles ? 'On' : 'Off'}</span>
-          </div>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onNewGame}>New Game</DropdownMenuItem>
+        <DropdownMenuCheckboxItem
+          checked={shipSetOptions.includeSingles}
+          onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}
+        >
+          Singles (E H L)
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onResetStatistics}>Reset Statistics</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
