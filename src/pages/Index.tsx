@@ -2498,7 +2498,7 @@ function GridCell({
         }}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
       >
-        <div className="flex h-full items-center justify-center text-white">{value}</div>
+        <div className="flex h-full items-center justify-center">{value}</div>
         {cell.targeting && WeaponIcon ? (
           // Mobile has no hover cursor to preview the armed weapon with, so
           // while the player is pressing-and-holding the target cell, show
@@ -2529,7 +2529,7 @@ function GridCell({
       )}
       aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
     >
-      <div className="flex h-full items-center justify-center text-white">{value}</div>
+      <div className="flex h-full items-center justify-center">{value}</div>
       {isExploding ? (
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className="cell-explosion">

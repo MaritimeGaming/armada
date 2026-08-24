@@ -347,6 +347,19 @@ tuning either mechanic, since they're designed to interact.
   It only applies pre-targeting: once the cell is actually hit or sunk, the
   ordinary hit/sunk colors and white text take back over.
 
+  This green tint shipped with a bug that made it invisible in practice for
+  a few commits: `GridCell` renders the cell's letter inside its own inner
+  `<div>`, which had a hardcoded `text-white` class - completely
+  overriding whatever color the outer cell element computed, `shipTextColorClass`
+  included. The outer element's `className` (and its `getComputedStyle().color`)
+  was correct the whole time, which is exactly why it initially looked
+  fine under inspection - the bug only showed up by checking the color of
+  the specific element the letter actually renders in. Fixed by dropping
+  the inner `text-white` and letting it inherit color from the outer
+  element instead, which every branch of `computeBaseCellPresentation()`
+  already sets explicitly - no branch relied on the inner div's hardcoded
+  default, so nothing else needed to change.
+
   **A cell's own `droneRevealed` flag, not its `exposure`, is what
   `getRevealedTargetIndexes()` checks** (see below) - and this distinction
   is load-bearing, not stylistic. `createNavy()`'s `known` parameter means
