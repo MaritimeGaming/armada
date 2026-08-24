@@ -511,7 +511,7 @@ const Index = () => {
     }, 2000);
   };
 
-  const concludeGame = (winner: Winner, state: GameState, hasStaggeredExplosion: boolean = false) => {
+  const concludeGame = (winner: Winner, state: GameState) => {
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
       // Deliberately not clearing explosionCells here: this runs in the same
@@ -520,10 +520,16 @@ const Index = () => {
       // paints it - the animation's own 380ms timeout (or handleNewGame,
       // for the next round) already cleans it up.
 
-    const revealedState = revealRemainingShipsInWinningNavy(state, winner);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    setGameState(state);
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(revealedState));
-    setGameState(revealedState);
+    // The losing side is whichever navy just lost its last ship - the same
+    // one the fatal shot's explosion is already animating on - so force it
+    // on screen for the two-second hold below, regardless of whatever view
+    // happened to be active a moment ago.
+    const losingSide: NavySide = winner === 'player' ? 'enemy' : 'player';
+    const winningSide: NavySide = winner === 'player' ? 'player' : 'enemy';
+    setActiveView(losingSide);
 
     setGamesPlayed((current) => {
       const nextCount = current + 1;
@@ -539,18 +545,24 @@ const Index = () => {
       });
     }
 
-    // An oil ignition (playIgnitionSequence) or a MOAB kill
-    // (playMoabSequence) both queue a second/third "explosion" cue 300ms or
-    // 600ms after the first - and that cue is Explosion.wav, a ~1.5s clip,
-    // so the tail of either sequence runs well past the standard pause.
-    // Give it room to actually finish before the dialog interrupts it.
+    // Give the losing navy's final explosion (audio + animation, already
+    // queued by whatever shot or weapon just resolved) two full seconds to
+    // play out - an oil ignition or MOAB kill queues a second/third
+    // "explosion" cue 300-600ms after the first, and that cue alone is a
+    // ~1.5s clip - before cutting away to reveal the winning navy's
+    // survivors and opening the dialog.
     window.setTimeout(() => {
+      const revealedState = revealRemainingShipsInWinningNavy(state, winner);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(revealedState));
+      setGameState(revealedState);
+      setActiveView(winningSide);
+
       if (winner === 'player') {
         playAudioCue('wingame');
       }
 
       setGameOver({ isOpen: true, winner });
-    }, hasStaggeredExplosion ? 2000 : 600);
+    }, 2000);
   };
 
   const handleEnemyCellPressStart = (cellIndex: number) => {
@@ -670,10 +682,8 @@ const Index = () => {
             playMoabSequence(audioSequence);
           }
 
-          // Either branch above queues a staggered explosion cue, unlike a
-          // plain shot, so this always needs the longer pause if it wins.
           if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
-            concludeGame('player', nextState, true);
+            concludeGame('player', nextState);
           }
 
           return nextState;
@@ -722,7 +732,7 @@ const Index = () => {
           }
 
           if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
-            concludeGame('player', nextState, ignited);
+            concludeGame('player', nextState);
           }
 
           return nextState;
@@ -777,7 +787,7 @@ const Index = () => {
             playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('player', nextState, weaponHasStaggeredOutcome(result.steps));
+              concludeGame('player', nextState);
             }
 
             return nextState;
@@ -794,7 +804,7 @@ const Index = () => {
               setIsWeaponInFlight(false);
 
               if (areAllShipsSunk(current.enemy, shipSetOptions)) {
-                concludeGame('player', current, hasStaggered);
+                concludeGame('player', current);
                 return current;
               }
 
@@ -858,7 +868,7 @@ const Index = () => {
             playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('player', nextState, weaponHasStaggeredOutcome(result.steps));
+              concludeGame('player', nextState);
             }
 
             return nextState;
@@ -875,7 +885,7 @@ const Index = () => {
               setIsWeaponInFlight(false);
 
               if (areAllShipsSunk(current.enemy, shipSetOptions)) {
-                concludeGame('player', current, hasStaggered);
+                concludeGame('player', current);
                 return current;
               }
 
@@ -939,7 +949,7 @@ const Index = () => {
             playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('player', nextState, weaponHasStaggeredOutcome(result.steps));
+              concludeGame('player', nextState);
             }
 
             return nextState;
@@ -956,7 +966,7 @@ const Index = () => {
               setIsWeaponInFlight(false);
 
               if (areAllShipsSunk(current.enemy, shipSetOptions)) {
-                concludeGame('player', current, hasStaggered);
+                concludeGame('player', current);
                 return current;
               }
 
@@ -1029,7 +1039,7 @@ const Index = () => {
       }
 
         if (areAllShipsSunk(updatedEnemy, shipSetOptions)) {
-          concludeGame('player', nextState, ignited);
+          concludeGame('player', nextState);
         }
 
         return nextState;
@@ -1252,7 +1262,7 @@ const Index = () => {
           }
 
           if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
-            concludeGame('app', nextState, hasStaggered);
+            concludeGame('app', nextState);
           } else {
             window.setTimeout(() => {
               setActiveView('enemy');
@@ -1299,7 +1309,7 @@ const Index = () => {
           }
 
           if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
-            concludeGame('app', nextState, hasStaggered);
+            concludeGame('app', nextState);
           } else {
             window.setTimeout(() => {
               setActiveView('enemy');
@@ -1352,7 +1362,7 @@ const Index = () => {
             const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('app', nextState, hasStaggered);
+              concludeGame('app', nextState);
             } else {
               window.setTimeout(() => {
                 setActiveView('enemy');
@@ -1373,7 +1383,7 @@ const Index = () => {
               appWeaponInFlightRef.current = false;
 
               if (areAllShipsSunk(current.player, shipSetOptions)) {
-                concludeGame('app', current, hasStaggered);
+                concludeGame('app', current);
                 return current;
               }
 
@@ -1434,7 +1444,7 @@ const Index = () => {
             const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('app', nextState, hasStaggered);
+              concludeGame('app', nextState);
             } else {
               window.setTimeout(() => {
                 setActiveView('enemy');
@@ -1455,7 +1465,7 @@ const Index = () => {
               appWeaponInFlightRef.current = false;
 
               if (areAllShipsSunk(current.player, shipSetOptions)) {
-                concludeGame('app', current, hasStaggered);
+                concludeGame('app', current);
                 return current;
               }
 
@@ -1516,7 +1526,7 @@ const Index = () => {
             const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
-              concludeGame('app', nextState, hasStaggered);
+              concludeGame('app', nextState);
             } else {
               window.setTimeout(() => {
                 setActiveView('enemy');
@@ -1537,7 +1547,7 @@ const Index = () => {
               appWeaponInFlightRef.current = false;
 
               if (areAllShipsSunk(current.player, shipSetOptions)) {
-                concludeGame('app', current, hasStaggered);
+                concludeGame('app', current);
                 return current;
               }
 
@@ -1605,7 +1615,7 @@ const Index = () => {
         }
 
         if (areAllShipsSunk(updatedPlayer, shipSetOptions)) {
-          concludeGame('app', nextState, hasStaggered);
+          concludeGame('app', nextState);
         } else {
           window.setTimeout(() => {
             setActiveView('enemy');

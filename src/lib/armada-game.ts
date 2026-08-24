@@ -557,33 +557,32 @@ export function fireHarpoon(navy: NavyState, cellIndex: number): WeaponTravelRes
 }
 
 /**
- * The cell itself plus its up-to-4 orthogonal (not diagonal) neighbors,
- * clipped at grid edges - the "diamond" (Von Neumann neighborhood) that
- * MOAB's 8-neighbor "square" (Moore neighborhood, see getAdjacentIndexes)
- * deliberately contrasts with. Smaller than MOAB's footprint since it's
- * free information rather than damage.
+ * The cell itself plus every cell within Manhattan distance 2 of it (a
+ * 13-cell diamond at most), clipped at grid edges - one ring larger in
+ * every direction than the 5-cell orthogonal-only diamond (distance <= 1)
+ * would give.
  */
 export function getDroneRevealIndexes(cellIndex: number): number[] {
   const x = cellIndex % GRID_SIZE;
   const y = Math.floor(cellIndex / GRID_SIZE);
-  const deltas: Array<[number, number]> = [
-    [0, 0],
-    [0, -1],
-    [0, 1],
-    [-1, 0],
-    [1, 0],
-  ];
+  const indexes: number[] = [];
 
-  return deltas.reduce<number[]>((indexes, [deltaX, deltaY]) => {
-    const nextX = x + deltaX;
-    const nextY = y + deltaY;
+  for (let deltaY = -2; deltaY <= 2; deltaY += 1) {
+    for (let deltaX = -2; deltaX <= 2; deltaX += 1) {
+      if (Math.abs(deltaX) + Math.abs(deltaY) > 2) {
+        continue;
+      }
 
-    if (nextX >= 0 && nextX < GRID_SIZE && nextY >= 0 && nextY < GRID_SIZE) {
-      indexes.push(nextY * GRID_SIZE + nextX);
+      const nextX = x + deltaX;
+      const nextY = y + deltaY;
+
+      if (nextX >= 0 && nextX < GRID_SIZE && nextY >= 0 && nextY < GRID_SIZE) {
+        indexes.push(nextY * GRID_SIZE + nextX);
+      }
     }
+  }
 
-    return indexes;
-  }, []);
+  return indexes;
 }
 
 export type DroneResult = {
@@ -602,6 +601,13 @@ export type DroneResult = {
  * are left untouched. Still costs one charge and one quota dot up front
  * regardless of how many (if any) of the footprint's cells were still
  * fogged, same as every other weapon.
+ *
+ * Sets exposure to 'known', the same state a targeted cell gets, rather
+ * than 'revealed' - 'revealed' is reserved for revealUntargetedShips()'s
+ * end-of-game display (a distinct green, see getCellPresentation() in
+ * Index.tsx), which the Drone must not trigger mid-game: an occupied cell
+ * revealed by a Drone should still render as a plain ship cell (or with
+ * whatever oil is on top of it), not the special end-game color.
  */
 export function fireDrone(navy: NavyState, cellIndex: number): DroneResult {
   const revealedIndexes = getDroneRevealIndexes(cellIndex).filter(
@@ -609,7 +615,7 @@ export function fireDrone(navy: NavyState, cellIndex: number): DroneResult {
   );
 
   const nextNavy = revealedIndexes.reduce(
-    (currentNavy, index) => setCellState(currentNavy, index, { exposure: 'revealed' }),
+    (currentNavy, index) => setCellState(currentNavy, index, { exposure: 'known' }),
     navy,
   );
 
@@ -641,12 +647,14 @@ export function setCellTargeting(navy: NavyState, cellIndex: number, targeting: 
 
 /**
  * Cells this side's own Drone has revealed as occupied but not yet
- * targeted (exposure 'revealed' - see fireDrone) - a confirmed ship
- * location, no guessing required.
+ * targeted (exposure 'known' but effect still 'untargeted' - see
+ * fireDrone) - a confirmed ship location, no guessing required. This
+ * combination can't arise any other way: every other path that sets
+ * exposure to 'known' sets effect to 'targeted' in the same update.
  */
 export function getRevealedTargetIndexes(navy: NavyState): number[] {
   return navy.cells.reduce<number[]>((indexes, cell, index) => {
-    if (cell.effect === 'untargeted' && cell.occupied && cell.exposure === 'revealed') {
+    if (cell.effect === 'untargeted' && cell.occupied && cell.exposure === 'known') {
       indexes.push(index);
     }
     return indexes;

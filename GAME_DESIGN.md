@@ -308,48 +308,61 @@ tuning either mechanic, since they're designed to interact.
 
 - **Drone** (`fireDrone()`/`getDroneRevealIndexes()` in `armada-game.ts`):
   the one weapon that doesn't attack. Fired at any untargeted cell, it
-  reveals the fog of war on that cell plus its up-to-4 orthogonal (not
-  diagonal) neighbors — a small diamond (Von Neumann neighborhood),
-  deliberately smaller than and shaped differently from MOAB's 3x3 "square"
-  blast (Moore neighborhood, see `getAdjacentIndexes()`), since it's free
-  information rather than damage. Cells in that footprint that are still
-  untargeted become visible - an occupied one shows its ship, an empty one
-  shows open water - but neither gets marked `targeted`: no hit, no miss,
-  no sound, no ignition risk, nothing actually fired. Cells outside the
-  footprint, or already targeted or already revealed, are left untouched.
-  Still costs one charge and one quota dot up front, same as every other
-  weapon, regardless of how much (if anything) was still fogged there.
+  reveals the fog of war on every cell within Manhattan distance 2 of it -
+  a 13-cell diamond at most (the center, a ring of 4 at distance 1, and a
+  ring of 8 at distance 2), clipped at grid edges. Cells in that footprint
+  that are still untargeted become visible - an occupied one shows its
+  ship, an empty one shows open water - but neither gets marked
+  `targeted`: no hit, no miss, no sound, no ignition risk, nothing actually
+  fired. Cells outside the footprint, or already targeted or already
+  revealed, are left untouched. Still costs one charge and one quota dot up
+  front, same as every other weapon, regardless of how much (if anything)
+  was still fogged there.
 
   This is exactly the "expose without targeting" distinction flagged as an
-  open question when the Drone was first proposed - resolved by reusing the
-  `ExposureState` type's third value, `'revealed'`, which already existed
-  in the codebase for an unrelated feature (showing a winner's remaining
-  unsunk ships at game end via `revealUntargetedShips()` in `Index.tsx`).
-  `'revealed'` cells were already fully handled by `getCellPresentation()` -
-  an occupied one renders in its own distinct green (`'occupied and
-  revealed'`), separate from both the gray `'unknown'` fog and the red/blue
-  `'targeted'` colors - so the Drone needed no new rendering logic, only a
-  new way to produce that state mid-game.
+  open question when the Drone was first proposed - resolved by setting
+  exposure to `'known'`, the same state a targeted cell already gets, on
+  every fogged cell in the footprint (`effect` stays `'untargeted'`
+  throughout). An occupied cell with exposure `'known'` but effect still
+  `'untargeted'` was previously an impossible combination - every other
+  code path that lifts fog does so in the same update that also marks the
+  cell targeted - so this reveal-without-targeting state is unique to the
+  Drone and unambiguous to detect later (see `getRevealedTargetIndexes()`
+  below). Rendering needed no new branch: `getCellPresentation()` already
+  falls through a `'known'`, untargeted, occupied cell to the same plain
+  ship-colored cell the player's own always-visible navy uses, or to the
+  oil color if oil has spread over it - exactly the "just show it like a
+  normal cell, nothing special" the Drone calls for.
+
+  This deliberately leaves `ExposureState`'s third value, `'revealed'`,
+  untouched by the Drone: `revealUntargetedShips()` in `Index.tsx` (see
+  "End-of-game reveal sequence" under Turn economy below) uses `'revealed'`
+  for its own distinct green highlight, shown only once, at the very end of
+  the game. The Drone must never produce that color mid-game - a
+  Drone-revealed ship should look like any other visible ship cell, not
+  like a special end-of-game callout - which is exactly why it needed its
+  own separate exposure value instead of sharing `'revealed'`.
 
   **The computer takes drone-revealed information seriously.** A cell the
-  computer's own Drone has revealed as an enemy ship is a confirmed,
-  cost-free kill sitting on the board - `getRevealedTargetIndexes()` finds
-  any such cells, and `selectAppTargetIndex()` checks it first, ahead of
-  even the Level 2 hunt-adjacent-cells logic, returning a revealed cell
-  outright if one exists. This applies at *both* difficulty levels, unlike
-  the hunt logic it outranks: ignoring a ship you can already see isn't
-  "playing dumb," it's just not looking, so even Level 1 takes the free hit
-  rather than continuing to fire randomly. The app-turn effect in
-  `Index.tsx` goes a step further and checks for a revealed target
-  *before* even rolling a weapon choice for the turn - if one exists,
-  `appWeaponChoiceRef.current` is forced to `null` instead of calling
-  `selectAppWeaponChoice()`, so the computer doesn't burn a MOAB or Mine
-  hunting the rest of the board while a guaranteed kill sits unclaimed; the
-  turn falls through to a plain shot, which then lands on the revealed cell
-  via the priority check above. The player gets the equivalent benefit for
-  free, just visually: a Drone-revealed enemy ship renders green on the
-  Enemy Navy grid exactly like the end-game reveal, so there's nothing to
-  build - the player already sees it and can just tap it.
+  computer's own Drone has revealed as an enemy ship (`exposure === 'known'`
+  but `effect === 'untargeted'`) is a confirmed, cost-free kill sitting on
+  the board - `getRevealedTargetIndexes()` finds any such cells, and
+  `selectAppTargetIndex()` checks it first, ahead of even the Level 2
+  hunt-adjacent-cells logic, returning one outright if any exist. This
+  applies at *both* difficulty levels, unlike the hunt logic it outranks:
+  ignoring a ship you can already see isn't "playing dumb," it's just not
+  looking, so even Level 1 takes the free hit rather than continuing to
+  fire randomly. The app-turn effect in `Index.tsx` goes a step further and
+  checks for a revealed target *before* even rolling a weapon choice for
+  the turn - if one exists, `appWeaponChoiceRef.current` is forced to
+  `null` instead of calling `selectAppWeaponChoice()`, so the computer
+  doesn't burn a MOAB or Mine hunting the rest of the board while a
+  guaranteed kill sits unclaimed; the turn falls through to a plain shot,
+  which then lands on the revealed cell via the priority check above. The
+  player gets the equivalent benefit for free, just visually: a
+  Drone-revealed enemy ship is simply no longer fogged on the Enemy Navy
+  grid, so there's nothing to build - the player already sees it and can
+  just tap it.
 
 ### Turn economy
 
@@ -366,6 +379,52 @@ shot or weapon is used that turn. This mirrors how the oil slick spreads by
 one cell every turn regardless of what else happens (see Variable B) — both
 are background world-state advancing independently of the player's chosen
 action for the turn, rather than a discrete "shot" that competes with it.
+
+### End-of-game reveal sequence
+
+`concludeGame()` in `Index.tsx` runs the instant the losing side's last
+ship is sunk, and drives a fixed, choreographed sequence rather than
+popping the win/lose dialog immediately:
+
+1. The just-updated `GameState` (the losing navy now fully sunk) is
+   applied right away, and the view is forced to the **losing** side -
+   whichever navy just lost its last ship, the same one the fatal shot's
+   own explosion is already animating on - regardless of whichever view
+   happened to be active a moment before. This matters most on mobile,
+   where only one navy panel is visible at a time (see "UI direction: arm,
+   then tap" below): without forcing it, a computer-won game could pop the
+   dialog while the player was still looking at their own screen mid
+   swipe-transition, having never actually seen the finishing blow land.
+2. That view holds for a fixed **two seconds** - enough room for the
+   fatal shot's own audio and animation to finish, including the longer
+   cues (an oil ignition or a MOAB kill queues a second/third "explosion"
+   sound 300-600ms after the first, and that cue alone is a ~1.5s clip).
+3. After the two seconds, `revealRemainingShipsInWinningNavy()` marks
+   every still-untargeted, occupied cell in the **winning** side's own
+   navy (the side that survived, not the side it defeated) with exposure
+   `'revealed'` via `revealUntargetedShips()` — unconditionally, regardless
+   of whether a cell had already been exposed earlier by a Drone (`'known'`
+   exposure) or was still fully fogged (`'unknown'`); either way it becomes
+   `'revealed'` here. `getCellPresentation()` renders an occupied
+   `'revealed'` cell in its own distinct green, reserved solely for this
+   moment - a Drone's own mid-game reveal deliberately never produces this
+   color (see the Drone's entry under Variable D above) - so a green ship
+   on screen always specifically means "this survived to the end of the
+   game," never "a Drone found this."
+4. The view then switches to the **winning** side to show that reveal,
+   the win/lose dialog opens, and (if the player won) the `wingame` cue
+   plays.
+
+Winner and winning-navy-owner are the same side - "the winning navy" means
+the fleet that belongs to whoever won, not the fleet they defeated. When
+the player wins, that's the player's own board: any of their ships that
+survived the game light up green, a small victory-lap detail. When the
+computer wins, it's the enemy board: whatever the computer never lost
+gets revealed, the classic "here's what was left standing" reveal. Either
+way, the losing side's board - already either fully sunk (if the player
+lost, every player cell is `'sunk'`) or fully sunk on the computer's
+side - has nothing further to reveal, which is why only the winning side
+needs this treatment.
 
 ### Per-game weapon quota
 
