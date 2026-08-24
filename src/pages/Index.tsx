@@ -2393,6 +2393,16 @@ const WEAPON_CURSOR_FILES: Record<WeaponType, Partial<Record<WeaponDirectionKey,
   drone: { none: 'drone-cursor.svg' },
 };
 
+// Torpedo/Rocket/Harpoon cursor SVGs render at 48x48 (double the other
+// weapons' 24x24) for better visibility while aiming, so their CSS cursor
+// hotspot must be recentered to 24 24 to match - MOAB/Mine/Drone stay at
+// their native 24x24 size and keep the 12 12 hotspot.
+const DOUBLED_CURSOR_WEAPONS = new Set<WeaponType>(['torpedo', 'rocket', 'harpoon']);
+
+function getWeaponCursorHotspot(weapon: WeaponType): string {
+  return DOUBLED_CURSOR_WEAPONS.has(weapon) ? '24 24' : '12 12';
+}
+
 // Used only for the grid cell's own mobile press-and-hold preview (see
 // GridCell) - the weapons bar buttons hardcode their own icons directly,
 // since a button has no cell position to point a direction at.
@@ -2514,7 +2524,7 @@ function GridCell({
         )}
         style={{
           cursor: (isTargetable || cell.targeting)
-            ? `url(${import.meta.env.BASE_URL}${armedWeapon ? getWeaponCursorFile(armedWeapon, cellIndex) : 'crosshair-cursor.svg'}) 12 12, crosshair`
+            ? `url(${import.meta.env.BASE_URL}${armedWeapon ? getWeaponCursorFile(armedWeapon, cellIndex) : 'crosshair-cursor.svg'}) ${armedWeapon ? getWeaponCursorHotspot(armedWeapon) : '12 12'}, crosshair`
             : 'default',
         }}
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
