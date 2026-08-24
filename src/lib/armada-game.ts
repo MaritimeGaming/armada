@@ -95,7 +95,6 @@ export type GameState = {
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
 export type AudioSequence = AudioCue[];
-export type DifficultyLevel = 'level1' | 'level2';
 export type ShipSetOptions = {
   includeSingles: boolean;
 };
@@ -722,7 +721,7 @@ export function getRevealedTargetIndexes(navy: NavyState): number[] {
   }, []);
 }
 
-export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLevel): number | null {
+export function selectAppTargetIndex(navy: NavyState): number | null {
   const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
     if (cell.effect === 'untargeted') {
       indexes.push(index);
@@ -735,68 +734,64 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
   }
 
   // A Drone reveal means a ship's location is already known outright, no
-  // deduction needed - even a Level 1 opponent should take the free hit
-  // rather than ignore visible information, so this check applies
-  // regardless of difficulty and outranks the Level 2 hunt logic below.
+  // deduction needed - this outranks the hunt logic below.
   const revealedIndexes = getRevealedTargetIndexes(navy);
   if (revealedIndexes.length > 0) {
     return randomItem(revealedIndexes);
   }
 
-  if (difficulty === 'level2') {
-    const candidateIndexes = new Set<number>();
-    const hitIndexesByShipCode = new Map<string, number[]>();
+  const candidateIndexes = new Set<number>();
+  const hitIndexesByShipCode = new Map<string, number[]>();
 
-    navy.cells.forEach((cell, index) => {
-      if (cell.effect !== 'targeted' || !cell.occupied || !cell.shipCode) {
-        return;
-      }
+  navy.cells.forEach((cell, index) => {
+    if (cell.effect !== 'targeted' || !cell.occupied || !cell.shipCode) {
+      return;
+    }
 
-      const isPartOfSunkShip = navy.cells
-        .filter((candidateCell) => candidateCell.shipCode === cell.shipCode)
-        .every((candidateCell) => candidateCell.effect === 'sunk');
+    const isPartOfSunkShip = navy.cells
+      .filter((candidateCell) => candidateCell.shipCode === cell.shipCode)
+      .every((candidateCell) => candidateCell.effect === 'sunk');
 
-      if (isPartOfSunkShip) {
-        return;
-      }
+    if (isPartOfSunkShip) {
+      return;
+    }
 
-      const hitIndexes = hitIndexesByShipCode.get(cell.shipCode) ?? [];
-      hitIndexes.push(index);
-      hitIndexesByShipCode.set(cell.shipCode, hitIndexes);
-    });
+    const hitIndexes = hitIndexesByShipCode.get(cell.shipCode) ?? [];
+    hitIndexes.push(index);
+    hitIndexesByShipCode.set(cell.shipCode, hitIndexes);
+  });
 
-    hitIndexesByShipCode.forEach((hitIndexes, shipCode) => {
-      // Two or more confirmed hits on the same ship mean the whole ship's
-      // position is known - it's a straight line, so target its own
-      // remaining cells directly instead of guessing via 8-neighbor
-      // adjacency, which would waste shots perpendicular to the ship's
-      // actual line. A single hit isn't enough to know the line yet, so
-      // that case still falls through to plain adjacency below.
-      if (hitIndexes.length >= 2) {
-        const ship = navy.ships.find((candidateShip) => candidateShip.code === shipCode);
+  hitIndexesByShipCode.forEach((hitIndexes, shipCode) => {
+    // Two or more confirmed hits on the same ship mean the whole ship's
+    // position is known - it's a straight line, so target its own
+    // remaining cells directly instead of guessing via 8-neighbor
+    // adjacency, which would waste shots perpendicular to the ship's
+    // actual line. A single hit isn't enough to know the line yet, so
+    // that case still falls through to plain adjacency below.
+    if (hitIndexes.length >= 2) {
+      const ship = navy.ships.find((candidateShip) => candidateShip.code === shipCode);
 
-        ship?.cells.forEach((point) => {
-          const cellIndex = point.y * GRID_SIZE + point.x;
-          if (navy.cells[cellIndex]?.effect === 'untargeted') {
-            candidateIndexes.add(cellIndex);
-          }
-        });
+      ship?.cells.forEach((point) => {
+        const cellIndex = point.y * GRID_SIZE + point.x;
+        if (navy.cells[cellIndex]?.effect === 'untargeted') {
+          candidateIndexes.add(cellIndex);
+        }
+      });
 
-        return;
-      }
+      return;
+    }
 
-      hitIndexes.forEach((index) => {
-        getAdjacentIndexes(index).forEach((adjacentIndex) => {
-          if (navy.cells[adjacentIndex]?.effect === 'untargeted') {
-            candidateIndexes.add(adjacentIndex);
-          }
-        });
+    hitIndexes.forEach((index) => {
+      getAdjacentIndexes(index).forEach((adjacentIndex) => {
+        if (navy.cells[adjacentIndex]?.effect === 'untargeted') {
+          candidateIndexes.add(adjacentIndex);
+        }
       });
     });
+  });
 
-    if (candidateIndexes.size > 0) {
-      return randomItem(Array.from(candidateIndexes));
-    }
+  if (candidateIndexes.size > 0) {
+    return randomItem(Array.from(candidateIndexes));
   }
 
   return randomItem(untargetedIndexes);
@@ -827,9 +822,8 @@ export function getWeaponBlastZoneIndexes(cellIndex: number, weapon: WeaponType)
 /**
  * Picks the most efficient cell to fire weapon at: whichever untargeted
  * cell(s) have the most still-untargeted cells in their blast zone (see
- * getWeaponBlastZoneIndexes), breaking ties randomly. Used only for
- * "weapon-aware" play - level1 always fires a weapon at a plain random
- * target instead, same as its regular shots.
+ * getWeaponBlastZoneIndexes), breaking ties randomly. Called whenever the
+ * computer has chosen to fire a weapon, in place of selectAppTargetIndex.
  */
 export function selectAppWeaponTargetIndex(navy: NavyState, weapon: WeaponType): number | null {
   const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {

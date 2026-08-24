@@ -48,7 +48,7 @@ import {
   setCellTargeting,
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -57,8 +57,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -72,7 +70,6 @@ type GameOverState = {
 
 const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
-const DIFFICULTY_STORAGE_KEY = 'armada:difficulty';
 const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
 const MOAB_COUNT_STORAGE_KEY = 'armada:moab-count';
 // Starting inventory the first time someone plays; not the same as the
@@ -152,10 +149,6 @@ const Index = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
   const [gameOver, setGameOver] = useState<GameOverState>({ isOpen: false, winner: null });
-  const [difficulty, setDifficulty] = useState<DifficultyLevel>(() => {
-    const storedDifficulty = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
-    return storedDifficulty === 'level2' ? 'level2' : 'level1';
-  });
   const [shipSetOptions, setShipSetOptions] = useState<ShipSetOptions>(() => {
     const storedOptions = window.localStorage.getItem(SHIP_SET_STORAGE_KEY);
 
@@ -417,12 +410,6 @@ const Index = () => {
 
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
     setGameOver({ isOpen: false, winner: null });
-  };
-
-  const handleDifficultyChange = (value: string) => {
-    const nextDifficulty: DifficultyLevel = value === 'level2' ? 'level2' : 'level1';
-    window.localStorage.setItem(DIFFICULTY_STORAGE_KEY, nextDifficulty);
-    setDifficulty(nextDifficulty);
   };
 
   const handleSinglesToggle = (includeSingles: boolean) => {
@@ -1152,15 +1139,10 @@ const Index = () => {
 
     const weaponChoice = appWeaponChoiceRef.current;
 
-    // Weapon-aware targeting (pick whichever cell maximizes the weapon's
-    // blast zone) only kicks in at level2, matching its existing "hunts an
-    // adjacent cell after a hit" shrewdness for plain shots. Level1 stays
-    // pure chaos either way: a weapon just rides along with wherever its
-    // normal random target would have landed.
     const previewIndex = appPreviewIndexRef.current ?? (
-      weaponChoice && difficulty === 'level2'
+      weaponChoice
         ? selectAppWeaponTargetIndex(gameState.player, weaponChoice)
-        : selectAppTargetIndex(gameState.player, difficulty)
+        : selectAppTargetIndex(gameState.player)
     );
 
     if (previewIndex === null) {
@@ -1642,7 +1624,7 @@ const Index = () => {
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
     };
-  }, [difficulty, gameOver.isOpen, gameState, shipSetOptions]);
+  }, [gameOver.isOpen, gameState, shipSetOptions]);
 
   // Safety net: an armed weapon only ever makes sense while it's the
   // player's move. If the turn moves on (or a new game starts) without it
@@ -1672,9 +1654,7 @@ const Index = () => {
     <NavyPanel
       key={side}
       navy={navy}
-      difficulty={difficulty}
       shipSetOptions={shipSetOptions}
-      onDifficultyChange={handleDifficultyChange}
       onSinglesToggle={handleSinglesToggle}
       onNewGame={() => handleNewGame()}
       onResetStatistics={handleResetStatistics}
@@ -1969,9 +1949,7 @@ function WeaponsBar({ label, weaponsUsed, weapons }: WeaponsBarProps) {
 
 type NavyPanelProps = {
   navy: NavyState;
-  difficulty: DifficultyLevel;
   shipSetOptions: ShipSetOptions;
-  onDifficultyChange: (value: string) => void;
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
   onResetStatistics: () => void;
@@ -1996,15 +1974,13 @@ type NavyPanelProps = {
 };
 
 type SettingsMenuProps = {
-  difficulty: DifficultyLevel;
   shipSetOptions: ShipSetOptions;
-  onDifficultyChange: (value: string) => void;
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
   onResetStatistics: () => void;
 };
 
-function SettingsMenu({ difficulty, shipSetOptions, onDifficultyChange, onSinglesToggle, onNewGame, onResetStatistics }: SettingsMenuProps) {
+function SettingsMenu({ shipSetOptions, onSinglesToggle, onNewGame, onResetStatistics }: SettingsMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -2019,12 +1995,6 @@ function SettingsMenu({ difficulty, shipSetOptions, onDifficultyChange, onSingle
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Difficulty</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={difficulty} onValueChange={onDifficultyChange}>
-          <DropdownMenuRadioItem value="level1">Level 1</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="level2">Level 2</DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
         <DropdownMenuLabel>Ships</DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}>
           <div className="flex w-full items-center justify-between gap-3">
@@ -2042,9 +2012,7 @@ function SettingsMenu({ difficulty, shipSetOptions, onDifficultyChange, onSingle
 
 function NavyPanel({
   navy,
-  difficulty,
   shipSetOptions,
-  onDifficultyChange,
   onSinglesToggle,
   onNewGame,
   onResetStatistics,
@@ -2173,9 +2141,7 @@ function NavyPanel({
             {headerExtraSlot}
             {showSettings ? (
               <SettingsMenu
-                difficulty={difficulty}
                 shipSetOptions={shipSetOptions}
-                onDifficultyChange={onDifficultyChange}
                 onSinglesToggle={onSinglesToggle}
                 onNewGame={onNewGame}
                 onResetStatistics={onResetStatistics}

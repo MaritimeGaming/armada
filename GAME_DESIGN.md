@@ -58,50 +58,51 @@ of a given round without changing its fundamental difficulty or structure.
 
 ## Variable A: Computer opponent strategy
 
-The computer's "difficulty" isn't really about the computer being smarter in
-a deep sense — it's about how efficiently it converges on sinking the
-player's fleet, which affects who finishes first.
+There is a single computer opponent behavior, not a selectable difficulty.
+An earlier version of this game offered two levels — Level 1 (pure random
+targeting) and Level 2 (the shrewd play described below) — chosen in
+Settings and persisted to localStorage. That selector was removed: there's
+no real point in offering a deliberately weaker mode to play against, and
+a dropdown that mostly exists to let a player choose to lose more often
+doesn't add anything. The direction instead is to keep improving this one
+opponent so it's genuinely competitive with a human player, and let
+board-layout randomness (Variable C's ship-set toggle, where ships happen
+to land) supply game-to-game variance rather than a manually-picked
+handicap. `selectAppTargetIndex()` in `armada-game.ts` no longer takes a
+difficulty argument at all — what used to be Level 2's logic is simply
+what the computer always does.
 
-**Implemented today** (`selectAppTargetIndex()` in `armada-game.ts`,
-selectable in Settings, persisted to localStorage):
-- **Level 1**: Pure random targeting across all untargeted cells — including
-  when it decides to fire a special weapon (Variable D): the weapon just
-  rides along with wherever the normal random target would have landed,
-  same as if no weapon had been picked at all.
-- **Level 2**: If a ship has exactly one hit that isn't yet sunk, target its
-  (8-neighbor, including diagonal) adjacent cells to find the rest of it.
-  Once **two or more** hits land on the same ship, its position is fully
-  known — it's a straight line — so targeting switches to just that ship's
-  own remaining untargeted cells instead of guessing via adjacency, which
-  would otherwise waste shots perpendicular to the ship's actual line. This
-  naturally bounds the search to the ship's true length without needing a
-  separate min/max heuristic, and handles gaps correctly too (e.g. cells 0
-  and 2 hit but not 1, from a MOAB or scattered random shots) since it
-  simply targets whichever of the ship's own cells are still untargeted,
-  in any order. See `hitIndexesByShipCode` in `selectAppTargetIndex()`.
-  This same "play shrewdly" character now also covers
-  weapon use: whenever Level 2 decides to fire a MOAB, Mine, Torpedo,
-  Rocket, Harpoon, or Drone, it picks whichever untargeted cell maximizes
-  that weapon's "blast zone" — the count of still-untargeted cells within
-  its footprint (the 8-neighbor adjacency for MOAB/Mine, the up-to-5 cells
-  Torpedo/Rocket/Harpoon would travel through, or the Drone's own smaller
-  diamond reveal footprint; see `getWeaponBlastZoneIndexes()` and
-  `selectAppWeaponTargetIndex()`) — breaking ties randomly. This reorders
-  the turn's decision: weapon choice (`selectAppWeaponChoice()`) now
-  happens *before* target selection, since the target search only makes
-  sense once the weapon (and therefore the footprint shape) is known. A
-  Drone-revealed ship still outranks all of this, at either difficulty
-  level - see the Drone's own entry under Variable D for
-  `getRevealedTargetIndexes()`, which short-circuits weapon choice and
-  target selection alike before any of the above ever runs.
-  Weapon-aware play was originally sketched below as a separate, later
-  difficulty tier, but landed as part of Level 2 instead: introducing a
-  third rung risked a distinction most players couldn't articulate ("hunts
-  ships but wastes MOABs" vs. "hunts ships and uses them well"), where
-  folding it into Level 2 keeps the story simple — Level 1 is chaos in
-  every decision, Level 2 is shrewd in every decision.
+**Implemented today** (`selectAppTargetIndex()` in `armada-game.ts`): if a
+ship has exactly one hit that isn't yet sunk, target its (8-neighbor,
+including diagonal) adjacent cells to find the rest of it. Once **two or
+more** hits land on the same ship, its position is fully known — it's a
+straight line — so targeting switches to just that ship's own remaining
+untargeted cells instead of guessing via adjacency, which would otherwise
+waste shots perpendicular to the ship's actual line. This naturally bounds
+the search to the ship's true length without needing a separate min/max
+heuristic, and handles gaps correctly too (e.g. cells 0 and 2 hit but not
+1, from a MOAB or scattered random shots) since it simply targets whichever
+of the ship's own cells are still untargeted, in any order. See
+`hitIndexesByShipCode` in `selectAppTargetIndex()`. If no hit-derived
+candidate cells exist yet, it falls back to a plain random pick among all
+untargeted cells.
 
-**Proposed future levels** (not yet implemented):
+This same "play shrewdly" character also covers weapon use: whenever the
+computer decides to fire a MOAB, Mine, Torpedo, Rocket, Harpoon, or Drone,
+it picks whichever untargeted cell maximizes that weapon's "blast zone" —
+the count of still-untargeted cells within its footprint (the 8-neighbor
+adjacency for MOAB/Mine, the up-to-5 cells Torpedo/Rocket/Harpoon would
+travel through, or the Drone's own smaller diamond reveal footprint; see
+`getWeaponBlastZoneIndexes()` and `selectAppWeaponTargetIndex()`) —
+breaking ties randomly. This reorders the turn's decision: weapon choice
+(`selectAppWeaponChoice()`) now happens *before* target selection, since
+the target search only makes sense once the weapon (and therefore the
+footprint shape) is known. A Drone-revealed ship still outranks all of
+this — see the Drone's own entry under Variable D for
+`getRevealedTargetIndexes()`, which short-circuits weapon choice and
+target selection alike before any of the above ever runs.
+
+**Proposed future AI improvements** (not yet implemented):
 - **Oil-slick-aware play**: prioritize sinking the Oil Tanker early, then
   deliberately let the slick spread as wide as possible before trying to
   ignite it (mirrors the human's own best strategy — see Variable B).
@@ -374,12 +375,10 @@ tuning either mechanic, since they're designed to interact.
   computer's own Drone has revealed as an enemy ship (`droneRevealed` true,
   `effect` still `'untargeted'`) is a confirmed, cost-free kill sitting on
   the board - `getRevealedTargetIndexes()` finds any such cells, and
-  `selectAppTargetIndex()` checks it first, ahead of even the Level 2
-  hunt-adjacent-cells logic, returning one outright if any exist. This
-  applies at *both* difficulty levels, unlike the hunt logic it outranks:
-  ignoring a ship you can already see isn't "playing dumb," it's just not
-  looking, so even Level 1 takes the free hit rather than continuing to
-  fire randomly. The app-turn effect in `Index.tsx` goes a step further and
+  `selectAppTargetIndex()` checks it first, ahead of even the
+  hunt-adjacent-cells logic, returning one outright if any exist: ignoring
+  a ship you can already see isn't "playing dumb," it's just not looking.
+  The app-turn effect in `Index.tsx` goes a step further and
   checks for a revealed target *before* even rolling a weapon choice for
   the turn - if one exists, `appWeaponChoiceRef.current` is forced to
   `null` instead of calling `selectAppWeaponChoice()`, so the computer
@@ -540,10 +539,9 @@ a flat 25% chance (`APP_WEAPON_USE_CHANCE`) it fires a special weapon
 instead of a plain shot, picked from whatever's currently active,
 in-charge, and (for Mine) not already placed. Within that pool, MOAB gets
 a soft priority (see below) rather than a purely uniform pick; every other
-type is still uniform random. *Where* it fires differs by difficulty —
-Level 1 rides along with a plain random target same as always, while
-Level 2 picks the target that maximizes the weapon's blast zone (see
-Variable A's "weapon-aware play").
+type is still uniform random. *Where* it fires is always the weapon-aware
+target that maximizes the weapon's blast zone (see Variable A's
+"weapon-aware play").
 
 ### Loosening the MOAB cap, and MOAB-aware computer play
 
@@ -569,7 +567,7 @@ first weapon use of a game isn't reliably MOAB, and there's no scenario
 where MOAB is forced to fire the instant it's available. This is a
 "which weapon" decision inside the existing 25% "fire at all" roll,
 entirely separate from — and unaffected by — the blast-zone-maximizing
-"where to fire" logic Level 2 uses once a weapon's already chosen.
+"where to fire" logic used once a weapon's already chosen.
 
 ### UI direction: arm, then tap
 
@@ -659,8 +657,7 @@ computer AI (Variable A) didn't reason about anything beyond cell
 targeting. The computer's initial weapon usage (see the Per-game weapon
 quota section above) shipped as a random add-on to its existing target
 selection — it decided *whether* and *which* weapon to fire independently
-of where its regular shot would land. Variable A's "weapon-aware play"
-has since closed that gap for Level 2: it now picks *where* to fire a
-chosen weapon based on maximizing that weapon's blast zone, rather than
-firing wherever its regular shot happened to land. Level 1 still fires
-wherever its plain random target lands, weapon or not.
+of where its regular shot would land. Variable A's "weapon-aware play" has
+since closed that gap: it now picks *where* to fire a chosen weapon based
+on maximizing that weapon's blast zone, rather than firing wherever its
+regular shot happened to land.
