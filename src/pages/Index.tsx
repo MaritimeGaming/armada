@@ -2341,7 +2341,11 @@ function ShipRow({ ship, status, isTooltipOpen, onReveal }: ShipRowProps) {
           >
             <span className="relative inline-flex items-center justify-center font-mono text-[12px] tracking-[0.34em]">
               {status.isSunk ? (
-                <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[calc(100%+0.35rem)] -translate-x-1/2 -translate-y-1/2 bg-red-500" />
+                // A perfectly symmetric centered line reads as slightly
+                // longer past the last character than before the first, so
+                // the left inset gets a bit more room than the right to
+                // balance it out visually.
+                <span className="pointer-events-none absolute -left-[0.3rem] -right-[0.175rem] top-1/2 h-px -translate-y-1/2 bg-red-500" />
               ) : null}
               {Array.from({ length: ship.length }, (_, index) => (
                 <span
