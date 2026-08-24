@@ -320,32 +320,59 @@ tuning either mechanic, since they're designed to interact.
   was still fogged there.
 
   This is exactly the "expose without targeting" distinction flagged as an
-  open question when the Drone was first proposed - resolved by setting
-  exposure to `'known'`, the same state a targeted cell already gets, on
-  every fogged cell in the footprint (`effect` stays `'untargeted'`
-  throughout). An occupied cell with exposure `'known'` but effect still
-  `'untargeted'` was previously an impossible combination - every other
-  code path that lifts fog does so in the same update that also marks the
-  cell targeted - so this reveal-without-targeting state is unique to the
-  Drone and unambiguous to detect later (see `getRevealedTargetIndexes()`
-  below). Rendering needed no new branch: `getCellPresentation()` already
-  falls through a `'known'`, untargeted, occupied cell to the same plain
-  ship-colored cell the player's own always-visible navy uses, or to the
-  oil color if oil has spread over it - exactly the "just show it like a
-  normal cell, nothing special" the Drone calls for.
+  open question when the Drone was first proposed - resolved with a new,
+  dedicated `CellState.droneRevealed` boolean (`effect` stays `'untargeted'`
+  throughout), rather than reusing `exposure`. `fireDrone()` also still
+  bumps `exposure` from `'unknown'` to `'known'` wherever it actually was
+  `'unknown'` - that's what visually lifts the fog for whoever's looking at
+  this navy (e.g. the player firing a Drone at the enemy: `getCellPresentation()`
+  already falls through a `'known'`, untargeted, occupied cell to the same
+  plain ship-colored cell the player's own always-visible navy uses, or to
+  the oil color if oil has spread over it).
 
-  This deliberately leaves `ExposureState`'s third value, `'revealed'`,
-  untouched by the Drone: `revealUntargetedShips()` in `Index.tsx` (see
-  "End-of-game reveal sequence" under Turn economy below) uses `'revealed'`
-  for its own distinct green highlight, shown only once, at the very end of
-  the game. The Drone must never produce that color mid-game - a
-  Drone-revealed ship should look like any other visible ship cell, not
-  like a special end-of-game callout - which is exactly why it needed its
-  own separate exposure value instead of sharing `'revealed'`.
+  The one deliberate exception: `computeBaseCellPresentation()` colors a
+  droneRevealed, still-untargeted, occupied cell's own letter green
+  (`shipTextColorClass`, `#00B200` instead of white) rather than leaving it
+  fully indistinguishable from an ordinary visible ship cell - on *either*
+  grid, since a Drone can reveal either side's ships. This exists purely so
+  a Drone use is still visible after the fact: without it, nothing on
+  screen would ever confirm the computer actually fired one (or that the
+  player's earlier Drone use on the enemy grid found anything), since a
+  droneRevealed cell's background is otherwise identical to a plain visible
+  cell's. It intentionally reuses `'#00B200'`, the same green
+  `revealUntargetedShips()` uses for its end-of-game reveal (see below) -
+  same color, different signal (a live letter tint here vs. that feature's
+  full cell background at game end) - rather than inventing a second green.
+  It only applies pre-targeting: once the cell is actually hit or sunk, the
+  ordinary hit/sunk colors and white text take back over.
+
+  **A cell's own `droneRevealed` flag, not its `exposure`, is what
+  `getRevealedTargetIndexes()` checks** (see below) - and this distinction
+  is load-bearing, not stylistic. `createNavy()`'s `known` parameter means
+  a side's own fleet starts with `exposure: 'known'` on *every* cell from
+  creation, Drone or no Drone, since there's no fog of war over your own
+  ships. An earlier version of this feature used `exposure === 'known' &&
+  effect === 'untargeted'` as the "Drone found this" signal, reasoning that
+  no other code path produces that combination - true for the *enemy*
+  navy (which genuinely starts fogged), but false for a navy's own fleet,
+  which already satisfies that combination for every unsunk ship from turn
+  one. The bug this caused: the computer's target selection treated *all*
+  of the player's live ships as instantly known, hitting every shot with
+  no misses until the whole fleet was sunk - the computer's Drone was never
+  even fired. `droneRevealed` fixes this by recording the reveal directly,
+  independent of whatever `exposure` happens to already be.
+
+  This also leaves `ExposureState`'s third value, `'revealed'`, untouched
+  by the Drone: `revealUntargetedShips()` in `Index.tsx` (see "End-of-game
+  reveal sequence" under Turn economy below) uses `'revealed'` for its own
+  distinct green highlight, shown only once, at the very end of the game.
+  The Drone must never produce that color mid-game - a Drone-revealed ship
+  should look like any other visible ship cell, not like a special
+  end-of-game callout.
 
   **The computer takes drone-revealed information seriously.** A cell the
-  computer's own Drone has revealed as an enemy ship (`exposure === 'known'`
-  but `effect === 'untargeted'`) is a confirmed, cost-free kill sitting on
+  computer's own Drone has revealed as an enemy ship (`droneRevealed` true,
+  `effect` still `'untargeted'`) is a confirmed, cost-free kill sitting on
   the board - `getRevealedTargetIndexes()` finds any such cells, and
   `selectAppTargetIndex()` checks it first, ahead of even the Level 2
   hunt-adjacent-cells logic, returning one outright if any exist. This
@@ -361,7 +388,8 @@ tuning either mechanic, since they're designed to interact.
   which then lands on the revealed cell via the priority check above. The
   player gets the equivalent benefit for free, just visually: a
   Drone-revealed enemy ship is simply no longer fogged on the Enemy Navy
-  grid, so there's nothing to build - the player already sees it and can
+  grid (and its letter shows in the green droneRevealed tint described
+  above), so there's nothing to build - the player already sees it and can
   just tap it.
 
 ### Turn economy

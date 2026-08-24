@@ -28,6 +28,16 @@ export type CellState = {
   targeting: boolean;
   oil: boolean;
   shipCode?: string;
+  /**
+   * True once a Drone shot has found this specific cell. Deliberately
+   * separate from exposure: a navy created with known=true (a side's own
+   * fleet, see createNavy) starts every cell at exposure 'known' regardless
+   * of any Drone activity, since there's no fog of war over your own
+   * ships - so exposure alone can't tell "genuinely Drone-found" apart
+   * from "just always visible to its owner." This field can only ever be
+   * set by fireDrone(), so it's unambiguous either way.
+   */
+  droneRevealed?: boolean;
 };
 
 export type NavyState = {
@@ -627,27 +637,43 @@ export type DroneResult = {
  * cell's true content (ship or empty water) becomes visible, but stays
  * fully untargeted, unlike every other weapon. No hit, no miss, no sound,
  * no ignition risk - nothing is actually being fired at, just looked at.
- * Cells already targeted, or already revealed by an earlier Drone shot,
- * are left untouched. Still costs one charge and one quota dot up front
- * regardless of how many (if any) of the footprint's cells were still
- * fogged, same as every other weapon.
+ * Cells already targeted, or already Drone-revealed, are left untouched.
+ * Still costs one charge and one quota dot up front regardless of how many
+ * (if any) of the footprint's cells were newly revealed, same as every
+ * other weapon.
  *
- * Sets exposure to 'known', the same state a targeted cell gets, rather
- * than 'revealed' - 'revealed' is reserved for revealUntargetedShips()'s
- * end-of-game display (a distinct green, see getCellPresentation() in
- * Index.tsx), which the Drone must not trigger mid-game: an occupied cell
- * revealed by a Drone should still render as a plain ship cell (or with
- * whatever oil is on top of it), not the special end-game color.
+ * Marks every newly-revealed cell's own droneRevealed flag (see CellState)
+ * - this is the field getRevealedTargetIndexes() checks, not exposure.
+ * Exposure is still bumped from 'unknown' to 'known' where it actually was
+ * 'unknown' (this is what visually lifts the fog for whoever's looking at
+ * this navy, e.g. the player firing a Drone at the enemy), but that step
+ * is a no-op on a side's own fleet, whose exposure is already 'known'
+ * everywhere from creation - droneRevealed is what still correctly records
+ * the reveal in that case. Never touches 'revealed', which is reserved for
+ * revealUntargetedShips()'s distinct end-of-game green (see
+ * getCellPresentation() in Index.tsx).
  */
 export function fireDrone(navy: NavyState, cellIndex: number): DroneResult {
   const revealedIndexes = getDroneRevealIndexes(cellIndex).filter(
-    (index) => navy.cells[index]?.effect === 'untargeted' && navy.cells[index]?.exposure === 'unknown',
+    (index) => navy.cells[index]?.effect === 'untargeted' && !navy.cells[index]?.droneRevealed,
   );
 
-  const nextNavy = revealedIndexes.reduce(
-    (currentNavy, index) => setCellState(currentNavy, index, { exposure: 'known' }),
-    navy,
-  );
+  const revealedNavy = revealedIndexes.reduce((currentNavy, index) => {
+    const cell = currentNavy.cells[index];
+    return setCellState(currentNavy, index, {
+      droneRevealed: true,
+      exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
+    });
+  }, navy);
+
+  // The press-and-hold preview highlight set on the launch cell (see
+  // handleEnemyCellPressStart) needs clearing here regardless of whether
+  // that cell ended up in revealedIndexes above - every other weapon
+  // clears this as part of marking its target cell(s) 'targeted', but the
+  // Drone never targets anything, so nothing else would ever clear it
+  // (and the launch cell may already have been droneRevealed by an
+  // earlier, overlapping Drone shot, which would exclude it above).
+  const nextNavy = setCellState(revealedNavy, cellIndex, { targeting: false });
 
   return { navy: nextNavy, revealedIndexes };
 }
@@ -677,14 +703,16 @@ export function setCellTargeting(navy: NavyState, cellIndex: number, targeting: 
 
 /**
  * Cells this side's own Drone has revealed as occupied but not yet
- * targeted (exposure 'known' but effect still 'untargeted' - see
- * fireDrone) - a confirmed ship location, no guessing required. This
- * combination can't arise any other way: every other path that sets
- * exposure to 'known' sets effect to 'targeted' in the same update.
+ * targeted - a confirmed ship location, no guessing required. Checked via
+ * the cell's own droneRevealed flag, never exposure: exposure is already
+ * 'known' everywhere on a side's own fleet regardless of any Drone use
+ * (see CellState's droneRevealed doc comment), so it can't distinguish
+ * "found by a Drone" from "was always visible to its owner" - droneRevealed
+ * can.
  */
 export function getRevealedTargetIndexes(navy: NavyState): number[] {
   return navy.cells.reduce<number[]>((indexes, cell, index) => {
-    if (cell.effect === 'untargeted' && cell.occupied && cell.exposure === 'known') {
+    if (cell.effect === 'untargeted' && cell.occupied && cell.droneRevealed) {
       indexes.push(index);
     }
     return indexes;

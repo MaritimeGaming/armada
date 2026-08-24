@@ -2507,6 +2507,12 @@ function computeBaseCellPresentation(cell: CellState): { className: string; valu
     ? ''
     : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
+  // Signals "the computer's own Drone found this ship" - a live (not yet
+  // targeted) occupied cell it revealed shows its letter in green instead
+  // of white, on either grid, so a Drone use is visible after the fact
+  // even though nothing about the cell's background changes.
+  const shipTextColorClass = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted' ? 'text-[#00B200]' : 'text-white';
+
   if (cell.targeting) {
     return {
       className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
@@ -2572,7 +2578,7 @@ function computeBaseCellPresentation(cell: CellState): { className: string; valu
 
   if (cell.oil) {
     return {
-      className: 'border-[#404040] bg-[#404040] text-white',
+      className: `border-[#404040] bg-[#404040] ${shipTextColorClass}`,
       value,
       label: cell.occupied ? 'occupied with oil' : 'empty with oil',
     };
@@ -2587,7 +2593,7 @@ function computeBaseCellPresentation(cell: CellState): { className: string; valu
   }
 
   return {
-    className: 'border-[#0000FF] bg-[#0000FF] text-white',
+    className: `border-[#0000FF] bg-[#0000FF] ${shipTextColorClass}`,
     value,
     label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
   };
