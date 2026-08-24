@@ -2144,6 +2144,14 @@ function NavyPanel({
     }, 2000);
   };
 
+  // Mirrors the Legend's own white-vs-red split (see ShipRow below) without
+  // walking the ships a second time: an occupied, still-untargeted cell is
+  // exactly one white ship-code character in the Legend.
+  const remainingCellCount = useMemo(
+    () => navy.cells.filter((cell) => cell.occupied && cell.effect === 'untargeted').length,
+    [navy.cells],
+  );
+
   const shipStatusByCode = useMemo(() => {
     return availableShips.reduce<Record<string, { targetedCount: number; isSunk: boolean }>>((accumulator, ship) => {
       const shipCells = navy.cells.filter((cell) => cell.shipCode === ship.code);
@@ -2275,6 +2283,9 @@ function NavyPanel({
       {weaponsBarSlot}
 
       <div className="px-6">
+        <div className="flex items-center justify-end pb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/60">
+          <span>Cells: {remainingCellCount}</span>
+        </div>
         <div className="grid grid-cols-[max-content_max-content] justify-center gap-x-7 gap-y-0.5">
           {Array.from({ length: Math.max(leftColumnShips.length, rightColumnShips.length) }, (_, rowIndex) => {
             const leftShip = leftColumnShips[rowIndex];
