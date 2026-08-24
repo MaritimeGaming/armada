@@ -2091,9 +2091,13 @@ function NavyPanel({
   }, [availableShips, navy.cells]);
 
   // Length-descending, alphabetical within a tier - a "triangle" - split
-  // roughly in half and the second half mirrored, so the legend reads as
-  // an hourglass (two columns, tapering toward the middle) instead of one
-  // tall column with several single-character rows at the bottom.
+  // roughly in half and the second half re-sorted length-ascending, so the
+  // legend reads as an hourglass (two columns, tapering toward the middle)
+  // instead of one tall column with several single-character rows at the
+  // bottom. The right column re-sorts rather than just reversing the left
+  // column's slice, since a plain .reverse() would also flip the
+  // alphabetical order within each length tier to descending - it should
+  // stay ascending on both sides, only the length direction mirrors.
   const [leftColumnShips, rightColumnShips] = useMemo(() => {
     const sorted = [...availableShips].sort((a, b) => b.length - a.length || a.code.localeCompare(b.code));
 
@@ -2109,7 +2113,8 @@ function NavyPanel({
     }
 
     const splitIndex = Math.ceil(sorted.length / 2);
-    return [sorted.slice(0, splitIndex), sorted.slice(splitIndex).reverse()];
+    const rightColumn = sorted.slice(splitIndex).sort((a, b) => a.length - b.length || a.code.localeCompare(b.code));
+    return [sorted.slice(0, splitIndex), rightColumn];
   }, [availableShips]);
 
   return (
