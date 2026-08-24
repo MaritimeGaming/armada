@@ -42,7 +42,7 @@ export type NavyState = {
 
 export type TurnOwner = 'player' | 'app';
 export type Winner = 'player' | 'app';
-export type WeaponType = 'moab' | 'mine' | 'torpedo' | 'rocket' | 'harpoon';
+export type WeaponType = 'moab' | 'mine' | 'torpedo' | 'rocket' | 'harpoon' | 'drone';
 
 export type GameState = {
   version: number;
@@ -61,6 +61,8 @@ export type GameState = {
   appRocketCount: number;
   /** Mirrors appMoabCount for the Harpoon. */
   appHarpoonCount: number;
+  /** Mirrors appMoabCount for the Drone. */
+  appDroneCount: number;
   /** Mirrors playerWeaponsUsed for the computer. */
   appWeaponsUsed: number;
   /** Index in enemy.cells currently holding the player's active mine, or null if none is placed. Only one mine may be active at a time. */
@@ -91,7 +93,7 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 17;
+export const GAME_STATE_VERSION = 18;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 4;
@@ -100,6 +102,7 @@ export const APP_MINE_STARTING_COUNT = 2;
 export const APP_TORPEDO_STARTING_COUNT = 2;
 export const APP_ROCKET_STARTING_COUNT = 2;
 export const APP_HARPOON_STARTING_COUNT = 2;
+export const APP_DRONE_STARTING_COUNT = 2;
 // Chance, per computer turn (once a target cell is chosen), that it fires a
 // special weapon instead of a plain shot - checked only while it's still
 // under its per-game quota and has at least one available weapon.
@@ -553,6 +556,66 @@ export function fireHarpoon(navy: NavyState, cellIndex: number): WeaponTravelRes
   return fireTravelingWeapon(navy, cellIndex, 'diagonal');
 }
 
+/**
+ * The cell itself plus its up-to-4 orthogonal (not diagonal) neighbors,
+ * clipped at grid edges - the "diamond" (Von Neumann neighborhood) that
+ * MOAB's 8-neighbor "square" (Moore neighborhood, see getAdjacentIndexes)
+ * deliberately contrasts with. Smaller than MOAB's footprint since it's
+ * free information rather than damage.
+ */
+export function getDroneRevealIndexes(cellIndex: number): number[] {
+  const x = cellIndex % GRID_SIZE;
+  const y = Math.floor(cellIndex / GRID_SIZE);
+  const deltas: Array<[number, number]> = [
+    [0, 0],
+    [0, -1],
+    [0, 1],
+    [-1, 0],
+    [1, 0],
+  ];
+
+  return deltas.reduce<number[]>((indexes, [deltaX, deltaY]) => {
+    const nextX = x + deltaX;
+    const nextY = y + deltaY;
+
+    if (nextX >= 0 && nextX < GRID_SIZE && nextY >= 0 && nextY < GRID_SIZE) {
+      indexes.push(nextY * GRID_SIZE + nextX);
+    }
+
+    return indexes;
+  }, []);
+}
+
+export type DroneResult = {
+  navy: NavyState;
+  /** Cells actually newly revealed by this shot - a subset of getDroneRevealIndexes(cellIndex), excluding anything already targeted or previously revealed. */
+  revealedIndexes: number[];
+};
+
+/**
+ * Reveals the fog of war on cellIndex's diamond footprint (see
+ * getDroneRevealIndexes) without targeting any of it - an untargeted
+ * cell's true content (ship or empty water) becomes visible, but stays
+ * fully untargeted, unlike every other weapon. No hit, no miss, no sound,
+ * no ignition risk - nothing is actually being fired at, just looked at.
+ * Cells already targeted, or already revealed by an earlier Drone shot,
+ * are left untouched. Still costs one charge and one quota dot up front
+ * regardless of how many (if any) of the footprint's cells were still
+ * fogged, same as every other weapon.
+ */
+export function fireDrone(navy: NavyState, cellIndex: number): DroneResult {
+  const revealedIndexes = getDroneRevealIndexes(cellIndex).filter(
+    (index) => navy.cells[index]?.effect === 'untargeted' && navy.cells[index]?.exposure === 'unknown',
+  );
+
+  const nextNavy = revealedIndexes.reduce(
+    (currentNavy, index) => setCellState(currentNavy, index, { exposure: 'revealed' }),
+    navy,
+  );
+
+  return { navy: nextNavy, revealedIndexes };
+}
+
 export function setCellState(navy: NavyState, cellIndex: number, updates: Partial<CellState>): NavyState {
   const nextCells = navy.cells.map((cell, index) => {
     if (index !== cellIndex) {
@@ -576,6 +639,20 @@ export function setCellTargeting(navy: NavyState, cellIndex: number, targeting: 
   return setCellState(navy, cellIndex, { targeting });
 }
 
+/**
+ * Cells this side's own Drone has revealed as occupied but not yet
+ * targeted (exposure 'revealed' - see fireDrone) - a confirmed ship
+ * location, no guessing required.
+ */
+export function getRevealedTargetIndexes(navy: NavyState): number[] {
+  return navy.cells.reduce<number[]>((indexes, cell, index) => {
+    if (cell.effect === 'untargeted' && cell.occupied && cell.exposure === 'revealed') {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+}
+
 export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLevel): number | null {
   const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
     if (cell.effect === 'untargeted') {
@@ -586,6 +663,15 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
 
   if (untargetedIndexes.length === 0) {
     return null;
+  }
+
+  // A Drone reveal means a ship's location is already known outright, no
+  // deduction needed - even a Level 1 opponent should take the free hit
+  // rather than ignore visible information, so this check applies
+  // regardless of difficulty and outranks the Level 2 hunt logic below.
+  const revealedIndexes = getRevealedTargetIndexes(navy);
+  if (revealedIndexes.length > 0) {
+    return randomItem(revealedIndexes);
   }
 
   if (difficulty === 'level2') {
@@ -653,11 +739,16 @@ export function selectAppTargetIndex(navy: NavyState, difficulty: DifficultyLeve
  * gets processed when it's fired. MOAB and Mine share the same 8-adjacent-
  * cells footprint (a Mine isn't an instant blast, but placing it where more
  * neighbors are still untargeted maximizes its odds of a wander-hit later).
- * Torpedo, Rocket, and Harpoon use the cells they'd travel through.
+ * Torpedo, Rocket, and Harpoon use the cells they'd travel through. Drone
+ * uses its own smaller diamond reveal footprint (see getDroneRevealIndexes).
  */
 export function getWeaponBlastZoneIndexes(cellIndex: number, weapon: WeaponType): number[] {
   if (weapon === 'moab' || weapon === 'mine') {
     return getAdjacentIndexes(cellIndex);
+  }
+
+  if (weapon === 'drone') {
+    return getDroneRevealIndexes(cellIndex);
   }
 
   const axis: WeaponTravelAxis = weapon === 'torpedo' ? 'horizontal' : weapon === 'rocket' ? 'vertical' : 'diagonal';
@@ -711,6 +802,7 @@ export function selectAppWeaponChoice(options: {
   appTorpedoCount: number;
   appRocketCount: number;
   appHarpoonCount: number;
+  appDroneCount: number;
 }): WeaponType | null {
   if (options.appWeaponsUsed >= SPECIAL_WEAPON_QUOTA) {
     return null;
@@ -735,6 +827,9 @@ export function selectAppWeaponChoice(options: {
   }
   if (options.appHarpoonCount > 0) {
     availableWeapons.push('harpoon');
+  }
+  if (options.appDroneCount > 0) {
+    availableWeapons.push('drone');
   }
 
   if (availableWeapons.length === 0) {
@@ -762,6 +857,7 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     appTorpedoCount: APP_TORPEDO_STARTING_COUNT,
     appRocketCount: APP_ROCKET_STARTING_COUNT,
     appHarpoonCount: APP_HARPOON_STARTING_COUNT,
+    appDroneCount: APP_DRONE_STARTING_COUNT,
     appWeaponsUsed: 0,
     playerMineIndex: null,
     appMineIndex: null,

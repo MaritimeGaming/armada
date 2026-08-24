@@ -18,6 +18,7 @@ import {
   ChevronRight,
   CircleDot,
   MoveDiagonal,
+  Radar,
   Settings,
 } from 'lucide-react';
 
@@ -26,12 +27,14 @@ import {
   AUDIO_FILES,
   createGameState,
   DEFAULT_SHIP_SET_OPTIONS,
+  fireDrone,
   fireHarpoon,
   fireMoab,
   fireRocket,
   fireTorpedo,
   GAME_STATE_VERSION,
   getMoabTargetIndexes,
+  getRevealedTargetIndexes,
   getShips,
   GRID_SIZE,
   moveMine,
@@ -90,6 +93,9 @@ const ROCKET_REFILL_COUNT = 3;
 const HARPOON_COUNT_STORAGE_KEY = 'armada:harpoon-count';
 const HARPOON_STARTING_COUNT = 2;
 const HARPOON_REFILL_COUNT = 3;
+const DRONE_COUNT_STORAGE_KEY = 'armada:drone-count';
+const DRONE_STARTING_COUNT = 2;
+const DRONE_REFILL_COUNT = 3;
 // How long each traveled cell (beyond the launch cell) stays lit with the
 // targeting highlight before it resolves and the weapon moves on. Shared by
 // the Torpedo, Rocket, and Harpoon - direct counterparts, differing only in
@@ -173,6 +179,7 @@ const Index = () => {
   const [torpedoCount, setTorpedoCount] = useState<number>(() => readStoredCount(TORPEDO_COUNT_STORAGE_KEY, TORPEDO_STARTING_COUNT));
   const [rocketCount, setRocketCount] = useState<number>(() => readStoredCount(ROCKET_COUNT_STORAGE_KEY, ROCKET_STARTING_COUNT));
   const [harpoonCount, setHarpoonCount] = useState<number>(() => readStoredCount(HARPOON_COUNT_STORAGE_KEY, HARPOON_STARTING_COUNT));
+  const [droneCount, setDroneCount] = useState<number>(() => readStoredCount(DRONE_COUNT_STORAGE_KEY, DRONE_STARTING_COUNT));
   const [gamesPlayed, setGamesPlayed] = useState<number>(() => readStoredCount(GAMES_PLAYED_STORAGE_KEY, 0));
   const [gamesWon, setGamesWon] = useState<number>(() => readStoredCount(GAMES_WON_STORAGE_KEY, 0));
   // A Torpedo's or Rocket's travel can take several seconds; turn ownership
@@ -456,6 +463,7 @@ const Index = () => {
       torpedo: torpedoCount,
       rocket: rocketCount,
       harpoon: harpoonCount,
+      drone: droneCount,
     };
     const count = counts[weapon];
 
@@ -470,6 +478,7 @@ const Index = () => {
       torpedo: TORPEDO_COUNT_STORAGE_KEY,
       rocket: ROCKET_COUNT_STORAGE_KEY,
       harpoon: HARPOON_COUNT_STORAGE_KEY,
+      drone: DRONE_COUNT_STORAGE_KEY,
     };
     const refillCounts: Record<WeaponType, number> = {
       moab: MOAB_REFILL_COUNT,
@@ -477,6 +486,7 @@ const Index = () => {
       torpedo: TORPEDO_REFILL_COUNT,
       rocket: ROCKET_REFILL_COUNT,
       harpoon: HARPOON_REFILL_COUNT,
+      drone: DRONE_REFILL_COUNT,
     };
     const setCounts: Record<WeaponType, (value: number) => void> = {
       moab: setMoabCount,
@@ -484,6 +494,7 @@ const Index = () => {
       torpedo: setTorpedoCount,
       rocket: setRocketCount,
       harpoon: setHarpoonCount,
+      drone: setDroneCount,
     };
 
     const storageKey = storageKeys[weapon];
@@ -960,6 +971,31 @@ const Index = () => {
           return nextState;
         }
 
+        if (armedWeapon === 'drone') {
+          const { navy: updatedEnemy } = fireDrone(currentEnemy, releaseIndex);
+
+          setArmedWeapon(null);
+          setDroneCount((current) => {
+            const nextCount = current - 1;
+            window.localStorage.setItem(DRONE_COUNT_STORAGE_KEY, String(nextCount));
+            return nextCount;
+          });
+
+          playerShotExtendedDelayRef.current = mineCausedExtendedDelay;
+
+          const nextState: GameState = {
+            ...state,
+            currentTurn: 'app',
+            enemy: updatedEnemy,
+            playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerMineIndex: mineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          return nextState;
+        }
+
         const enemyWithTargetedCell = setCellState(currentEnemy, releaseIndex, {
           effect: 'targeted',
           targeting: false,
@@ -1070,16 +1106,26 @@ const Index = () => {
     }
 
     if (appWeaponChoiceRef.current === undefined) {
-      appWeaponChoiceRef.current = selectAppWeaponChoice({
-        appWeaponsUsed: gameState.appWeaponsUsed,
-        appMoabCount: gameState.appMoabCount,
-        appMoabUsedThisGame: gameState.appMoabUsedThisGame,
-        appMineCount: gameState.appMineCount,
-        appMineIndex: gameState.appMineIndex,
-        appTorpedoCount: gameState.appTorpedoCount,
-        appRocketCount: gameState.appRocketCount,
-        appHarpoonCount: gameState.appHarpoonCount,
-      });
+      // A cell the computer's own Drone has already revealed as a ship is a
+      // free, confirmed kill - firing another weapon (or hunting elsewhere)
+      // instead would be wasting a sure thing, so this skips weapon choice
+      // entirely and falls through to a plain shot, which selectAppTargetIndex
+      // will then aim at that revealed cell (see its own top-priority check).
+      const hasRevealedTarget = getRevealedTargetIndexes(gameState.player).length > 0;
+
+      appWeaponChoiceRef.current = hasRevealedTarget
+        ? null
+        : selectAppWeaponChoice({
+            appWeaponsUsed: gameState.appWeaponsUsed,
+            appMoabCount: gameState.appMoabCount,
+            appMoabUsedThisGame: gameState.appMoabUsedThisGame,
+            appMineCount: gameState.appMineCount,
+            appMineIndex: gameState.appMineIndex,
+            appTorpedoCount: gameState.appTorpedoCount,
+            appRocketCount: gameState.appRocketCount,
+            appHarpoonCount: gameState.appHarpoonCount,
+            appDroneCount: gameState.appDroneCount,
+          });
     }
 
     const weaponChoice = appWeaponChoiceRef.current;
@@ -1509,6 +1555,27 @@ const Index = () => {
           return nextState;
         }
 
+        if (weaponChoice === 'drone') {
+          const { navy: updatedPlayer } = fireDrone(currentPlayer, previewIndex);
+
+          const nextState: GameState = {
+            ...currentState,
+            currentTurn: 'player',
+            player: updatedPlayer,
+            appDroneCount: currentState.appDroneCount - 1,
+            appWeaponsUsed: currentState.appWeaponsUsed + 1,
+            appMineIndex,
+          };
+
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+
+          window.setTimeout(() => {
+            setActiveView('enemy');
+          }, mineCausedExtendedDelay ? 2000 : 1000);
+
+          return nextState;
+        }
+
         const playerWithTargetedCell = setCellState(currentPlayer, previewIndex, {
           effect: 'targeted',
           targeting: false,
@@ -1619,6 +1686,7 @@ const Index = () => {
   const torpedoButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
   const rocketButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
   const harpoonButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
+  const droneButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
 
   // Each grid gets the weapons bar relevant to looking at it: the enemy
   // grid is where you'd arm and fire, so it gets "My Weapons"; your own
@@ -1647,6 +1715,9 @@ const Index = () => {
           harpoonCount={gameState?.appHarpoonCount ?? 0}
           isHarpoonArmed={false}
           harpoonButtonDisabled
+          droneCount={gameState?.appDroneCount ?? 0}
+          isDroneArmed={false}
+          droneButtonDisabled
         />
       );
     }
@@ -1677,6 +1748,10 @@ const Index = () => {
         isHarpoonArmed={armedWeapon === 'harpoon'}
         harpoonButtonDisabled={harpoonButtonDisabled}
         onHarpoonClick={() => handleWeaponButtonClick('harpoon')}
+        droneCount={droneCount}
+        isDroneArmed={armedWeapon === 'drone'}
+        droneButtonDisabled={droneButtonDisabled}
+        onDroneClick={() => handleWeaponButtonClick('drone')}
       />
     );
   };
@@ -1810,12 +1885,16 @@ type WeaponsBarProps = {
   isHarpoonArmed: boolean;
   harpoonButtonDisabled: boolean;
   onHarpoonClick?: () => void;
+  droneCount: number;
+  isDroneArmed: boolean;
+  droneButtonDisabled: boolean;
+  onDroneClick?: () => void;
 };
 
 // 6 slots (3 across, 2 rows) reserved for weapon buttons; MOAB, Mines,
-// Torpedo, Rocket, and Harpoon occupy the first five, with the rest left
-// as empty spacers so the grid geometry is already right for whichever
-// weapons come next.
+// Torpedo, Rocket, Harpoon, and Drone fill all six, with no spacers left -
+// the next new weapon will need to grow this grid rather than just
+// claiming an existing spacer slot.
 const WEAPON_BUTTON_SLOT_COUNT = 6;
 
 type WeaponButtonProps = {
@@ -1883,6 +1962,10 @@ function WeaponsBar({
   isHarpoonArmed,
   harpoonButtonDisabled,
   onHarpoonClick,
+  droneCount,
+  isDroneArmed,
+  droneButtonDisabled,
+  onDroneClick,
 }: WeaponsBarProps) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
@@ -1947,8 +2030,16 @@ function WeaponsBar({
           disabled={harpoonButtonDisabled}
           onClick={onHarpoonClick}
         />
+        <WeaponButton
+          icon={<Radar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          label="DRONE"
+          count={droneCount}
+          isArmed={isDroneArmed}
+          disabled={droneButtonDisabled}
+          onClick={onDroneClick}
+        />
 
-        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 5 }, (_, index) => (
+        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 6 }, (_, index) => (
           <div key={index} aria-hidden="true" />
         ))}
       </div>
@@ -2297,6 +2388,7 @@ const WEAPON_CURSOR_FILES: Record<WeaponType, Partial<Record<WeaponDirectionKey,
     'down-left': 'harpoon-cursor-down-left.svg',
     'up-right': 'harpoon-cursor-up-right.svg',
   },
+  drone: { none: 'drone-cursor.svg' },
 };
 
 // Used only for the grid cell's own mobile press-and-hold preview (see
@@ -2313,6 +2405,7 @@ const WEAPON_PREVIEW_ICONS: Record<WeaponType, Partial<Record<WeaponDirectionKey
     'down-left': ArrowDownLeft,
     'up-right': ArrowUpRight,
   },
+  drone: { none: Radar },
 };
 
 /**

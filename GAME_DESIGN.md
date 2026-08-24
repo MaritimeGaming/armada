@@ -81,15 +81,19 @@ selectable in Settings, persisted to localStorage):
   in any order. See `hitIndexesByShipCode` in `selectAppTargetIndex()`.
   This same "play shrewdly" character now also covers
   weapon use: whenever Level 2 decides to fire a MOAB, Mine, Torpedo,
-  Rocket, or Harpoon, it picks whichever untargeted cell maximizes that
-  weapon's "blast zone" — the count of still-untargeted cells within its
-  footprint (the 8-neighbor adjacency for MOAB/Mine, or the up-to-5 cells
-  it would travel through for Torpedo/Rocket/Harpoon; see
-  `getWeaponBlastZoneIndexes()` and
+  Rocket, Harpoon, or Drone, it picks whichever untargeted cell maximizes
+  that weapon's "blast zone" — the count of still-untargeted cells within
+  its footprint (the 8-neighbor adjacency for MOAB/Mine, the up-to-5 cells
+  Torpedo/Rocket/Harpoon would travel through, or the Drone's own smaller
+  diamond reveal footprint; see `getWeaponBlastZoneIndexes()` and
   `selectAppWeaponTargetIndex()`) — breaking ties randomly. This reorders
   the turn's decision: weapon choice (`selectAppWeaponChoice()`) now
   happens *before* target selection, since the target search only makes
-  sense once the weapon (and therefore the footprint shape) is known.
+  sense once the weapon (and therefore the footprint shape) is known. A
+  Drone-revealed ship still outranks all of this, at either difficulty
+  level - see the Drone's own entry under Variable D for
+  `getRevealedTargetIndexes()`, which short-circuits weapon choice and
+  target selection alike before any of the above ever runs.
   Weapon-aware play was originally sketched below as a separate, later
   difficulty tier, but landed as part of Level 2 instead: introducing a
   third rung risked a distinction most players couldn't articulate ("hunts
@@ -302,9 +306,50 @@ tuning either mechanic, since they're designed to interact.
   shared by all three weapons since only one can ever be traveling for a
   given side at a time.
 
-**Not yet implemented:**
-- **Surveillance Drone**: reveals a cell, a 3x3 block, a full row, or a full
-  column, without targeting any of it.
+- **Drone** (`fireDrone()`/`getDroneRevealIndexes()` in `armada-game.ts`):
+  the one weapon that doesn't attack. Fired at any untargeted cell, it
+  reveals the fog of war on that cell plus its up-to-4 orthogonal (not
+  diagonal) neighbors — a small diamond (Von Neumann neighborhood),
+  deliberately smaller than and shaped differently from MOAB's 3x3 "square"
+  blast (Moore neighborhood, see `getAdjacentIndexes()`), since it's free
+  information rather than damage. Cells in that footprint that are still
+  untargeted become visible - an occupied one shows its ship, an empty one
+  shows open water - but neither gets marked `targeted`: no hit, no miss,
+  no sound, no ignition risk, nothing actually fired. Cells outside the
+  footprint, or already targeted or already revealed, are left untouched.
+  Still costs one charge and one quota dot up front, same as every other
+  weapon, regardless of how much (if anything) was still fogged there.
+
+  This is exactly the "expose without targeting" distinction flagged as an
+  open question when the Drone was first proposed - resolved by reusing the
+  `ExposureState` type's third value, `'revealed'`, which already existed
+  in the codebase for an unrelated feature (showing a winner's remaining
+  unsunk ships at game end via `revealUntargetedShips()` in `Index.tsx`).
+  `'revealed'` cells were already fully handled by `getCellPresentation()` -
+  an occupied one renders in its own distinct green (`'occupied and
+  revealed'`), separate from both the gray `'unknown'` fog and the red/blue
+  `'targeted'` colors - so the Drone needed no new rendering logic, only a
+  new way to produce that state mid-game.
+
+  **The computer takes drone-revealed information seriously.** A cell the
+  computer's own Drone has revealed as an enemy ship is a confirmed,
+  cost-free kill sitting on the board - `getRevealedTargetIndexes()` finds
+  any such cells, and `selectAppTargetIndex()` checks it first, ahead of
+  even the Level 2 hunt-adjacent-cells logic, returning a revealed cell
+  outright if one exists. This applies at *both* difficulty levels, unlike
+  the hunt logic it outranks: ignoring a ship you can already see isn't
+  "playing dumb," it's just not looking, so even Level 1 takes the free hit
+  rather than continuing to fire randomly. The app-turn effect in
+  `Index.tsx` goes a step further and checks for a revealed target
+  *before* even rolling a weapon choice for the turn - if one exists,
+  `appWeaponChoiceRef.current` is forced to `null` instead of calling
+  `selectAppWeaponChoice()`, so the computer doesn't burn a MOAB or Mine
+  hunting the rest of the board while a guaranteed kill sits unclaimed; the
+  turn falls through to a plain shot, which then lands on the revealed cell
+  via the priority check above. The player gets the equivalent benefit for
+  free, just visually: a Drone-revealed enemy ship renders green on the
+  Enemy Navy grid exactly like the end-game reveal, so there's nothing to
+  build - the player already sees it and can just tap it.
 
 ### Turn economy
 
@@ -428,12 +473,12 @@ Torpedo/Rocket was generalized into `getWeaponDirectionKey(weapon,
 cellIndex)`, returning one of `'none' | 'right' | 'left' | 'down' | 'up' |
 'down-right' | 'up-left' | 'down-left' | 'up-right'`; `WEAPON_CURSOR_FILES`
 and `WEAPON_PREVIEW_ICONS` (`Index.tsx`) key off that string instead of a
-fixed `{ default, flipped }` shape - MOAB and Mine have no direction, so
-they only ever use `'none'`. The weapons bar's own button icons are
-unaffected (still the plain bidirectional `ArrowRightLeft`/`ArrowUpDown`/
-`MoveDiagonal`), since a button has no cell position to point a direction
-at - only `GridCell`'s cursor and preview icon need to know which cell
-they're over.
+fixed `{ default, flipped }` shape - MOAB, Mine, and Drone have no
+direction, so they only ever use `'none'`. The weapons bar's own button
+icons are unaffected (still the plain bidirectional
+`ArrowRightLeft`/`ArrowUpDown`/`MoveDiagonal`/`Radar`), since a button has
+no cell position to point a direction at - only `GridCell`'s cursor and
+preview icon need to know which cell they're over.
 
 This was chosen over two alternatives:
 - **Right-click / long-press context menu on the cell itself**: doesn't
