@@ -2096,6 +2096,7 @@ function SettingsMenu({ shipSetOptions, onSinglesToggle, onNewGame, onResetStati
         <DropdownMenuCheckboxItem
           checked={shipSetOptions.includeSingles}
           onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}
+          indicatorAlign="right"
         >
           Singles (E H L)
         </DropdownMenuCheckboxItem>
