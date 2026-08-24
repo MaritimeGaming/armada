@@ -332,20 +332,22 @@ tuning either mechanic, since they're designed to interact.
   the oil color if oil has spread over it).
 
   The one deliberate exception: `computeBaseCellPresentation()` colors a
-  droneRevealed, still-untargeted, occupied cell's own letter green
-  (`shipTextColorClass`, `#00B200` instead of white) rather than leaving it
-  fully indistinguishable from an ordinary visible ship cell - on *either*
-  grid, since a Drone can reveal either side's ships. This exists purely so
-  a Drone use is still visible after the fact: without it, nothing on
-  screen would ever confirm the computer actually fired one (or that the
-  player's earlier Drone use on the enemy grid found anything), since a
-  droneRevealed cell's background is otherwise identical to a plain visible
-  cell's. It intentionally reuses `'#00B200'`, the same green
-  `revealUntargetedShips()` uses for its end-of-game reveal (see below) -
-  same color, different signal (a live letter tint here vs. that feature's
-  full cell background at game end) - rather than inventing a second green.
-  It only applies pre-targeting: once the cell is actually hit or sunk, the
-  ordinary hit/sunk colors and white text take back over.
+  droneRevealed, still-untargeted, occupied cell's own letter a bright
+  green (`shipTextColorClass`, Tailwind `text-green-400` instead of white)
+  rather than leaving it fully indistinguishable from an ordinary visible
+  ship cell - on *either* grid, since a Drone can reveal either side's
+  ships. This exists purely so a Drone use is still visible after the fact:
+  without it, nothing on screen would ever confirm the computer actually
+  fired one (or that the player's earlier Drone use on the enemy grid found
+  anything), since a droneRevealed cell's background is otherwise identical
+  to a plain visible cell's. Deliberately *not* the darker `#00B200`
+  `revealUntargetedShips()` uses for its own end-of-game reveal (see
+  below) - `green-400` is the same bright shade as the weapon button's
+  pulsing use-count dot, chosen specifically to stand out against the blue
+  "untargeted" background, which the darker end-of-game green didn't do as
+  well against blue's own similar depth. It only applies pre-targeting:
+  once the cell is actually hit or sunk, the ordinary hit/sunk colors and
+  white text take back over.
 
   This green tint shipped with a bug that made it invisible in practice for
   a few commits: `GridCell` renders the cell's letter inside its own inner
@@ -549,7 +551,13 @@ for the cap's own history.
 The next-to-spend dot (index `useCount`, still green) also **pulses**
 (`animate-pulse`) the moment that weapon type is armed, and keeps pulsing
 straight through firing until its animation has actually finished, at
-which point it settles into solid red rather than stopping mid-color. This
+which point it settles into solid red rather than stopping mid-color.
+While pulsing it also switches to a brighter shade (`bg-green-400` instead
+of the other dots' `bg-green-500`) and a quicker cycle than Tailwind's
+`animate-pulse` default (an inline `animationDuration: '0.6s'` override,
+vs. the default 2s) - both purely to read as "this one's active" at a
+glance, distinct from the plain unused-charge green used everywhere else.
+This
 applies symmetrically to both sides: `firingWeaponType`/`appFiringWeaponType`
 (`Index.tsx`) track "fired, still animating" separately from `armedWeapon`
 ("selected, not yet released") - `armedWeapon` alone would stop the pulse

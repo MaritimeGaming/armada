@@ -1976,16 +1976,23 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
         role="img"
         aria-label={`${WEAPON_TYPE_USE_CAP - useCount} of ${WEAPON_TYPE_USE_CAP} uses remaining this game`}
       >
-        {Array.from({ length: WEAPON_TYPE_USE_CAP }, (_, index) => (
-          <span
-            key={index}
-            className={cn(
-              'h-2 w-2 rounded-full ring-2 ring-slate-950',
-              index < useCount ? 'bg-red-500' : 'bg-green-500',
-              isPending && index === useCount ? 'animate-pulse' : null,
-            )}
-          />
-        ))}
+        {Array.from({ length: WEAPON_TYPE_USE_CAP }, (_, index) => {
+          const isPendingDot = isPending && index === useCount;
+          return (
+            <span
+              key={index}
+              className={cn(
+                'h-2 w-2 rounded-full ring-2 ring-slate-950',
+                index < useCount ? 'bg-red-500' : isPendingDot ? 'bg-green-400' : 'bg-green-500',
+                isPendingDot ? 'animate-pulse' : null,
+              )}
+              // Tailwind's animate-pulse defaults to a 2s cycle - noticeably
+              // quicker here so an armed/firing weapon reads as urgent, not
+              // just "different."
+              style={isPendingDot ? { animationDuration: '0.6s' } : undefined}
+            />
+          );
+        })}
       </span>
       {icon}
       {label}
@@ -2569,10 +2576,13 @@ function computeBaseCellPresentation(cell: CellState): { className: string; valu
     : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
   // Signals "the computer's own Drone found this ship" - a live (not yet
-  // targeted) occupied cell it revealed shows its letter in green instead
-  // of white, on either grid, so a Drone use is visible after the fact
-  // even though nothing about the cell's background changes.
-  const shipTextColorClass = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted' ? 'text-[#00B200]' : 'text-white';
+  // targeted) occupied cell it revealed shows its letter in a bright green
+  // instead of white, on either grid, so a Drone use is visible after the
+  // fact even though nothing about the cell's background changes. Uses the
+  // same bright green-400 as the weapon button's pulsing use-count dot
+  // (rather than the darker green-600-ish #00B200 the end-of-game reveal
+  // uses) so it actually pops against the blue "untargeted" background.
+  const shipTextColorClass = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted' ? 'text-green-400' : 'text-white';
 
   if (cell.targeting) {
     return {
