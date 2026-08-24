@@ -519,11 +519,42 @@ per-cell targetability check) disables once either cap is hit — the
 5-shot total or that type's own 2-use cap — even with standing-inventory
 charges left, and a row of `SPECIAL_WEAPON_QUOTA` (5) dots in a "My
 Weapons" bar tracks the total — solid green per unused shot, turning red
-as each is spent, no text needed. There's no equivalent per-type "1 more
-shot left" indicator; a button simply disables the moment its own cap or
-the shared quota is reached, a deliberate simplicity call once every type
-shares the same cap (see "Loosening the MOAB cap" below for why this
-replaced MOAB's old dedicated indicator).
+as each is spent, no text needed. Every button also carries its own
+`WEAPON_TYPE_USE_CAP` (2) corner dots, same green/red idiom, one turning
+red per use of that specific type — a smaller-scale echo of the quota row,
+giving "1 more shot left" advance warning per weapon type instead of only
+finding out the moment a button disables. (An earlier pass judged this
+per-type indicator not worth the complexity once every type shared one
+cap and dropped it in favor of relying on `disabled` alone — reinstated
+because at-a-glance per-type feedback turned out to matter more than the
+minor visual clutter of a second dot; disabling the button is still the
+actual enforcement, this is purely an earlier-warning affordance on top
+of it.) The button's own `count` badge still shows standing inventory,
+independent of these use-count dots - see "Loosening the MOAB cap" below
+for the cap's own history.
+
+The next-to-spend dot (index `useCount`, still green) also **pulses**
+(`animate-pulse`) the moment that weapon type is armed, and keeps pulsing
+straight through firing until its animation has actually finished, at
+which point it settles into solid red rather than stopping mid-color. This
+applies symmetrically to both sides: `firingWeaponType`/`appFiringWeaponType`
+(`Index.tsx`) track "fired, still animating" separately from `armedWeapon`
+("selected, not yet released") - `armedWeapon` alone would stop the pulse
+the instant a shot is released, well before its explosion/travel animation
+actually plays out. For an instant weapon (MOAB/Mine/Drone) the pulse
+simply continues for `WEAPON_FIRE_ANIMATION_MS` (380ms, the same constant
+`triggerCellExplosions()` uses for its own explosion duration) after
+firing; for a traveling weapon (Torpedo/Rocket/Harpoon) it continues for
+that same 380ms if the shot resolved without traveling, or all the way
+until `runWeaponTravelSteps()`'s completion callback for one that did -
+exact signals already available in the firing code, not new bespoke
+timers. The computer gets the identical treatment on the "Enemy Weapons"
+bar: `appArmedWeapon` is set the moment `selectAppWeaponChoice()` decides
+on a type (visibly "thinking" during the several-second delay before it
+actually fires - see the app-turn effect's `previewDelay`/
+`executeTargetingDelay`), and handed off to `appFiringWeaponType` at the
+same point its firing branch runs, clearing the same way as the player's
+own weapons.
 
 The weapons bar is split into two (`WeaponsBar` in `Index.tsx`, one per
 side) precisely so this display is symmetric: a matching "Enemy Weapons"
@@ -553,8 +584,11 @@ That stricter cap is gone: MOAB now shares the same `WEAPON_TYPE_USE_CAP`
 closed most of the gap with MOAB's 9-cell blast, so MOAB no longer
 dominates clearly enough to deserve a uniquely tighter leash. This also
 simplified the code: the old `playerMoabUsedThisGame`/`appMoabUsedThisGame`
-booleans (and the MOAB-only "used this game" dot on its button) are gone
-entirely, folded into the generic per-type cap described above.
+booleans are gone entirely, folded into the generic per-type cap described
+above. MOAB's old single "used this game" corner dot is also gone as a
+MOAB-specific thing, but not lost - every weapon type now carries the
+same two-dot indicator described above, generalizing rather than dropping
+the affordance.
 
 Separately, the computer is now mildly "MOAB-aware": whenever it's already
 decided to fire *some* weapon this turn (the 25% roll above) and MOAB

@@ -99,6 +99,10 @@ const DRONE_REFILL_COUNT = 3;
 // the Torpedo, Rocket, and Harpoon - direct counterparts, differing only in
 // orientation.
 const WEAPON_TRAVEL_STEP_DELAY_MS = 500;
+// How long a cell's explosion visual plays, and (for an instant weapon
+// with no further animation) how long its use-count dot keeps flashing
+// after firing before settling to solid red.
+const WEAPON_FIRE_ANIMATION_MS = 380;
 // Lifetime record, not part of GameState: survives New Game and browser
 // restarts, and only ever grows as games are completed.
 const GAMES_PLAYED_STORAGE_KEY = 'armada:games-played';
@@ -210,6 +214,14 @@ const Index = () => {
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
   const isDesktopLayout = useMediaQuery(DESKTOP_LAYOUT_QUERY);
   const [armedWeapon, setArmedWeapon] = useState<WeaponType | null>(null);
+  // Which weapon type currently has a "pending" shot in progress on each
+  // side - armed (about to fire) or firing (fired, animation not yet
+  // settled) - drives the flashing use-count dot on that weapon's button.
+  // Separate from armedWeapon because the dot should keep flashing through
+  // the firing animation, after armedWeapon itself has already cleared.
+  const [firingWeaponType, setFiringWeaponType] = useState<WeaponType | null>(null);
+  const [appArmedWeapon, setAppArmedWeapon] = useState<WeaponType | null>(null);
+  const [appFiringWeaponType, setAppFiringWeaponType] = useState<WeaponType | null>(null);
   const [procuringWeapon, setProcuringWeapon] = useState<WeaponType | null>(null);
 
   // A callback ref, not an effect: the swipe viewport only exists once
@@ -335,7 +347,17 @@ const Index = () => {
         ...current,
         [side]: current[side].filter((index) => !cellIndexes.includes(index)),
       }));
-    }, 380);
+    }, WEAPON_FIRE_ANIMATION_MS);
+  };
+
+  // Marks weapon as "firing" (keeps its use-count dot flashing) and, for an
+  // instant weapon with no further animation of its own, clears it again
+  // after WEAPON_FIRE_ANIMATION_MS. Traveling weapons (Torpedo/Rocket/
+  // Harpoon) call setType(weapon) directly instead and clear it themselves
+  // once their travel animation actually finishes.
+  const flashWeaponFiring = (setType: (value: WeaponType | null | ((current: WeaponType | null) => WeaponType | null)) => void, weapon: WeaponType) => {
+    setType(weapon);
+    window.setTimeout(() => setType((current) => (current === weapon ? null : current)), WEAPON_FIRE_ANIMATION_MS);
   };
 
   // Animates a Torpedo's or Rocket's travel steps (everything after the
@@ -653,6 +675,7 @@ const Index = () => {
           playerShotExtendedDelayRef.current = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
 
           setArmedWeapon(null);
+          flashWeaponFiring(setFiringWeaponType, 'moab');
           setMoabCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(MOAB_COUNT_STORAGE_KEY, String(nextCount));
@@ -698,6 +721,7 @@ const Index = () => {
           playerShotExtendedDelayRef.current = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
 
           setArmedWeapon(null);
+          flashWeaponFiring(setFiringWeaponType, 'mine');
           setMineCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(MINE_COUNT_STORAGE_KEY, String(nextCount));
@@ -753,6 +777,7 @@ const Index = () => {
           }
 
           setArmedWeapon(null);
+          setFiringWeaponType('torpedo');
           setTorpedoCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(TORPEDO_COUNT_STORAGE_KEY, String(nextCount));
@@ -781,6 +806,7 @@ const Index = () => {
 
           if (!hasTravel) {
             playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+            window.setTimeout(() => setFiringWeaponType((current) => (current === 'torpedo' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('player', nextState);
@@ -790,6 +816,7 @@ const Index = () => {
           }
 
           runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+            setFiringWeaponType((current) => (current === 'torpedo' ? null : current));
             setGameState((current) => {
               if (!current) {
                 return current;
@@ -835,6 +862,7 @@ const Index = () => {
           }
 
           setArmedWeapon(null);
+          setFiringWeaponType('rocket');
           setRocketCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(ROCKET_COUNT_STORAGE_KEY, String(nextCount));
@@ -863,6 +891,7 @@ const Index = () => {
 
           if (!hasTravel) {
             playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+            window.setTimeout(() => setFiringWeaponType((current) => (current === 'rocket' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('player', nextState);
@@ -872,6 +901,7 @@ const Index = () => {
           }
 
           runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+            setFiringWeaponType((current) => (current === 'rocket' ? null : current));
             setGameState((current) => {
               if (!current) {
                 return current;
@@ -917,6 +947,7 @@ const Index = () => {
           }
 
           setArmedWeapon(null);
+          setFiringWeaponType('harpoon');
           setHarpoonCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(HARPOON_COUNT_STORAGE_KEY, String(nextCount));
@@ -945,6 +976,7 @@ const Index = () => {
 
           if (!hasTravel) {
             playerShotExtendedDelayRef.current = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+            window.setTimeout(() => setFiringWeaponType((current) => (current === 'harpoon' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('player', nextState);
@@ -954,6 +986,7 @@ const Index = () => {
           }
 
           runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+            setFiringWeaponType((current) => (current === 'harpoon' ? null : current));
             setGameState((current) => {
               if (!current) {
                 return current;
@@ -983,6 +1016,7 @@ const Index = () => {
           const { navy: updatedEnemy } = fireDrone(currentEnemy, releaseIndex);
 
           setArmedWeapon(null);
+          flashWeaponFiring(setFiringWeaponType, 'drone');
           setDroneCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(DRONE_COUNT_STORAGE_KEY, String(nextCount));
@@ -1135,6 +1169,8 @@ const Index = () => {
             appHarpoonCount: gameState.appHarpoonCount,
             appDroneCount: gameState.appDroneCount,
           });
+
+      setAppArmedWeapon(appWeaponChoiceRef.current);
     }
 
     const weaponChoice = appWeaponChoiceRef.current;
@@ -1197,6 +1233,10 @@ const Index = () => {
 
         appPreviewIndexRef.current = null;
         appWeaponChoiceRef.current = undefined;
+        setAppArmedWeapon(null);
+        if (weaponChoice) {
+          setAppFiringWeaponType(weaponChoice);
+        }
 
         // An active mine (placed on a prior computer turn) moves automatically
         // the moment the computer takes any turn, regardless of what that
@@ -1235,6 +1275,7 @@ const Index = () => {
             ? Array.from(new Set([...moabFootprint, ...ignitedCellIndexes]))
             : moabFootprint;
           triggerCellExplosions('player', explosionIndexes);
+          window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'moab' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
           const hasStaggered = true;
 
@@ -1277,6 +1318,8 @@ const Index = () => {
               triggerCellExplosions('player', hitIndexes);
             }
           }
+
+          window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'mine' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
           const hasStaggered = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
 
@@ -1353,6 +1396,7 @@ const Index = () => {
 
           if (!hasTravel) {
             const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+            window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'torpedo' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('app', nextState);
@@ -1366,6 +1410,7 @@ const Index = () => {
           }
 
           runWeaponTravelSteps('player', travelSteps, 0, () => {
+            setAppFiringWeaponType((current) => (current === 'torpedo' ? null : current));
             setGameState((current) => {
               if (!current) {
                 return current;
@@ -1435,6 +1480,7 @@ const Index = () => {
 
           if (!hasTravel) {
             const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+            window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'rocket' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('app', nextState);
@@ -1448,6 +1494,7 @@ const Index = () => {
           }
 
           runWeaponTravelSteps('player', travelSteps, 0, () => {
+            setAppFiringWeaponType((current) => (current === 'rocket' ? null : current));
             setGameState((current) => {
               if (!current) {
                 return current;
@@ -1517,6 +1564,7 @@ const Index = () => {
 
           if (!hasTravel) {
             const hasStaggered = mineCausedExtendedDelay || weaponHasStaggeredOutcome(result.steps);
+            window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'harpoon' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
             if (areAllShipsSunk(launchStep.navy, shipSetOptions)) {
               concludeGame('app', nextState);
@@ -1530,6 +1578,7 @@ const Index = () => {
           }
 
           runWeaponTravelSteps('player', travelSteps, 0, () => {
+            setAppFiringWeaponType((current) => (current === 'harpoon' ? null : current));
             setGameState((current) => {
               if (!current) {
                 return current;
@@ -1560,6 +1609,7 @@ const Index = () => {
 
         if (weaponChoice === 'drone') {
           const { navy: updatedPlayer } = fireDrone(currentPlayer, previewIndex);
+          window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'drone' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
           const nextState: GameState = {
             ...currentState,
@@ -1632,6 +1682,15 @@ const Index = () => {
   useEffect(() => {
     if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen) {
       setArmedWeapon(null);
+    }
+  }, [gameState, gameOver.isOpen]);
+
+  // Same safety net, mirrored for the computer's own armed/firing dot
+  // indicators - only meaningful while it's the computer's move.
+  useEffect(() => {
+    if (!gameState || gameState.currentTurn !== 'app' || gameOver.isOpen) {
+      setAppArmedWeapon(null);
+      setAppFiringWeaponType(null);
     }
   }, [gameState, gameOver.isOpen]);
 
@@ -1715,7 +1774,12 @@ const Index = () => {
           weapons={activeWeaponTypes.map((type) => ({
             type,
             count: appCounts[type],
+            // The computer's own per-type standing count starts at exactly
+            // WEAPON_TYPE_USE_CAP and never resets mid-game, so uses-so-far
+            // is just the cap minus whatever's left.
+            useCount: WEAPON_TYPE_USE_CAP - appCounts[type],
             isArmed: false,
+            isPending: appArmedWeapon === type || appFiringWeaponType === type,
             disabled: true,
           }))}
         />
@@ -1739,7 +1803,9 @@ const Index = () => {
         weapons={activeWeaponTypes.map((type) => ({
           type,
           count: playerCounts[type],
+          useCount: gameState?.playerWeaponUseCounts[type] ?? 0,
           isArmed: armedWeapon === type,
+          isPending: armedWeapon === type || firingWeaponType === type,
           disabled: isWeaponTypeDisabled(type),
           onClick: () => handleWeaponButtonClick(type),
         }))}
@@ -1869,7 +1935,11 @@ type WeaponsBarProps = {
   weapons: Array<{
     type: WeaponType;
     count: number;
+    /** How many of this side's WEAPON_TYPE_USE_CAP uses of this type are already spent this game. */
+    useCount: number;
     isArmed: boolean;
+    /** Armed (about to fire) or fired-but-still-animating - flashes this type's next-to-spend dot. */
+    isPending: boolean;
     disabled: boolean;
     onClick?: () => void;
   }>;
@@ -1879,12 +1949,14 @@ type WeaponButtonProps = {
   icon: ReactNode;
   label: string;
   count: number;
+  useCount: number;
   isArmed: boolean;
+  isPending: boolean;
   disabled: boolean;
   onClick?: () => void;
 };
 
-function WeaponButton({ icon, label, count, isArmed, disabled, onClick }: WeaponButtonProps) {
+function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabled, onClick }: WeaponButtonProps) {
   return (
     <Button
       type="button"
@@ -1899,6 +1971,22 @@ function WeaponButton({ icon, label, count, isArmed, disabled, onClick }: Weapon
           : 'border-white/10 bg-white/10 hover:bg-white/20',
       )}
     >
+      <span
+        className="absolute -top-1 -right-1 flex items-center gap-0.5"
+        role="img"
+        aria-label={`${WEAPON_TYPE_USE_CAP - useCount} of ${WEAPON_TYPE_USE_CAP} uses remaining this game`}
+      >
+        {Array.from({ length: WEAPON_TYPE_USE_CAP }, (_, index) => (
+          <span
+            key={index}
+            className={cn(
+              'h-2 w-2 rounded-full ring-2 ring-slate-950',
+              index < useCount ? 'bg-red-500' : 'bg-green-500',
+              isPending && index === useCount ? 'animate-pulse' : null,
+            )}
+          />
+        ))}
+      </span>
       {icon}
       {label}
       <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
@@ -1937,7 +2025,9 @@ function WeaponsBar({ label, weaponsUsed, weapons }: WeaponsBarProps) {
             icon={WEAPON_DISPLAY[weapon.type].icon}
             label={WEAPON_DISPLAY[weapon.type].label}
             count={weapon.count}
+            useCount={weapon.useCount}
             isArmed={weapon.isArmed}
+            isPending={weapon.isPending}
             disabled={weapon.disabled}
             onClick={weapon.onClick}
           />
