@@ -716,3 +716,24 @@ of where its regular shot would land. Variable A's "weapon-aware play" has
 since closed that gap: it now picks *where* to fire a chosen weapon based
 on maximizing that weapon's blast zone, rather than firing wherever its
 regular shot happened to land.
+
+## Reference guides: About Ships / About Weapons
+
+Two static, in-Settings reference dialogs (`Index.tsx`) list every ship and
+weapon type, alphabetically by name, each tagged with its identifying
+character (ship code) or button icon (weapon). `SHIP_REFERENCE` is always
+built from the full roster including Singles (`getShips({ includeSingles:
+true })`), independent of the current game's own ship-set toggle, since
+it's a standing reference, not a reflection of the active round.
+
+**Deliberately characteristics-only, not a how-to-play guide**: these
+describe what a ship or weapon *is* (size, blast shape, travel pattern),
+not when or why to use it tactically. That line gets blurry for the Oil
+Tanker and the Mine specifically, since their defining characteristic *is*
+a piece of gameplay mechanics (the spreading/ignitable slick; the
+drift-then-detonate behavior) - those two get a little more mechanical
+detail than a plain warship's "3-cell ship" entry, but still stop short of
+strategy advice (e.g. no mention of *when* it's good to sink the tanker).
+An interactive "Getting Started" tutorial is the intended home for actual
+play instruction and strategy; these two dialogs exist so a player can look
+up "what does this icon mean" without launching that heavier sequence.

@@ -223,6 +223,7 @@ const Index = () => {
   const [appArmedWeapon, setAppArmedWeapon] = useState<WeaponType | null>(null);
   const [appFiringWeaponType, setAppFiringWeaponType] = useState<WeaponType | null>(null);
   const [procuringWeapon, setProcuringWeapon] = useState<WeaponType | null>(null);
+  const [infoDialog, setInfoDialog] = useState<'ships' | 'weapons' | null>(null);
 
   // A callback ref, not an effect: the swipe viewport only exists once
   // gameState is loaded, so an effect with an empty dependency array would
@@ -1717,6 +1718,8 @@ const Index = () => {
       onSinglesToggle={handleSinglesToggle}
       onNewGame={() => handleNewGame()}
       onResetStatistics={handleResetStatistics}
+      onShowAboutShips={() => setInfoDialog('ships')}
+      onShowAboutWeapons={() => setInfoDialog('weapons')}
       onGoLeft={showArrows && canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
       onGoRight={showArrows && canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
       onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
@@ -1906,6 +1909,54 @@ const Index = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={infoDialog === 'ships'} onOpenChange={(open) => setInfoDialog(open ? 'ships' : null)}>
+        <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto rounded-2xl border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>About Ships</DialogTitle>
+            <DialogDescription className="text-slate-300">Every ship in the fleet, alphabetically.</DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-2.5 text-sm text-slate-200">
+            {SHIP_REFERENCE.map((ship) => (
+              <li key={ship.code} className="flex gap-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 font-mono text-xs font-semibold text-cyan-100">
+                  {ship.code}
+                </span>
+                <span>
+                  <span className="font-semibold">{ship.name}</span>
+                  {' - '}
+                  {SHIP_REFERENCE_DESCRIPTIONS[ship.code]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={infoDialog === 'weapons'} onOpenChange={(open) => setInfoDialog(open ? 'weapons' : null)}>
+        <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto rounded-2xl border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>About Weapons</DialogTitle>
+            <DialogDescription className="text-slate-300">
+              Every weapon type, alphabetically. Three are chosen at random each game.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-2.5 text-sm text-slate-200">
+            {WEAPON_REFERENCE_ORDER.map((weaponType) => (
+              <li key={weaponType} className="flex gap-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-cyan-100">
+                  {WEAPON_DISPLAY[weaponType].icon}
+                </span>
+                <span>
+                  <span className="font-semibold">{WEAPON_DISPLAY[weaponType].label}</span>
+                  {' - '}
+                  {WEAPON_REFERENCE_DESCRIPTIONS[weaponType]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
+
       {procuringWeapon ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
@@ -1926,6 +1977,39 @@ const WEAPON_DISPLAY: Record<WeaponType, { icon: ReactNode; label: string }> = {
   rocket: { icon: <ArrowUpDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'ROCKET' },
   harpoon: { icon: <MoveDiagonal className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'HARPOON' },
   drone: { icon: <Radar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'DRONE' },
+};
+
+// Reference copy for the "About Ships" dialog - characteristics only, no
+// gameplay tactics (a future "Getting Started" sequence owns that). Always
+// built from the full roster (Singles included) since this is a standing
+// reference, not a reflection of the current game's ship-set toggle.
+const SHIP_REFERENCE_DESCRIPTIONS: Record<string, string> = {
+  A: 'The largest ship in the fleet, spanning 5 cells.',
+  B: 'A 4-cell warship.',
+  C: 'A 3-cell warship.',
+  D: 'A 3-cell warship.',
+  E: 'A single-cell vessel. One of three optional "Singles" ships - only in play when Singles is turned on in Settings.',
+  F: 'A 3-cell warship.',
+  G: 'A 2-cell support vessel.',
+  H: 'A single-cell vessel. One of three optional "Singles" ships - only in play when Singles is turned on in Settings.',
+  L: 'A single-cell vessel. One of three optional "Singles" ships - only in play when Singles is turned on in Settings.',
+  O: "A 3-cell vessel carrying a volatile cargo. Sinking it spills an oil slick that spreads across the board over time and can ignite if struck, taking out anything still underneath it.",
+  S: 'A 2-cell vessel.',
+};
+const SHIP_REFERENCE: ShipDefinition[] = getShips({ includeSingles: true })
+  .slice()
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+// Reference copy for the "About Weapons" dialog, in the same alphabetical
+// (by label) order as WEAPON_DISPLAY's labels sort - characteristics only.
+const WEAPON_REFERENCE_ORDER: WeaponType[] = ['drone', 'harpoon', 'mine', 'moab', 'rocket', 'torpedo'];
+const WEAPON_REFERENCE_DESCRIPTIONS: Record<WeaponType, string> = {
+  drone: 'Reveals the fog of war in a diamond-shaped area around the targeted cell, without attacking or firing a shot.',
+  harpoon: "Launches on a fixed diagonal line, striking every ship it crosses along the way.",
+  mine: "Deploys at a chosen cell and drifts to a neighboring cell every turn until it finds a ship. Only one Mine can be active at a time, and it always takes out two of a ship's cells when it strikes.",
+  moab: 'Mother Of All Bombs. Detonates in a blast covering the targeted cell and all eight cells around it at once.',
+  rocket: 'Launches on a fixed vertical line, striking every ship it crosses along the way.',
+  torpedo: 'Launches on a fixed horizontal line, striking every ship it crosses along the way.',
 };
 
 type WeaponsBarProps = {
@@ -2050,6 +2134,8 @@ type NavyPanelProps = {
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
   onResetStatistics: () => void;
+  onShowAboutShips: () => void;
+  onShowAboutWeapons: () => void;
   onGoLeft?: () => void;
   onGoRight?: () => void;
   onTargetCell?: (cellIndex: number) => void;
@@ -2075,9 +2161,18 @@ type SettingsMenuProps = {
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
   onResetStatistics: () => void;
+  onShowAboutShips: () => void;
+  onShowAboutWeapons: () => void;
 };
 
-function SettingsMenu({ shipSetOptions, onSinglesToggle, onNewGame, onResetStatistics }: SettingsMenuProps) {
+function SettingsMenu({
+  shipSetOptions,
+  onSinglesToggle,
+  onNewGame,
+  onResetStatistics,
+  onShowAboutShips,
+  onShowAboutWeapons,
+}: SettingsMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -2102,6 +2197,9 @@ function SettingsMenu({ shipSetOptions, onSinglesToggle, onNewGame, onResetStati
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onResetStatistics}>Reset Statistics</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onShowAboutShips}>About Ships</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onShowAboutWeapons}>About Weapons</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -2113,6 +2211,8 @@ function NavyPanel({
   onSinglesToggle,
   onNewGame,
   onResetStatistics,
+  onShowAboutShips,
+  onShowAboutWeapons,
   onGoLeft,
   onGoRight,
   onTargetCell,
@@ -2250,6 +2350,8 @@ function NavyPanel({
                 onSinglesToggle={onSinglesToggle}
                 onNewGame={onNewGame}
                 onResetStatistics={onResetStatistics}
+                onShowAboutShips={onShowAboutShips}
+                onShowAboutWeapons={onShowAboutWeapons}
               />
             ) : null}
           </div>
