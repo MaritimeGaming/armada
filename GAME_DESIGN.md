@@ -426,68 +426,120 @@ lost, every player cell is `'sunk'`) or fully sunk on the computer's
 side - has nothing further to reveal, which is why only the winning side
 needs this treatment.
 
+### Randomized weapon loadout
+
+Each game draws only `ACTIVE_WEAPON_TYPE_COUNT` (3) of the 6 weapon types
+into play, not all 6 — `pickActiveWeaponTypes()` in `armada-game.ts` picks
+them uniformly at random and re-sorts the pick back into `ALL_WEAPON_TYPES`'s
+canonical order (so *which* 3 show up varies game to game, but their
+left-to-right order in the weapons bar never visually shuffles). The result
+is stored once as `GameState.activeWeaponTypes`, re-rolled every time a new
+`GameState` is created (New Game, the ship-set toggle, first load) — and
+critically, **the same 3 types for both sides**, not independently
+randomized per side. An asymmetric version (the computer stuck with a weak
+draw, or the player facing one they can't match) was considered and
+rejected: it would produce some games that are unwinnable-feeling rather
+than harder, which cuts against variety without adding real challenge.
+
+This is also why the weapons bar (`WeaponsBar` in `Index.tsx`) is
+data-driven rather than one hardcoded button per weapon type: it renders
+exactly `weapons: Array<{ type, count, isArmed, disabled, onClick }>`,
+built from whichever types are in `activeWeaponTypes` for both the
+interactive "My Weapons" bar and the mirrored read-only "Enemy Weapons"
+one, via a small `WEAPON_DISPLAY` icon/label lookup keyed by `WeaponType`.
+Six named prop groups (one per type) couldn't express "render only these
+3 of 6" without either duplicating JSX across all 20 possible combinations
+or heavy conditional rendering — the array-of-active-weapons shape scales
+to however many types are active without per-type plumbing.
+
 ### Per-game weapon quota
 
 Ads make the standing inventory effectively unlimited over enough sessions,
 which would otherwise let a patient player wallpaper most of the enemy
-grid for free (four un-overlapped MOABs alone reveal ~36 of 100 cells).
-The fix is a hard, separate cap: **`SPECIAL_WEAPON_QUOTA` (4) total special
-weapon shots per side per game, across all weapon types combined** —
-independent of how many charges are sitting in inventory. `playerWeaponsUsed`
-tracks this on `GameState` itself (unlike the standing inventory), so it
-resets to 0 every New Game while the inventory carries over untouched. This
-is what decouples "grind ads to build a deep reserve" (fine, that's the
-intended monetization loop) from "grind ads to win this particular match"
-(not fine — capped regardless of reserve size).
+grid for free. The fix is a hard, separate cap: **`SPECIAL_WEAPON_QUOTA`
+(5) total special weapon shots per side per game, across all active weapon
+types combined** — independent of how many charges are sitting in
+inventory. `playerWeaponsUsed` tracks this on `GameState` itself (unlike
+the standing inventory), so it resets to 0 every New Game while the
+inventory carries over untouched. This is what decouples "grind ads to
+build a deep reserve" (fine, that's the intended monetization loop) from
+"grind ads to win this particular match" (not fine — capped regardless of
+reserve size).
 
-Implemented for the player: the MOAB button (and the same per-cell
-targetability check) also disables once the quota is hit, even with
-charges left, and a small 2x2 grid of dots in a "My Weapons" bar tracks
-it visually — solid green per unused shot, turning red as each is spent,
-no text needed.
+On top of that shared total, **`WEAPON_TYPE_USE_CAP` (2) limits every
+individual weapon type to 2 uses per side per game** — this applies
+uniformly now, including MOAB (see "Loosening the MOAB cap" below).
+Combined with only 3 weapon types being active per game, this has a
+deliberate side effect: spending all 5 shots is only reachable as 2+2+1,
+which forces at least one shot into every active type rather than letting
+a player (or the computer) dump all 5 into a single favorite — variety
+within a single game, not just across games.
+
+The player's own per-game count lives in `GameState.playerWeaponUseCounts`
+(a `Record<WeaponType, number>`, reset to all-zero every New Game) since
+the player's standing inventory itself is *not* reset per game and can
+exceed 2 via ad refills — count-exhaustion alone can't enforce the cap for
+them. The computer needs no equivalent field: its own per-type standing
+counts (`appMoabCount` etc., starting at `APP_MOAB_STARTING_COUNT` (2) and
+five siblings, all already exactly 2) never reset mid-game, so their own
+exhaustion at 0 already *is* a working 2-per-game cap, for every type,
+for free.
+
+Implemented for the player: each active weapon's button (and the same
+per-cell targetability check) disables once either cap is hit — the
+5-shot total or that type's own 2-use cap — even with standing-inventory
+charges left, and a row of `SPECIAL_WEAPON_QUOTA` (5) dots in a "My
+Weapons" bar tracks the total — solid green per unused shot, turning red
+as each is spent, no text needed. There's no equivalent per-type "1 more
+shot left" indicator; a button simply disables the moment its own cap or
+the shared quota is reached, a deliberate simplicity call once every type
+shares the same cap (see "Loosening the MOAB cap" below for why this
+replaced MOAB's old dedicated indicator).
 
 The weapons bar is split into two (`WeaponsBar` in `Index.tsx`, one per
 side) precisely so this display is symmetric: a matching "Enemy Weapons"
-bar shows the computer's own MOAB count (`appMoabCount`, starting at
-`APP_MOAB_STARTING_COUNT` (2) each game, unlike the player's ad-driven
-standing inventory) and its own quota dots (`appWeaponsUsed`). The
-computer's MOAB button is wired permanently disabled
-(`moabButtonDisabled` hardcoded `true`) — it's display-only, information
-for the player about what the computer *could* still use, not a control.
+bar shows the computer's own counts and its own quota dots
+(`appWeaponsUsed`). Every button on that bar is wired permanently disabled
+— it's display-only, information for the player about what the computer
+*could* still use, not a control.
 
-The computer's side of actually *firing* weapons is now implemented
+The computer's side of actually *firing* weapons is implemented
 (`selectAppWeaponChoice()` in `armada-game.ts`): once a target cell is
 chosen for its turn, if it hasn't hit `SPECIAL_WEAPON_QUOTA` yet, there's
 a flat 25% chance (`APP_WEAPON_USE_CHANCE`) it fires a special weapon
-instead of a plain shot, picked at random from whatever's currently
-available (skipping Mines while one is already active, and any weapon
-whose standing count is 0). This is the "random cell, random timing"
-version of the idea — purely random, not the more deliberate "2 of each
-type, then random until the quota's spent" pacing that was originally
-discussed. *Which* weapon fires is still random at both difficulty levels;
-it's *where* it fires that now differs — Level 1 rides along with a plain
-random target same as always, while Level 2 picks the target that
-maximizes the weapon's blast zone (see Variable A's "weapon-aware play").
+instead of a plain shot, picked from whatever's currently active,
+in-charge, and (for Mine) not already placed. Within that pool, MOAB gets
+a soft priority (see below) rather than a purely uniform pick; every other
+type is still uniform random. *Where* it fires differs by difficulty —
+Level 1 rides along with a plain random target same as always, while
+Level 2 picks the target that maximizes the weapon's blast zone (see
+Variable A's "weapon-aware play").
 
-### One MOAB per side per game
+### Loosening the MOAB cap, and MOAB-aware computer play
 
-On top of the shared `SPECIAL_WEAPON_QUOTA`, the MOAB specifically is
-capped at **one use per side per game**, independent of both the quota and
-standing inventory — a player who has procured a deep MOAB reserve still
-only gets to fire it once per round. This exists because a single MOAB
-already reveals up to 9 cells; stacking several in one game (which the
-shared 4-shot quota alone wouldn't prevent, given enough charges) would
-make Mines the only meaningfully-limited weapon and let MOAB spam dominate
-a round. `playerMoabUsedThisGame`/`appMoabUsedThisGame` on `GameState`
-track this (reset every New Game, like the quota counters), and
-`selectAppWeaponChoice()` excludes MOAB from the computer's random pool
-once its flag is set, so the cap applies symmetrically to both sides.
+MOAB used to be capped at **one** use per side per game, stricter than
+every other weapon, because a single MOAB already reveals up to 9 cells.
+That stricter cap is gone: MOAB now shares the same `WEAPON_TYPE_USE_CAP`
+(2) as every other type. The reasoning changed because the roster changed
+— Torpedo, Rocket, and Harpoon's up-to-5-cell travel footprints have
+closed most of the gap with MOAB's 9-cell blast, so MOAB no longer
+dominates clearly enough to deserve a uniquely tighter leash. This also
+simplified the code: the old `playerMoabUsedThisGame`/`appMoabUsedThisGame`
+booleans (and the MOAB-only "used this game" dot on its button) are gone
+entirely, folded into the generic per-type cap described above.
 
-Communicated via a small dot on the MOAB button itself (both "My Weapons"
-and the mirrored "Enemy Weapons" bar) — green while still available this
-game, red once spent, reusing the same green/red idiom as the quota dots
-rather than adding new visual language. The button disables once the dot
-turns red, even with charges left in the standing inventory.
+Separately, the computer is now mildly "MOAB-aware": whenever it's already
+decided to fire *some* weapon this turn (the 25% roll above) and MOAB
+happens to be in that turn's eligible pool, there's a further 50%
+(`APP_MOAB_PRIORITY_CHANCE`) chance it fires MOAB outright rather than
+falling into the uniform pick among whatever else is available. This
+mirrors the expectation that a deliberate human player would rarely sit on
+an available MOAB — but it's a soft bias, not a guarantee: the computer's
+first weapon use of a game isn't reliably MOAB, and there's no scenario
+where MOAB is forced to fire the instant it's available. This is a
+"which weapon" decision inside the existing 25% "fire at all" roll,
+entirely separate from — and unaffected by — the blast-zone-maximizing
+"where to fire" logic Level 2 uses once a weapon's already chosen.
 
 ### UI direction: arm, then tap
 

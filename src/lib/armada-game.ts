@@ -69,10 +69,18 @@ export type GameState = {
   playerMineIndex: number | null;
   /** Mirrors playerMineIndex for the computer's mine, in player.cells. */
   appMineIndex: number | null;
-  /** MOAB is capped at one use per side per game, independent of standing inventory or the shared SPECIAL_WEAPON_QUOTA. Resets with a new game. */
-  playerMoabUsedThisGame: boolean;
-  /** Mirrors playerMoabUsedThisGame for the computer. */
-  appMoabUsedThisGame: boolean;
+  /** The 3 of 6 weapon types in play this game - the same set for both sides. Picked once by pickActiveWeaponTypes() in createGameState(), resets with a new game. */
+  activeWeaponTypes: WeaponType[];
+  /**
+   * The player's own uses-this-game count per weapon type, checked against
+   * WEAPON_TYPE_USE_CAP. Resets with a new game, unlike the player's
+   * standing inventory (which lives outside GameState entirely, in
+   * Index.tsx, and isn't reset by a new game). The computer needs no
+   * equivalent field: its own per-type standing counts (appMoabCount etc.)
+   * already start at exactly WEAPON_TYPE_USE_CAP each game and never reset
+   * mid-game, so their own exhaustion already enforces the same cap.
+   */
+  playerWeaponUseCounts: Record<WeaponType, number>;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
@@ -93,10 +101,32 @@ export type TargetingResult = {
 };
 
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 18;
+export const GAME_STATE_VERSION = 19;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
-export const SPECIAL_WEAPON_QUOTA = 4;
+export const SPECIAL_WEAPON_QUOTA = 5;
+// Max uses of any single weapon type per side per game, independent of the
+// shared SPECIAL_WEAPON_QUOTA above and of standing inventory - applies
+// uniformly to all six types now, MOAB included (MOAB previously had its
+// own stricter one-per-game rule, loosened here since Torpedo/Rocket/
+// Harpoon's ~5-6 cell footprints have closed most of the gap with MOAB's
+// 9-cell blast). With only ACTIVE_WEAPON_TYPE_COUNT (3) weapon types live
+// in a given game, this cap has a deliberate side effect: spending all
+// SPECIAL_WEAPON_QUOTA (5) shots is only possible as 2+2+1, which forces
+// at least one shot into every active type rather than letting a player
+// dump all 5 into a single favorite.
+export const WEAPON_TYPE_USE_CAP = 2;
+// How many of the 6 weapon types are randomly drawn into play each game -
+// the same ACTIVE_WEAPON_TYPE_COUNT types for both sides (see
+// pickActiveWeaponTypes()), not independently randomized per side.
+const ACTIVE_WEAPON_TYPE_COUNT = 3;
+// Chance, once the computer has already rolled to fire some weapon this
+// turn (APP_WEAPON_USE_CHANCE below) and MOAB is one of the eligible
+// choices, that MOAB is picked outright instead of joining the uniform
+// random pool with whatever else is available - noticeably more MOAB use
+// than chance alone, but never guaranteed.
+const APP_MOAB_PRIORITY_CHANCE = 0.5;
+export const ALL_WEAPON_TYPES: WeaponType[] = ['moab', 'mine', 'torpedo', 'rocket', 'harpoon', 'drone'];
 export const APP_MOAB_STARTING_COUNT = 2;
 export const APP_MINE_STARTING_COUNT = 2;
 export const APP_TORPEDO_STARTING_COUNT = 2;
@@ -803,8 +833,8 @@ export function selectAppWeaponTargetIndex(navy: NavyState, weapon: WeaponType):
 
 export function selectAppWeaponChoice(options: {
   appWeaponsUsed: number;
+  activeWeaponTypes: WeaponType[];
   appMoabCount: number;
-  appMoabUsedThisGame: boolean;
   appMineCount: number;
   appMineIndex: number | null;
   appTorpedoCount: number;
@@ -820,28 +850,33 @@ export function selectAppWeaponChoice(options: {
     return null;
   }
 
-  const availableWeapons: WeaponType[] = [];
-  if (options.appMoabCount > 0 && !options.appMoabUsedThisGame) {
-    availableWeapons.push('moab');
-  }
-  if (options.appMineCount > 0 && options.appMineIndex === null) {
-    availableWeapons.push('mine');
-  }
-  if (options.appTorpedoCount > 0) {
-    availableWeapons.push('torpedo');
-  }
-  if (options.appRocketCount > 0) {
-    availableWeapons.push('rocket');
-  }
-  if (options.appHarpoonCount > 0) {
-    availableWeapons.push('harpoon');
-  }
-  if (options.appDroneCount > 0) {
-    availableWeapons.push('drone');
-  }
+  const countsByType: Record<WeaponType, number> = {
+    moab: options.appMoabCount,
+    mine: options.appMineCount,
+    torpedo: options.appTorpedoCount,
+    rocket: options.appRocketCount,
+    harpoon: options.appHarpoonCount,
+    drone: options.appDroneCount,
+  };
+
+  const availableWeapons = options.activeWeaponTypes.filter((weapon) => {
+    if (countsByType[weapon] <= 0) {
+      return false;
+    }
+
+    return weapon !== 'mine' || options.appMineIndex === null;
+  });
 
   if (availableWeapons.length === 0) {
     return null;
+  }
+
+  // MOAB gets a soft priority over the uniform pool below, rather than
+  // being guaranteed - strong enough that both MOAB charges reliably get
+  // used somewhere in the game, without making the computer's first two
+  // shots predictably MOAB every time.
+  if (availableWeapons.includes('moab') && Math.random() < APP_MOAB_PRIORITY_CHANCE) {
+    return 'moab';
   }
 
   return randomItem(availableWeapons);
@@ -869,8 +904,8 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     appWeaponsUsed: 0,
     playerMineIndex: null,
     appMineIndex: null,
-    playerMoabUsedThisGame: false,
-    appMoabUsedThisGame: false,
+    activeWeaponTypes: pickActiveWeaponTypes(),
+    playerWeaponUseCounts: Object.fromEntries(ALL_WEAPON_TYPES.map((type) => [type, 0])) as Record<WeaponType, number>,
   };
 }
 
@@ -1198,6 +1233,25 @@ function randomItem<T>(items: T[]): T {
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * Picks ACTIVE_WEAPON_TYPE_COUNT distinct weapon types at random out of
+ * ALL_WEAPON_TYPES, then re-sorts them back into ALL_WEAPON_TYPES's own
+ * canonical order - so which 3 types show up is random, but their
+ * left-to-right order in the weapons bar stays stable and predictable
+ * game to game, rather than visually shuffling around.
+ */
+function pickActiveWeaponTypes(): WeaponType[] {
+  const remaining = [...ALL_WEAPON_TYPES];
+  const picked: WeaponType[] = [];
+
+  while (picked.length < ACTIVE_WEAPON_TYPE_COUNT && remaining.length > 0) {
+    const [chosen] = remaining.splice(randomInt(0, remaining.length - 1), 1);
+    picked.push(chosen);
+  }
+
+  return ALL_WEAPON_TYPES.filter((type) => picked.includes(type));
 }
 
 function pointKey(point: Point): string {

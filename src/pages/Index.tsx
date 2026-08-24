@@ -46,6 +46,7 @@ import {
   selectAppWeaponTargetIndex,
   setCellState,
   setCellTargeting,
+  WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
 import type { AudioCue, AudioSequence, CellState, DifficultyLevel, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
@@ -452,8 +453,14 @@ const Index = () => {
       return;
     }
 
-    // MOAB is capped at one use per game, regardless of standing inventory.
-    if (weapon === 'moab' && gameState.playerMoabUsedThisGame) {
+    // Only whichever 3 of the 6 weapon types were drawn into this game are
+    // usable, and each is capped at WEAPON_TYPE_USE_CAP uses regardless of
+    // standing inventory.
+    if (!gameState.activeWeaponTypes.includes(weapon)) {
+      return;
+    }
+
+    if ((gameState.playerWeaponUseCounts[weapon] ?? 0) >= WEAPON_TYPE_USE_CAP) {
       return;
     }
 
@@ -670,7 +677,7 @@ const Index = () => {
             currentTurn: 'app',
             enemy: updatedEnemy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
-            playerMoabUsedThisGame: true,
+            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, moab: state.playerWeaponUseCounts.moab + 1 },
             playerMineIndex: mineIndex,
           };
 
@@ -720,6 +727,7 @@ const Index = () => {
             currentTurn: 'app',
             enemy: updatedEnemy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, mine: state.playerWeaponUseCounts.mine + 1 },
             playerMineIndex: nextMineIndex,
           };
 
@@ -778,6 +786,7 @@ const Index = () => {
             currentTurn: hasTravel ? 'player' : 'app',
             enemy: launchStep.navy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, torpedo: state.playerWeaponUseCounts.torpedo + 1 },
             playerMineIndex: mineIndex,
           };
 
@@ -859,6 +868,7 @@ const Index = () => {
             currentTurn: hasTravel ? 'player' : 'app',
             enemy: launchStep.navy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, rocket: state.playerWeaponUseCounts.rocket + 1 },
             playerMineIndex: mineIndex,
           };
 
@@ -940,6 +950,7 @@ const Index = () => {
             currentTurn: hasTravel ? 'player' : 'app',
             enemy: launchStep.navy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, harpoon: state.playerWeaponUseCounts.harpoon + 1 },
             playerMineIndex: mineIndex,
           };
 
@@ -998,6 +1009,7 @@ const Index = () => {
             currentTurn: 'app',
             enemy: updatedEnemy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
+            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, drone: state.playerWeaponUseCounts.drone + 1 },
             playerMineIndex: mineIndex,
           };
 
@@ -1127,8 +1139,8 @@ const Index = () => {
         ? null
         : selectAppWeaponChoice({
             appWeaponsUsed: gameState.appWeaponsUsed,
+            activeWeaponTypes: gameState.activeWeaponTypes,
             appMoabCount: gameState.appMoabCount,
-            appMoabUsedThisGame: gameState.appMoabUsedThisGame,
             appMineCount: gameState.appMineCount,
             appMineIndex: gameState.appMineIndex,
             appTorpedoCount: gameState.appTorpedoCount,
@@ -1249,7 +1261,6 @@ const Index = () => {
             currentTurn: 'player',
             player: updatedPlayer,
             appMoabCount: currentState.appMoabCount - 1,
-            appMoabUsedThisGame: true,
             appWeaponsUsed: currentState.appWeaponsUsed + 1,
             appMineIndex,
           };
@@ -1690,78 +1701,68 @@ const Index = () => {
   const playerWeaponsUsed = gameState?.playerWeaponsUsed ?? 0;
   const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
   const hasActiveMine = (gameState?.playerMineIndex ?? null) !== null;
-  const playerMoabUsedThisGame = gameState?.playerMoabUsedThisGame ?? false;
-  const moabButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || playerMoabUsedThisGame;
-  const mineButtonDisabled = !isPlayerTurnActive || weaponQuotaReached || hasActiveMine;
-  const torpedoButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
-  const rocketButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
-  const harpoonButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
-  const droneButtonDisabled = !isPlayerTurnActive || weaponQuotaReached;
+
+  const isWeaponTypeDisabled = (weapon: WeaponType): boolean =>
+    !isPlayerTurnActive
+    || weaponQuotaReached
+    || (gameState?.playerWeaponUseCounts[weapon] ?? 0) >= WEAPON_TYPE_USE_CAP
+    || (weapon === 'mine' && hasActiveMine);
 
   // Each grid gets the weapons bar relevant to looking at it: the enemy
   // grid is where you'd arm and fire, so it gets "My Weapons"; your own
   // grid is where the computer's shots land, so it gets "Enemy Weapons" to
-  // watch its count/dots change if it ever fires one.
+  // watch its count/dots change if it ever fires one. Only whichever 3 of
+  // the 6 types were drawn into this game (gameState.activeWeaponTypes)
+  // ever render a button, identically on both bars.
   const renderWeaponsBarForSide = (side: NavySide) => {
+    const activeWeaponTypes = gameState?.activeWeaponTypes ?? [];
+
     if (side === 'player') {
+      const appCounts: Record<WeaponType, number> = {
+        moab: gameState?.appMoabCount ?? 0,
+        mine: gameState?.appMineCount ?? 0,
+        torpedo: gameState?.appTorpedoCount ?? 0,
+        rocket: gameState?.appRocketCount ?? 0,
+        harpoon: gameState?.appHarpoonCount ?? 0,
+        drone: gameState?.appDroneCount ?? 0,
+      };
+
       return (
         <WeaponsBar
           key="enemy-weapons"
           label="Enemy Weapons"
-          moabCount={gameState?.appMoabCount ?? 0}
-          moabUsedThisGame={gameState?.appMoabUsedThisGame ?? false}
           weaponsUsed={gameState?.appWeaponsUsed ?? 0}
-          isMoabArmed={false}
-          moabButtonDisabled
-          mineCount={gameState?.appMineCount ?? 0}
-          isMineArmed={false}
-          mineButtonDisabled
-          torpedoCount={gameState?.appTorpedoCount ?? 0}
-          isTorpedoArmed={false}
-          torpedoButtonDisabled
-          rocketCount={gameState?.appRocketCount ?? 0}
-          isRocketArmed={false}
-          rocketButtonDisabled
-          harpoonCount={gameState?.appHarpoonCount ?? 0}
-          isHarpoonArmed={false}
-          harpoonButtonDisabled
-          droneCount={gameState?.appDroneCount ?? 0}
-          isDroneArmed={false}
-          droneButtonDisabled
+          weapons={activeWeaponTypes.map((type) => ({
+            type,
+            count: appCounts[type],
+            isArmed: false,
+            disabled: true,
+          }))}
         />
       );
     }
+
+    const playerCounts: Record<WeaponType, number> = {
+      moab: moabCount,
+      mine: mineCount,
+      torpedo: torpedoCount,
+      rocket: rocketCount,
+      harpoon: harpoonCount,
+      drone: droneCount,
+    };
 
     return (
       <WeaponsBar
         key="my-weapons"
         label="My Weapons"
-        moabCount={moabCount}
-        moabUsedThisGame={playerMoabUsedThisGame}
         weaponsUsed={playerWeaponsUsed}
-        isMoabArmed={armedWeapon === 'moab'}
-        moabButtonDisabled={moabButtonDisabled}
-        onMoabClick={() => handleWeaponButtonClick('moab')}
-        mineCount={mineCount}
-        isMineArmed={armedWeapon === 'mine'}
-        mineButtonDisabled={mineButtonDisabled}
-        onMineClick={() => handleWeaponButtonClick('mine')}
-        torpedoCount={torpedoCount}
-        isTorpedoArmed={armedWeapon === 'torpedo'}
-        torpedoButtonDisabled={torpedoButtonDisabled}
-        onTorpedoClick={() => handleWeaponButtonClick('torpedo')}
-        rocketCount={rocketCount}
-        isRocketArmed={armedWeapon === 'rocket'}
-        rocketButtonDisabled={rocketButtonDisabled}
-        onRocketClick={() => handleWeaponButtonClick('rocket')}
-        harpoonCount={harpoonCount}
-        isHarpoonArmed={armedWeapon === 'harpoon'}
-        harpoonButtonDisabled={harpoonButtonDisabled}
-        onHarpoonClick={() => handleWeaponButtonClick('harpoon')}
-        droneCount={droneCount}
-        isDroneArmed={armedWeapon === 'drone'}
-        droneButtonDisabled={droneButtonDisabled}
-        onDroneClick={() => handleWeaponButtonClick('drone')}
+        weapons={activeWeaponTypes.map((type) => ({
+          type,
+          count: playerCounts[type],
+          isArmed: armedWeapon === type,
+          disabled: isWeaponTypeDisabled(type),
+          onClick: () => handleWeaponButtonClick(type),
+        }))}
       />
     );
   };
@@ -1870,42 +1871,29 @@ const Index = () => {
   );
 };
 
-type WeaponsBarProps = {
-  label: string;
-  moabCount: number;
-  /** MOAB is capped at one use per game; true once this side has fired its one. */
-  moabUsedThisGame: boolean;
-  weaponsUsed: number;
-  isMoabArmed: boolean;
-  moabButtonDisabled: boolean;
-  onMoabClick?: () => void;
-  mineCount: number;
-  isMineArmed: boolean;
-  mineButtonDisabled: boolean;
-  onMineClick?: () => void;
-  torpedoCount: number;
-  isTorpedoArmed: boolean;
-  torpedoButtonDisabled: boolean;
-  onTorpedoClick?: () => void;
-  rocketCount: number;
-  isRocketArmed: boolean;
-  rocketButtonDisabled: boolean;
-  onRocketClick?: () => void;
-  harpoonCount: number;
-  isHarpoonArmed: boolean;
-  harpoonButtonDisabled: boolean;
-  onHarpoonClick?: () => void;
-  droneCount: number;
-  isDroneArmed: boolean;
-  droneButtonDisabled: boolean;
-  onDroneClick?: () => void;
+// Centralizes each weapon type's icon/label so the (now data-driven)
+// WeaponsBar doesn't need a hardcoded JSX block per type.
+const WEAPON_DISPLAY: Record<WeaponType, { icon: ReactNode; label: string }> = {
+  moab: { icon: <Bomb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'MOAB' },
+  mine: { icon: <CircleDot className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'MINES' },
+  torpedo: { icon: <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'TORPEDO' },
+  rocket: { icon: <ArrowUpDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'ROCKET' },
+  harpoon: { icon: <MoveDiagonal className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'HARPOON' },
+  drone: { icon: <Radar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'DRONE' },
 };
 
-// 6 slots (3 across, 2 rows) reserved for weapon buttons; MOAB, Mines,
-// Torpedo, Rocket, Harpoon, and Drone fill all six, with no spacers left -
-// the next new weapon will need to grow this grid rather than just
-// claiming an existing spacer slot.
-const WEAPON_BUTTON_SLOT_COUNT = 6;
+type WeaponsBarProps = {
+  label: string;
+  weaponsUsed: number;
+  /** Exactly ACTIVE_WEAPON_TYPE_COUNT (3) entries - whichever weapon types this game drew, in canonical order. */
+  weapons: Array<{
+    type: WeaponType;
+    count: number;
+    isArmed: boolean;
+    disabled: boolean;
+    onClick?: () => void;
+  }>;
+};
 
 type WeaponButtonProps = {
   icon: ReactNode;
@@ -1914,11 +1902,9 @@ type WeaponButtonProps = {
   isArmed: boolean;
   disabled: boolean;
   onClick?: () => void;
-  /** Single-use-per-game indicator dot: green until used, red once spent. Omit for weapons with no per-game single-use cap (e.g. Mines). */
-  usedThisGame?: boolean;
 };
 
-function WeaponButton({ icon, label, count, isArmed, disabled, onClick, usedThisGame }: WeaponButtonProps) {
+function WeaponButton({ icon, label, count, isArmed, disabled, onClick }: WeaponButtonProps) {
   return (
     <Button
       type="button"
@@ -1933,12 +1919,6 @@ function WeaponButton({ icon, label, count, isArmed, disabled, onClick, usedThis
           : 'border-white/10 bg-white/10 hover:bg-white/20',
       )}
     >
-      {usedThisGame !== undefined ? (
-        <span
-          className={cn('absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full ring-2 ring-slate-950', usedThisGame ? 'bg-red-500' : 'bg-green-500')}
-          aria-hidden="true"
-        />
-      ) : null}
       {icon}
       {label}
       <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
@@ -1948,35 +1928,7 @@ function WeaponButton({ icon, label, count, isArmed, disabled, onClick, usedThis
   );
 }
 
-function WeaponsBar({
-  label,
-  moabCount,
-  moabUsedThisGame,
-  weaponsUsed,
-  isMoabArmed,
-  moabButtonDisabled,
-  onMoabClick,
-  mineCount,
-  isMineArmed,
-  mineButtonDisabled,
-  onMineClick,
-  torpedoCount,
-  isTorpedoArmed,
-  torpedoButtonDisabled,
-  onTorpedoClick,
-  rocketCount,
-  isRocketArmed,
-  rocketButtonDisabled,
-  onRocketClick,
-  harpoonCount,
-  isHarpoonArmed,
-  harpoonButtonDisabled,
-  onHarpoonClick,
-  droneCount,
-  isDroneArmed,
-  droneButtonDisabled,
-  onDroneClick,
-}: WeaponsBarProps) {
+function WeaponsBar({ label, weaponsUsed, weapons }: WeaponsBarProps) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
       <div className="relative flex min-h-6 items-center">
@@ -1998,59 +1950,17 @@ function WeaponsBar({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 grid-rows-2 gap-2">
-        <WeaponButton
-          icon={<Bomb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          label="MOAB"
-          count={moabCount}
-          isArmed={isMoabArmed}
-          disabled={moabButtonDisabled}
-          onClick={onMoabClick}
-          usedThisGame={moabUsedThisGame}
-        />
-        <WeaponButton
-          icon={<CircleDot className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          label="MINES"
-          count={mineCount}
-          isArmed={isMineArmed}
-          disabled={mineButtonDisabled}
-          onClick={onMineClick}
-        />
-        <WeaponButton
-          icon={<ArrowRightLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          label="TORPEDO"
-          count={torpedoCount}
-          isArmed={isTorpedoArmed}
-          disabled={torpedoButtonDisabled}
-          onClick={onTorpedoClick}
-        />
-        <WeaponButton
-          icon={<ArrowUpDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          label="ROCKET"
-          count={rocketCount}
-          isArmed={isRocketArmed}
-          disabled={rocketButtonDisabled}
-          onClick={onRocketClick}
-        />
-        <WeaponButton
-          icon={<MoveDiagonal className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          label="HARPOON"
-          count={harpoonCount}
-          isArmed={isHarpoonArmed}
-          disabled={harpoonButtonDisabled}
-          onClick={onHarpoonClick}
-        />
-        <WeaponButton
-          icon={<Radar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-          label="DRONE"
-          count={droneCount}
-          isArmed={isDroneArmed}
-          disabled={droneButtonDisabled}
-          onClick={onDroneClick}
-        />
-
-        {Array.from({ length: WEAPON_BUTTON_SLOT_COUNT - 6 }, (_, index) => (
-          <div key={index} aria-hidden="true" />
+      <div className="grid grid-cols-3 gap-2">
+        {weapons.map((weapon) => (
+          <WeaponButton
+            key={weapon.type}
+            icon={WEAPON_DISPLAY[weapon.type].icon}
+            label={WEAPON_DISPLAY[weapon.type].label}
+            count={weapon.count}
+            isArmed={weapon.isArmed}
+            disabled={weapon.disabled}
+            onClick={weapon.onClick}
+          />
         ))}
       </div>
     </div>
