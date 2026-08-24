@@ -1875,7 +1875,7 @@ const Index = () => {
 // WeaponsBar doesn't need a hardcoded JSX block per type.
 const WEAPON_DISPLAY: Record<WeaponType, { icon: ReactNode; label: string }> = {
   moab: { icon: <Bomb className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'MOAB' },
-  mine: { icon: <CircleDot className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'MINES' },
+  mine: { icon: <CircleDot className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'MINE' },
   torpedo: { icon: <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'TORPEDO' },
   rocket: { icon: <ArrowUpDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'ROCKET' },
   harpoon: { icon: <MoveDiagonal className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'HARPOON' },

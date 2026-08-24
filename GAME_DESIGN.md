@@ -459,8 +459,10 @@ needs this treatment.
 Each game draws only `ACTIVE_WEAPON_TYPE_COUNT` (3) of the 6 weapon types
 into play, not all 6 — `pickActiveWeaponTypes()` in `armada-game.ts` picks
 them uniformly at random and re-sorts the pick back into `ALL_WEAPON_TYPES`'s
-canonical order (so *which* 3 show up varies game to game, but their
-left-to-right order in the weapons bar never visually shuffles). The result
+canonical order — MOAB, Mine, Drone, Torpedo, Harpoon, Rocket — so *which*
+3 show up varies game to game, but their left-to-right order in the
+weapons bar never visually shuffles, and whichever 3 are active still
+appear in this same relative order. The result
 is stored once as `GameState.activeWeaponTypes`, re-rolled every time a new
 `GameState` is created (New Game, the ship-set toggle, first load) — and
 critically, **the same 3 types for both sides**, not independently

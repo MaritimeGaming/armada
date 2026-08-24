@@ -136,7 +136,10 @@ const ACTIVE_WEAPON_TYPE_COUNT = 3;
 // random pool with whatever else is available - noticeably more MOAB use
 // than chance alone, but never guaranteed.
 const APP_MOAB_PRIORITY_CHANCE = 0.5;
-export const ALL_WEAPON_TYPES: WeaponType[] = ['moab', 'mine', 'torpedo', 'rocket', 'harpoon', 'drone'];
+// Canonical display order for the weapons bar - also what
+// pickActiveWeaponTypes() sorts a game's 3 chosen types back into, so
+// whichever 3 are active this game still appear in this relative order.
+export const ALL_WEAPON_TYPES: WeaponType[] = ['moab', 'mine', 'drone', 'torpedo', 'harpoon', 'rocket'];
 export const APP_MOAB_STARTING_COUNT = 2;
 export const APP_MINE_STARTING_COUNT = 2;
 export const APP_TORPEDO_STARTING_COUNT = 2;
