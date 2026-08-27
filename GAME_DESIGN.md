@@ -468,6 +468,42 @@ lost, every player cell is `'sunk'`) or fully sunk on the computer's
 side - has nothing further to reveal, which is why only the winning side
 needs this treatment.
 
+**The winning shot must not hand the turn to the side it just defeated.**
+`concludeGame()`'s two-second delay above runs entirely before
+`gameOver.isOpen` flips true, and both the AI-turn effect and the player's
+own cell-press handler gate purely on `GameState.currentTurn` - not on
+`gameOver.isOpen` - to decide whether they're allowed to act. Every
+shot-resolution branch (plain shot, MOAB, Mine, and the non-travelling
+resolution of Torpedo/Rocket/Harpoon) used to flip `currentTurn` to the
+other side unconditionally, in the same `nextState` object passed into
+`concludeGame()`. The result: a player's winning shot correctly triggered
+`concludeGame('player', ...)`, but that `nextState` already had
+`currentTurn: 'app'` baked in, so the instant it was applied via
+`setGameState(state)`, the AI-turn effect's `currentTurn !== 'app'` guard
+was satisfied and it started previewing (and would go on to fire at) a
+target - visibly, since the two-second reveal hold hadn't even started
+counting down yet. The symmetric bug existed for a computer win: with
+`currentTurn` wrongly flipped to `'player'`, the player's own
+`handleEnemyCellPressEnd` guard (`state.currentTurn !== 'player'`) would
+have let a real click through and fired a shot in the dead time before the
+dialog opened, even though the game was already over.
+
+Fixed with two small closures, `nextTurnAfterPlayerFire(updatedEnemy)` and
+`nextTurnAfterAppFire(updatedPlayer)` (`Index.tsx`, defined next to
+`concludeGame()`): each checks `areAllShipsSunk()` on the just-updated navy
+and returns the *same* side instead of handing off whenever that's already
+true. Every unconditional `currentTurn: 'app'`/`'player'` assignment at a
+win-checkable point now routes through one of these instead, including the
+non-travelling branch of Torpedo/Rocket/Harpoon (their ternary's `hasTravel
+? player_or_app_unchanged : ...` else-branch). The Drone is the one
+exception left alone - it never changes any cell's sunk/targeted state, so
+it can never be the shot that ends the game, and doesn't need the check.
+The travelling-weapon in-flight completion callback (`runWeaponTravelSteps`'s
+`onComplete`) was already correct by construction: it checks
+`areAllShipsSunk()` and calls `concludeGame()` with an *early return*
+before ever reaching its own `currentTurn` flip, so a win found mid-flight
+never got this bug in the first place.
+
 ### Randomized weapon loadout
 
 Each game draws only `ACTIVE_WEAPON_TYPE_COUNT` (3) of the 6 weapon types

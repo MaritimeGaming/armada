@@ -48,7 +48,7 @@ import {
   setCellTargeting,
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -582,6 +582,18 @@ const Index = () => {
     }, 2000);
   };
 
+  // The side that just sank the opponent's whole fleet has won and must NOT
+  // hand the turn to the loser: concludeGame's 2-second reveal delay runs
+  // before gameOver.isOpen flips true, and both the opposing side's AI-turn
+  // effect and this side's own cell-press handler gate purely on
+  // currentTurn - leaving it pointed at the winner is what actually blocks
+  // stray input (or a stray AI turn) during that window.
+  const nextTurnAfterPlayerFire = (updatedEnemy: NavyState): TurnOwner =>
+    areAllShipsSunk(updatedEnemy, shipSetOptions) ? 'player' : 'app';
+
+  const nextTurnAfterAppFire = (updatedPlayer: NavyState): TurnOwner =>
+    areAllShipsSunk(updatedPlayer, shipSetOptions) ? 'app' : 'player';
+
   const handleEnemyCellPressStart = (cellIndex: number) => {
     if (activeView !== 'enemy' || isWeaponInFlight) {
       return;
@@ -685,7 +697,7 @@ const Index = () => {
 
           const nextState: GameState = {
             ...state,
-            currentTurn: 'app',
+            currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
             enemy: updatedEnemy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
             playerWeaponUseCounts: { ...state.playerWeaponUseCounts, moab: state.playerWeaponUseCounts.moab + 1 },
@@ -736,7 +748,7 @@ const Index = () => {
 
           const nextState: GameState = {
             ...state,
-            currentTurn: 'app',
+            currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
             enemy: updatedEnemy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
             playerWeaponUseCounts: { ...state.playerWeaponUseCounts, mine: state.playerWeaponUseCounts.mine + 1 },
@@ -796,7 +808,7 @@ const Index = () => {
             // A miss keeps travelling for several more seconds of animation -
             // turn ownership doesn't pass to the computer until that finishes,
             // so its own turn can't start mid-flight (see runWeaponTravelSteps).
-            currentTurn: hasTravel ? 'player' : 'app',
+            currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
             enemy: launchStep.navy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
             playerWeaponUseCounts: { ...state.playerWeaponUseCounts, torpedo: state.playerWeaponUseCounts.torpedo + 1 },
@@ -881,7 +893,7 @@ const Index = () => {
             // A miss keeps travelling for several more seconds of animation -
             // turn ownership doesn't pass to the computer until that finishes,
             // so its own turn can't start mid-flight (see runWeaponTravelSteps).
-            currentTurn: hasTravel ? 'player' : 'app',
+            currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
             enemy: launchStep.navy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
             playerWeaponUseCounts: { ...state.playerWeaponUseCounts, rocket: state.playerWeaponUseCounts.rocket + 1 },
@@ -966,7 +978,7 @@ const Index = () => {
             // A miss keeps travelling for several more seconds of animation -
             // turn ownership doesn't pass to the computer until that finishes,
             // so its own turn can't start mid-flight (see runWeaponTravelSteps).
-            currentTurn: hasTravel ? 'player' : 'app',
+            currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
             enemy: launchStep.navy,
             playerWeaponsUsed: state.playerWeaponsUsed + 1,
             playerWeaponUseCounts: { ...state.playerWeaponUseCounts, harpoon: state.playerWeaponUseCounts.harpoon + 1 },
@@ -1060,7 +1072,7 @@ const Index = () => {
 
         const nextState: GameState = {
           ...state,
-          currentTurn: 'app',
+          currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
           enemy: updatedEnemy,
           playerMineIndex: mineIndex,
         };
@@ -1282,7 +1294,7 @@ const Index = () => {
 
           const nextState: GameState = {
             ...currentState,
-            currentTurn: 'player',
+            currentTurn: nextTurnAfterAppFire(updatedPlayer),
             player: updatedPlayer,
             appMoabCount: currentState.appMoabCount - 1,
             appWeaponsUsed: currentState.appWeaponsUsed + 1,
@@ -1331,7 +1343,7 @@ const Index = () => {
 
           const nextState: GameState = {
             ...currentState,
-            currentTurn: 'player',
+            currentTurn: nextTurnAfterAppFire(updatedPlayer),
             player: updatedPlayer,
             appMineCount: currentState.appMineCount - 1,
             appWeaponsUsed: currentState.appWeaponsUsed + 1,
@@ -1386,7 +1398,7 @@ const Index = () => {
 
           const nextState: GameState = {
             ...currentState,
-            currentTurn: hasTravel ? 'app' : 'player',
+            currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
             player: launchStep.navy,
             appTorpedoCount: currentState.appTorpedoCount - 1,
             appWeaponsUsed: currentState.appWeaponsUsed + 1,
@@ -1470,7 +1482,7 @@ const Index = () => {
 
           const nextState: GameState = {
             ...currentState,
-            currentTurn: hasTravel ? 'app' : 'player',
+            currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
             player: launchStep.navy,
             appRocketCount: currentState.appRocketCount - 1,
             appWeaponsUsed: currentState.appWeaponsUsed + 1,
@@ -1554,7 +1566,7 @@ const Index = () => {
 
           const nextState: GameState = {
             ...currentState,
-            currentTurn: hasTravel ? 'app' : 'player',
+            currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
             player: launchStep.navy,
             appHarpoonCount: currentState.appHarpoonCount - 1,
             appWeaponsUsed: currentState.appWeaponsUsed + 1,
@@ -1646,7 +1658,7 @@ const Index = () => {
 
         const nextState: GameState = {
           ...currentState,
-          currentTurn: 'player',
+          currentTurn: nextTurnAfterAppFire(updatedPlayer),
           player: updatedPlayer,
           appMineIndex,
         };
