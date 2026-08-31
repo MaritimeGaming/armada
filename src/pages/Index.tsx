@@ -2000,7 +2000,7 @@ const SHIP_REFERENCE_DESCRIPTIONS: Record<string, string> = {
   B: 'A 4-cell warship.',
   C: 'A 3-cell warship.',
   D: 'A 3-cell warship.',
-  E: 'A lonely officer, floating in the waves. One of three optional "Singles" - only in play when Singles is turned on in Settings.',
+  E: 'A lonely officer, floating in the waves. One of three optional "Singles" - only in play when Singles is turned on in Settings. Can be exposed but not damaged by Harpoons, Mines, Rockets, or Torpedoes',
   F: 'A 3-cell warship.',
   G: 'A 2-cell support vessel.',
   H: 'A rotor-wing aircraft. One of three optional "Singles" - only in play when Singles is turned on in Settings. Can be exposed but not damaged by Harpoons, Mines, or Torpedoes.',
