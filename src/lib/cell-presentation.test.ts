@@ -53,3 +53,25 @@ describe('getCellPresentation - mine display', () => {
     expect(withMine.className).toBe(without.className);
   });
 });
+
+describe('getCellPresentation - exposed (droneRevealed) ship styling', () => {
+  it('colors a live, droneRevealed, untargeted ship cell bright yellow and bold', () => {
+    const cell = makeCell({ occupied: true, shipCode: 'S', droneRevealed: true });
+    const presentation = getCellPresentation(cell, false);
+    expect(presentation.className).toContain('text-yellow-300');
+    expect(presentation.className).toContain('font-bold');
+  });
+
+  it('does not color an ordinary (not droneRevealed) untargeted ship cell yellow', () => {
+    const cell = makeCell({ occupied: true, shipCode: 'S' });
+    const presentation = getCellPresentation(cell, false);
+    expect(presentation.className).not.toContain('text-yellow-300');
+    expect(presentation.className).toContain('text-white');
+  });
+
+  it('stops coloring a droneRevealed cell yellow once it has actually been hit', () => {
+    const cell = makeCell({ occupied: true, shipCode: 'S', droneRevealed: true, effect: 'targeted' });
+    const presentation = getCellPresentation(cell, false);
+    expect(presentation.className).not.toContain('text-yellow-300');
+  });
+});

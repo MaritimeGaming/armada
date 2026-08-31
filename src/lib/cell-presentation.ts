@@ -54,16 +54,16 @@ function computeBaseCellPresentation(cell: CellState): CellPresentation {
   // Signals "this ship is known but hasn't been damaged" - a Drone find, or
   // a weapon that discovered a ship it's immune to (see
   // isShipImmuneToWeapon in armada-game.ts). A live (not yet targeted)
-  // occupied cell in this state shows its letter in a bright, bold green
+  // occupied cell in this state shows its letter in a bright, bold yellow
   // instead of the plain white/semibold every other visible ship cell
   // uses, on either grid, so the reveal stays visible after the fact even
-  // though nothing about the cell's background changes. green-300 (rather
-  // than the darker green-600-ish #00B200 the end-of-game reveal uses, or
-  // the dimmer green-400 this used before) so it actually pops against the
-  // blue "untargeted" background; bold adds a second, non-color signal for
-  // the same state, since color alone was judged not visible enough.
+  // though nothing about the cell's background changes. yellow-300 (this
+  // used green-300, then green-400, before) so it pops against the blue
+  // "untargeted" background even more than green did; bold adds a second,
+  // non-color signal for the same state, since color alone was judged not
+  // visible enough.
   const isExposedUntargeted = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted';
-  const shipTextColorClass = isExposedUntargeted ? 'text-green-300' : 'text-white';
+  const shipTextColorClass = isExposedUntargeted ? 'text-yellow-300' : 'text-white';
   const shipFontWeightClass = isExposedUntargeted ? 'font-bold' : '';
 
   if (cell.targeting) {
