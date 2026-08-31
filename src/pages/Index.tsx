@@ -2000,13 +2000,13 @@ const SHIP_REFERENCE_DESCRIPTIONS: Record<string, string> = {
   B: 'A 4-cell warship.',
   C: 'A 3-cell warship.',
   D: 'A 3-cell warship.',
-  E: 'A single-cell vessel. One of three optional "Singles" ships - only in play when Singles is turned on in Settings.',
+  E: 'A lonely officer, floating in the waves. One of three optional "Singles" - only in play when Singles is turned on in Settings.',
   F: 'A 3-cell warship.',
   G: 'A 2-cell support vessel.',
-  H: 'A single-cell vessel. One of three optional "Singles" ships - only in play when Singles is turned on in Settings.',
-  L: 'A single-cell vessel. One of three optional "Singles" ships - only in play when Singles is turned on in Settings.',
+  H: 'A rotor-wing aircraft. One of three optional "Singles" - only in play when Singles is turned on in Settings. Can be exposed but not damaged by Harpoons, Mines, or Torpedoes.',
+  L: 'Women and children first! One of three optional "Singles" - only in play when Singles is turned on in Settings.',
   O: "A 3-cell vessel carrying a volatile cargo. Sinking it spills an oil slick that spreads across the board over time and can ignite if struck, taking out anything still underneath it.",
-  S: 'A 2-cell vessel.',
+  S: 'A 2-cell vessel. Can be exposed but not damaged by MOABs or Rockets',
 };
 const SHIP_REFERENCE: ShipDefinition[] = getShips({ includeSingles: true })
   .slice()
