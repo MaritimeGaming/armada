@@ -824,30 +824,23 @@ export function getRevealedTargetIndexes(navy: NavyState): number[] {
   }, []);
 }
 
-export function selectAppTargetIndex(navy: NavyState): number | null {
-  const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
-    if (cell.effect === 'untargeted') {
-      indexes.push(index);
-    }
-    return indexes;
-  }, []);
-
-  if (untargetedIndexes.length === 0) {
-    return null;
-  }
-
-  // A Drone reveal means a ship's location is already known outright, no
-  // deduction needed - this outranks the hunt logic below.
-  const revealedIndexes = getRevealedTargetIndexes(navy);
-  if (revealedIndexes.length > 0) {
-    return randomItem(revealedIndexes);
-  }
-
+/**
+ * Cells worth targeting next because they're adjacent to (or, with 2+ hits,
+ * in the same straight line as) an existing hit on a ship that isn't fully
+ * sunk yet. shipCode narrows this to one specific ship (used for the Oil
+ * Tanker priority below); omitted, it considers every wounded ship at
+ * once (the general hunt, used once the Oil Tanker itself is sunk).
+ */
+function getHuntCandidateIndexes(navy: NavyState, shipCode?: string): number[] {
   const candidateIndexes = new Set<number>();
   const hitIndexesByShipCode = new Map<string, number[]>();
 
   navy.cells.forEach((cell, index) => {
     if (cell.effect !== 'targeted' || !cell.occupied || !cell.shipCode) {
+      return;
+    }
+
+    if (shipCode && cell.shipCode !== shipCode) {
       return;
     }
 
@@ -864,7 +857,7 @@ export function selectAppTargetIndex(navy: NavyState): number | null {
     hitIndexesByShipCode.set(cell.shipCode, hitIndexes);
   });
 
-  hitIndexesByShipCode.forEach((hitIndexes, shipCode) => {
+  hitIndexesByShipCode.forEach((hitIndexes, hitShipCode) => {
     // Two or more confirmed hits on the same ship mean the whole ship's
     // position is known - it's a straight line, so target its own
     // remaining cells directly instead of guessing via 8-neighbor
@@ -872,7 +865,7 @@ export function selectAppTargetIndex(navy: NavyState): number | null {
     // actual line. A single hit isn't enough to know the line yet, so
     // that case still falls through to plain adjacency below.
     if (hitIndexes.length >= 2) {
-      const ship = navy.ships.find((candidateShip) => candidateShip.code === shipCode);
+      const ship = navy.ships.find((candidateShip) => candidateShip.code === hitShipCode);
 
       ship?.cells.forEach((point) => {
         const cellIndex = point.y * GRID_SIZE + point.x;
@@ -893,11 +886,78 @@ export function selectAppTargetIndex(navy: NavyState): number | null {
     });
   });
 
-  if (candidateIndexes.size > 0) {
-    return randomItem(Array.from(candidateIndexes));
+  return Array.from(candidateIndexes);
+}
+
+export function selectAppTargetIndex(navy: NavyState): number | null {
+  const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
+    if (cell.effect === 'untargeted') {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+
+  if (untargetedIndexes.length === 0) {
+    return null;
   }
 
-  return randomItem(untargetedIndexes);
+  // A Drone reveal means a ship's location is already known outright, no
+  // deduction needed - this outranks the hit-based hunting below
+  // regardless of ship. But among revealed cells themselves, the Oil
+  // Tanker still comes first: if it has one, that's what gets picked, even
+  // over a different ship's own revealed (and therefore equally "free")
+  // cell - the Oil Tanker outranks every other known ship, not just every
+  // other guess.
+  const revealedIndexes = getRevealedTargetIndexes(navy);
+  if (revealedIndexes.length > 0) {
+    const revealedOilTankerIndexes = revealedIndexes.filter((index) => navy.cells[index]?.shipCode === 'O');
+    return randomItem(revealedOilTankerIndexes.length > 0 ? revealedOilTankerIndexes : revealedIndexes);
+  }
+
+  // The Oil Tanker gets priority over hunting any other wounded ship, for
+  // exactly as long as it takes to actually find and sink it - see the
+  // "Oil Tanker targeting priority" writeup in GAME_DESIGN.md. Until at
+  // least one of its cells has been hit, the computer doesn't hunt at all
+  // (plain random selection, same as it would if no ship anywhere had ever
+  // been hit) - it's not trying to protect some other partial hit, it's
+  // just not looking for the tanker specifically yet, so nothing here
+  // should nudge it toward one. Once found, every further shot goes at the
+  // tanker specifically (via the general hunt logic, restricted to just
+  // its own ship code) until it's sunk, before any other wounded ship gets
+  // a look in.
+  const oilTankerCells = navy.cells.filter((cell) => cell.shipCode === 'O');
+  const oilTankerFound = oilTankerCells.some((cell) => cell.effect !== 'untargeted');
+  const oilTankerSunk = oilTankerCells.length > 0 && oilTankerCells.every((cell) => cell.effect === 'sunk');
+
+  if (!oilTankerFound) {
+    return randomItem(untargetedIndexes);
+  }
+
+  if (!oilTankerSunk) {
+    const tankerCandidateIndexes = getHuntCandidateIndexes(navy, 'O');
+    return randomItem(tankerCandidateIndexes.length > 0 ? tankerCandidateIndexes : untargetedIndexes);
+  }
+
+  // The Oil Tanker is sunk and the slick is spreading - let it grow to
+  // roughly the size of everything else still unexplored before the
+  // computer starts risking shots inside it (a 1-in-12 ignition chance per
+  // shot - see OIL_IGNITION_ODDS). "Room to expand" is checked first so a
+  // slick that's already boxed in (nowhere left to spread) never gets
+  // artificially avoided forever - once it truly can't grow any bigger,
+  // there's nothing left to wait for.
+  const untargetedOutsideSlick = untargetedIndexes.filter((index) => !navy.cells[index]?.oil);
+  const untargetedInsideSlickCount = untargetedIndexes.length - untargetedOutsideSlick.length;
+  const shouldAvoidSlick = untargetedInsideSlickCount < untargetedOutsideSlick.length
+    && getOilSlickSpreadCandidateIndexes(navy).length > 0;
+  const eligibleIndexes = shouldAvoidSlick ? untargetedOutsideSlick : untargetedIndexes;
+  const eligibleIndexSet = new Set(eligibleIndexes);
+
+  const candidateIndexes = getHuntCandidateIndexes(navy).filter((index) => eligibleIndexSet.has(index));
+  if (candidateIndexes.length > 0) {
+    return randomItem(candidateIndexes);
+  }
+
+  return randomItem(eligibleIndexes.length > 0 ? eligibleIndexes : untargetedIndexes);
 }
 
 /**
@@ -1173,8 +1233,9 @@ function extinguishOilSlick(navy: NavyState): NavyState {
   };
 }
 
-function spreadOilSlick(navy: NavyState): NavyState {
-  const candidateIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
+/** Untargeted, not-yet-oiled cells adjacent to the slick - what spreadOilSlick() picks its next cell from. Also doubles as the "can the slick still grow?" check for selectAppTargetIndex()'s slick-management logic - non-empty means yes. */
+function getOilSlickSpreadCandidateIndexes(navy: NavyState): number[] {
+  return navy.cells.reduce<number[]>((indexes, cell, index) => {
     if (cell.oil || cell.effect !== 'untargeted') {
       return indexes;
     }
@@ -1187,6 +1248,10 @@ function spreadOilSlick(navy: NavyState): NavyState {
 
     return indexes;
   }, []);
+}
+
+function spreadOilSlick(navy: NavyState): NavyState {
+  const candidateIndexes = getOilSlickSpreadCandidateIndexes(navy);
 
   if (candidateIndexes.length === 0) {
     return navy;

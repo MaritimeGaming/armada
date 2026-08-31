@@ -82,10 +82,32 @@ waste shots perpendicular to the ship's actual line. This naturally bounds
 the search to the ship's true length without needing a separate min/max
 heuristic, and handles gaps correctly too (e.g. cells 0 and 2 hit but not
 1, from a MOAB or scattered random shots) since it simply targets whichever
-of the ship's own cells are still untargeted, in any order. See
-`hitIndexesByShipCode` in `selectAppTargetIndex()`. If no hit-derived
-candidate cells exist yet, it falls back to a plain random pick among all
-untargeted cells.
+of the ship's own cells are still untargeted, in any order. This logic
+lives in its own `getHuntCandidateIndexes()` helper, optionally narrowed to
+a single ship code — used two ways: unrestricted for the general hunt
+described here, and restricted to `'O'` for the Oil Tanker priority below.
+If no hit-derived candidate cells exist yet, it falls back to a plain
+random pick among all untargeted cells.
+
+**Oil Tanker targeting priority**: the hunt logic above doesn't engage at
+all — for *any* ship — until the Oil Tanker itself has taken at least one
+hit. Before that point, `selectAppTargetIndex()` picks a plain random
+untargeted cell every turn, same as if nothing anywhere had ever been hit;
+it isn't trying to protect some other ship's partial hit, it just isn't
+looking for the tanker specifically yet, so nothing should nudge it toward
+one prematurely. The moment the tanker takes its first hit, every further
+shot goes at *it* specifically (`getHuntCandidateIndexes(navy, 'O')`) —
+adjacency for one hit, its own remaining line for two or more, exactly the
+general hunt's own rules, just scoped to one ship — ahead of any other
+wounded ship, until it's sunk. The one thing that outranks even this: a
+Drone reveal (see Variable D) is still an unconditional free kill regardless
+of ship, *except* the Oil Tanker jumps ahead of other revealed ships too —
+if the tanker itself has a revealed-but-untargeted cell, that's what gets
+picked over a different ship's own revealed cell, not a random pick between
+them. Once the tanker is fully sunk, targeting falls through to the general
+hunt above, unrestricted — see the slick-management behavior in Variable B
+for what changes about *which* untargeted cells that hunt (and the random
+fallback beneath it) is allowed to consider once the tanker's down.
 
 This same "play shrewdly" character also covers weapon use: whenever the
 computer decides to fire a MOAB, Mine, Torpedo, Rocket, Harpoon, or Drone,
@@ -103,9 +125,6 @@ this — see the Drone's own entry under Variable D for
 target selection alike before any of the above ever runs.
 
 **Proposed future AI improvements** (not yet implemented):
-- **Oil-slick-aware play**: prioritize sinking the Oil Tanker early, then
-  deliberately let the slick spread as wide as possible before trying to
-  ignite it (mirrors the human's own best strategy — see Variable B).
 - **Ship-immunity-aware weapon choice**: avoid spending a Rocket/Mine/
   Harpoon/Torpedo/MOAB on a cell it already knows (via a prior reveal)
   holds a ship immune to that weapon — see the ship-immunity rules under
@@ -141,6 +160,29 @@ slick — you want it to cover as much of the grid as possible before it goes
 off (more coverage = more chance of taking out enemy ships), but waiting too
 long risks your opponent igniting it on *your* fleet first via a lucky
 strike.
+
+**The computer manages the slick too**, once it's sunk the Oil Tanker (see
+Variable A's Oil Tanker targeting priority for how it gets there). The
+goal is to let the slick grow to roughly the size of everything else still
+unexplored before risking a shot inside it, rather than either avoiding it
+forever or ignoring it entirely - `selectAppTargetIndex()` compares the
+count of untargeted cells inside the slick against the count outside it:
+while the slick still has room to grow (`getOilSlickSpreadCandidateIndexes()`
+- shared with `spreadOilSlick()`'s own logic, so both always agree on
+"can it get bigger") *and* inside is still the smaller pool, both the hunt
+above and its plain-random fallback are restricted to cells outside the
+slick; once inside catches up to outside, or the slick has nowhere left to
+spread, that restriction lifts and any untargeted cell - oil or not - is
+back on the table. This converges on its own without ever stalling: each
+turn the slick can still grow, "inside" gains exactly one cell while
+"outside" loses at least one (the turn's own shot) and typically two (the
+spread itself eats one more "outside" cell converting it to oil), so the
+gap closes turn over turn regardless of how large "outside" started; and
+the "room to expand" check means a slick that's boxed in can never be
+avoided past the point where waiting stops accomplishing anything. This
+lands on "roughly balanced," not "literally maximal" - the slick isn't
+deferred until *every* other cell on the board has been tried, just until
+it's no longer clearly the smaller unknown.
 
 ## Variable C: Single-cell ships
 
