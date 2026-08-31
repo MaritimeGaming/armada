@@ -2714,14 +2714,20 @@ function computeBaseCellPresentation(cell: CellState): { className: string; valu
     ? ''
     : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
 
-  // Signals "the computer's own Drone found this ship" - a live (not yet
-  // targeted) occupied cell it revealed shows its letter in a bright green
-  // instead of white, on either grid, so a Drone use is visible after the
-  // fact even though nothing about the cell's background changes. Uses the
-  // same bright green-400 as the weapon button's pulsing use-count dot
-  // (rather than the darker green-600-ish #00B200 the end-of-game reveal
-  // uses) so it actually pops against the blue "untargeted" background.
-  const shipTextColorClass = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted' ? 'text-green-400' : 'text-white';
+  // Signals "this ship is known but hasn't been damaged" - a Drone find, or
+  // a weapon that discovered a ship it's immune to (see
+  // isShipImmuneToWeapon in armada-game.ts). A live (not yet targeted)
+  // occupied cell in this state shows its letter in a bright, bold green
+  // instead of the plain white/semibold every other visible ship cell
+  // uses, on either grid, so the reveal stays visible after the fact even
+  // though nothing about the cell's background changes. green-300 (rather
+  // than the darker green-600-ish #00B200 the end-of-game reveal uses, or
+  // the dimmer green-400 this used before) so it actually pops against the
+  // blue "untargeted" background; bold adds a second, non-color signal for
+  // the same state, since color alone was judged not visible enough.
+  const isExposedUntargeted = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted';
+  const shipTextColorClass = isExposedUntargeted ? 'text-green-300' : 'text-white';
+  const shipFontWeightClass = isExposedUntargeted ? 'font-bold' : '';
 
   if (cell.targeting) {
     return {
@@ -2788,7 +2794,7 @@ function computeBaseCellPresentation(cell: CellState): { className: string; valu
 
   if (cell.oil) {
     return {
-      className: `border-[#404040] bg-[#404040] ${shipTextColorClass}`,
+      className: `border-[#404040] bg-[#404040] ${shipTextColorClass} ${shipFontWeightClass}`,
       value,
       label: cell.occupied ? 'occupied with oil' : 'empty with oil',
     };
@@ -2803,7 +2809,7 @@ function computeBaseCellPresentation(cell: CellState): { className: string; valu
   }
 
   return {
-    className: `border-[#0000FF] bg-[#0000FF] ${shipTextColorClass}`,
+    className: `border-[#0000FF] bg-[#0000FF] ${shipTextColorClass} ${shipFontWeightClass}`,
     value,
     label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
   };

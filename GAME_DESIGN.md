@@ -106,6 +106,11 @@ target selection alike before any of the above ever runs.
 - **Oil-slick-aware play**: prioritize sinking the Oil Tanker early, then
   deliberately let the slick spread as wide as possible before trying to
   ignite it (mirrors the human's own best strategy — see Variable B).
+- **Ship-immunity-aware weapon choice**: avoid spending a Rocket/Mine/
+  Harpoon/Torpedo/MOAB on a cell it already knows (via a prior reveal)
+  holds a ship immune to that weapon — see the ship-immunity rules under
+  Variable D above, not yet accounted for in `selectAppWeaponChoice()` or
+  `selectAppWeaponTargetIndex()`.
 - **Outright cheating**: e.g. a flat 25% chance per shot that the computer
   looks at the true board state and targets a cell it knows contains a ship.
   The player would experience this as "the computer seems better," without
@@ -332,22 +337,27 @@ tuning either mechanic, since they're designed to interact.
   the oil color if oil has spread over it).
 
   The one deliberate exception: `computeBaseCellPresentation()` colors a
-  droneRevealed, still-untargeted, occupied cell's own letter a bright
-  green (`shipTextColorClass`, Tailwind `text-green-400` instead of white)
-  rather than leaving it fully indistinguishable from an ordinary visible
-  ship cell - on *either* grid, since a Drone can reveal either side's
-  ships. This exists purely so a Drone use is still visible after the fact:
-  without it, nothing on screen would ever confirm the computer actually
-  fired one (or that the player's earlier Drone use on the enemy grid found
-  anything), since a droneRevealed cell's background is otherwise identical
-  to a plain visible cell's. Deliberately *not* the darker `#00B200`
-  `revealUntargetedShips()` uses for its own end-of-game reveal (see
-  below) - `green-400` is the same bright shade as the weapon button's
-  pulsing use-count dot, chosen specifically to stand out against the blue
+  droneRevealed, still-untargeted, occupied cell's own letter a bright,
+  bold green (`shipTextColorClass`/`shipFontWeightClass`, Tailwind
+  `text-green-300 font-bold` instead of the plain white/semibold every
+  other visible ship cell uses) rather than leaving it fully
+  indistinguishable from an ordinary visible ship cell - on *either* grid,
+  since a Drone (or a weapon exposing a ship it's immune to - see Variable
+  D below) can reveal either side's ships. This exists purely so the
+  reveal is still visible after the fact: without it, nothing on screen
+  would ever confirm the computer actually fired a Drone (or found an
+  immune ship), since a droneRevealed cell's background is otherwise
+  identical to a plain visible cell's. Deliberately *not* the darker
+  `#00B200` `revealUntargetedShips()` uses for its own end-of-game reveal
+  (see below) - chosen specifically to stand out against the blue
   "untargeted" background, which the darker end-of-game green didn't do as
-  well against blue's own similar depth. It only applies pre-targeting:
-  once the cell is actually hit or sunk, the ordinary hit/sunk colors and
-  white text take back over.
+  well against blue's own similar depth. Originally shipped as plain
+  `text-green-400` (matching the weapon button's pulsing use-count dot);
+  bumped to the lighter `green-300` plus bold once real use showed the
+  color alone wasn't reading as visible enough - bold gives the state a
+  second, non-color signal rather than leaning on saturation alone. It only
+  applies pre-targeting: once the cell is actually hit or sunk, the
+  ordinary hit/sunk colors and white/semibold text take back over.
 
   This green tint shipped with a bug that made it invisible in practice for
   a few commits: `GridCell` renders the cell's letter inside its own inner
@@ -405,6 +415,59 @@ tuning either mechanic, since they're designed to interact.
   grid (and its letter shows in the green droneRevealed tint described
   above), so there's nothing to build - the player already sees it and can
   just tap it.
+
+**Some ships are immune to specific weapon types** (`isShipImmuneToWeapon()`
+in `armada-game.ts`, per the About Ships reference guide's own per-ship
+descriptions):
+- **Ensign** (`E`): immune to Harpoon, Mine, Rocket, and Torpedo.
+- **Helicopter** (`H`): immune to Harpoon, Mine, and Torpedo (not Rocket -
+  the Helicopter flies too low to dodge a bomb dropped straight down on it,
+  unlike the horizontal/diagonal weapons it can duck).
+- **Submarine** (`S`): immune to MOAB and Rocket (too deep for either's
+  reach).
+
+A weapon that finds one of these anyway doesn't just pass over it like
+empty water - it exposes it (`exposeCellWithoutDamage()`, sharing the exact
+mechanism `fireDrone()` uses for its own reveals: `droneRevealed: true`,
+`exposure` bumped from `'unknown'` to `'known'`), leaving `effect` at
+`'untargeted'` rather than marking it a hit. The result reads identically
+to a Drone find on both sides of the interaction: the same green
+`droneRevealed` letter tint, the same `getRevealedTargetIndexes()`
+AI-priority targeting (the computer's next plain shot goes straight for an
+exposed immune ship, same as it would a Drone-found one), and the ship
+stays fully vulnerable to a plain shot or to a weapon type it isn't immune
+to - immunity blocks specific weapons, not damage outright, so a game can
+never soft-lock on an unsinkable ship. No sound plays and nothing animates
+as an explosion for an exposure-only cell, matching a Drone reveal's own
+silence.
+
+Immunity is checked per cell, independent of the rest of the shot: MOAB's
+blast can expose a Submarine cell while still detonating every other cell
+in its 3x3 footprint normally, and a Torpedo/Rocket/Harpoon's travel run
+exposes an immune cell it crosses (launch cell included) and then keeps
+travelling exactly as if that cell had been empty water, rather than
+stopping the run or counting it as a hit. The Mine has two entry points -
+`resolveMineHit()` (a direct drop) short-circuits to an exposure before
+ever computing its usual same-ship bonus cell (moot anyway: both immune
+ships are single-cell), while `moveMine()`'s passive wander exposes an
+immune ship it drifts onto as a raw cell update, not routed through
+`resolveTargetingSequence` - deliberately consistent with its sibling
+silent-empty-water-reveal branch, since a passive wander step should never
+tick the oil slick a second time on top of whatever action the player
+actually took that turn. An exposed cell whose weapon was the thing that
+pressed-and-held it (MOAB or Mine fired directly at it, or a travelling
+weapon's own launch cell) still needs its `targeting` preview flag cleared
+even though it was never marked `'targeted'` - easy to miss since every
+other targeting path clears that flag as a side effect of setting `effect`,
+which this path deliberately never does; `exposeCellWithoutDamage()` clears
+it explicitly for exactly this reason.
+
+This shipped as a rules-only change: the AI doesn't yet know which ships
+are immune to which weapon it's holding, so `selectAppWeaponChoice()` and
+`selectAppWeaponTargetIndex()` can still spend a Rocket on a Submarine and
+get nothing for it. Teaching the computer to route around a target's known
+immunities (once revealed) is a reasonable future addition alongside the
+oil-slick-aware play already proposed under Variable A.
 
 ### Turn economy
 

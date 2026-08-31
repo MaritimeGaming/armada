@@ -29,13 +29,16 @@ export type CellState = {
   oil: boolean;
   shipCode?: string;
   /**
-   * True once a Drone shot has found this specific cell. Deliberately
-   * separate from exposure: a navy created with known=true (a side's own
-   * fleet, see createNavy) starts every cell at exposure 'known' regardless
-   * of any Drone activity, since there's no fog of war over your own
-   * ships - so exposure alone can't tell "genuinely Drone-found" apart
-   * from "just always visible to its owner." This field can only ever be
-   * set by fireDrone(), so it's unambiguous either way.
+   * True once this specific cell has been revealed without being damaged -
+   * either a Drone shot found it (fireDrone), or a weapon that can't harm
+   * this ship found it anyway (exposeCellWithoutDamage - see
+   * isShipImmuneToWeapon). Deliberately separate from exposure: a navy
+   * created with known=true (a side's own fleet, see createNavy) starts
+   * every cell at exposure 'known' regardless of any of the above, since
+   * there's no fog of war over your own ships - so exposure alone can't
+   * tell "genuinely revealed by one of these" apart from "just always
+   * visible to its owner." This field is only ever set by those two paths,
+   * so it's unambiguous either way, regardless of which one set it.
    */
   droneRevealed?: boolean;
 };
@@ -253,6 +256,60 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
   };
 }
 
+// Some ships can't be damaged by certain weapon types - a small
+// (Ensign/Lifeboat-scale), airborne (Helicopter), or submerged (Submarine)
+// target that a given weapon's mechanic just can't harm. A weapon that
+// finds one of these anyway still exposes it (see exposeCellWithoutDamage)
+// rather than passing over it as if nothing were there - the ship becomes
+// visible and fair game for a plain shot or a non-immune weapon, it just
+// isn't the thing that gets to sink it. Keyed by weapon since that's how
+// every call site already knows which check to make; MOAB, Mine, and the
+// travelling weapons (Torpedo/Rocket/Harpoon) are the only ones capable of
+// damaging a cell in the first place, so Drone has no entry here (it never
+// damages anything, immune ship or not).
+const WEAPON_IMMUNE_SHIP_CODES: Partial<Record<WeaponType, string[]>> = {
+  moab: ['S'],
+  mine: ['E', 'H'],
+  torpedo: ['E', 'H'],
+  rocket: ['E', 'S'],
+  harpoon: ['E', 'H'],
+};
+
+function isShipImmuneToWeapon(shipCode: string | undefined, weapon: WeaponType): boolean {
+  return Boolean(shipCode) && (WEAPON_IMMUNE_SHIP_CODES[weapon]?.includes(shipCode as string) ?? false);
+}
+
+/**
+ * Marks cellIndex visible without marking it targeted - used when a weapon
+ * finds a ship it's immune to (see isShipImmuneToWeapon): the cell becomes
+ * visible, but effect stays 'untargeted' so it's still fully vulnerable to
+ * a plain shot or a weapon type that isn't immune to it. Mirrors fireDrone's
+ * own per-cell reveal exactly - bumps exposure from 'unknown' to 'known'
+ * where it actually was 'unknown', and sets droneRevealed so the same
+ * AI-priority targeting (getRevealedTargetIndexes) and green UI tint a
+ * Drone reveal gets also applies here; both mean the same thing to the rest
+ * of the game, "a confirmed, cost-free future target," regardless of which
+ * of the two actually found it. A raw cell update, not routed through
+ * resolveTargetingSequence - like a Drone reveal, it can never itself tick
+ * the oil slick or risk ignition. Callers that need the turn's own oil-tick
+ * still get it by calling resolveTargetingSequence with this cell excluded
+ * from its target list, rather than skipping that call outright.
+ */
+function exposeCellWithoutDamage(navy: NavyState, cellIndex: number): NavyState {
+  const cell = navy.cells[cellIndex];
+  return setCellState(navy, cellIndex, {
+    droneRevealed: true,
+    exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
+    // Clears the press-and-hold preview highlight when this is the cell the
+    // player actually pressed (MOAB/Mine fired directly at an immune ship,
+    // or a travelling weapon's launch cell) - every other targeting path
+    // already clears this as part of marking its cell 'targeted', but this
+    // path never sets 'targeted' at all, so nothing else would. A no-op
+    // for any other exposed cell, which was never true to begin with.
+    targeting: false,
+  });
+}
+
 /** The cell itself plus its up-to-8 neighbors, clipped at grid edges - so a
  * corner cell yields only 4 total, not 9. */
 export function getMoabTargetIndexes(cellIndex: number): number[] {
@@ -260,13 +317,23 @@ export function getMoabTargetIndexes(cellIndex: number): number[] {
 }
 
 export function fireMoab(navy: NavyState, cellIndex: number): TargetingResult {
-  const targetIndexes = getMoabTargetIndexes(cellIndex).filter(
+  const untargetedFootprint = getMoabTargetIndexes(cellIndex).filter(
     (index) => navy.cells[index]?.effect === 'untargeted',
   );
+  const targetIndexes = untargetedFootprint.filter(
+    (index) => !isShipImmuneToWeapon(navy.cells[index]?.shipCode, 'moab'),
+  );
+  const exposedIndexes = untargetedFootprint.filter(
+    (index) => isShipImmuneToWeapon(navy.cells[index]?.shipCode, 'moab'),
+  );
 
-  const preparedNavy = targetIndexes.reduce(
+  const targetedNavy = targetIndexes.reduce(
     (currentNavy, index) => setCellState(currentNavy, index, { effect: 'targeted', targeting: false }),
     navy,
+  );
+  const preparedNavy = exposedIndexes.reduce(
+    (currentNavy, index) => exposeCellWithoutDamage(currentNavy, index),
+    targetedNavy,
   );
 
   const result = resolveTargetingSequence(preparedNavy, targetIndexes);
@@ -342,8 +409,23 @@ function findNearestUntargetedShipCell(navy: NavyState, cellIndex: number): numb
  * outright. Each detonated cell gets its own independent oil-ignition
  * roll, same as any other hit. A miss (cellIndex unoccupied) resolves
  * exactly like a normal single-cell shot.
+ *
+ * If the impact cell belongs to a ship immune to the Mine (see
+ * isShipImmuneToWeapon - currently the Ensign and Helicopter), it's
+ * exposed instead of detonated: since both are single-cell ships there's
+ * never a same-ship bonus cell to worry about here, so this short-circuits
+ * before even calling findNearestUntargetedShipCell.
  */
 export function resolveMineHit(navy: NavyState, cellIndex: number): TargetingResult {
+  const impactCell = navy.cells[cellIndex];
+
+  if (impactCell?.occupied && isShipImmuneToWeapon(impactCell.shipCode, 'mine')) {
+    const exposedNavy = exposeCellWithoutDamage(navy, cellIndex);
+    const result = resolveTargetingSequence(exposedNavy, []);
+
+    return { ...result, targetedIndexes: [] };
+  }
+
   const extraIndex = findNearestUntargetedShipCell(navy, cellIndex);
   const targetIndexes = extraIndex === null ? [cellIndex] : [cellIndex, extraIndex];
 
@@ -395,31 +477,33 @@ function selectMineWanderIndex(navy: NavyState, mineIndex: number): number {
  * toward still-untargeted ones (see MINE_WANDER_UNTARGETED_BIAS) so it
  * tends to push into unexplored territory rather than retread cells it or
  * a regular shot has already settled. Detonates (see resolveMineHit) if
- * the new cell is both untargeted and occupied. Otherwise - an untargeted
- * empty cell, or any already-targeted cell - it's not a hit, but if the
- * cell was still untargeted, it's silently marked targeted anyway (no
- * sound, no ignition risk): the mine quietly confirms there's nothing
- * there, so the player doesn't have to spend a shot finding that out
- * themselves. The one cell a mine can never resolve this way is the
- * Helicopter's - it's airborne, so the mine drifts past without ever
- * detecting it, hit or reveal.
- *
- * This silent reveal deliberately bypasses the normal oil-ignition check
- * (a raw cell update, not resolveTargetingSequence): a mine's movement
- * still can never ignite the oil slick by itself, matching the same
- * principle as before - only an actual hit (always a real ship cell) ever
- * risks ignition.
+ * the new cell is both untargeted, occupied, and not a ship the Mine is
+ * immune to (see isShipImmuneToWeapon - the Ensign and Helicopter): drifting
+ * onto one of those instead exposes it, same as resolveMineHit's own
+ * immune branch, except this stays a raw cell update rather than routing
+ * through resolveTargetingSequence - like the silent empty-water reveal
+ * below, a passive wander step never ticks the oil slick itself, since
+ * whatever action the player actually took this turn already got its own
+ * tick. Otherwise - an untargeted empty cell, or any already-targeted cell -
+ * it's not a hit, but if the cell was still untargeted, it's silently
+ * marked targeted anyway (no sound, no ignition risk): the mine quietly
+ * confirms there's nothing there, so the player doesn't have to spend a
+ * shot finding that out themselves.
  */
 export function moveMine(navy: NavyState, mineIndex: number): MineMoveResult {
   const newIndex = selectMineWanderIndex(navy, mineIndex);
   const candidateCell = navy.cells[newIndex];
 
-  // A floating mine can't score a hit on the Helicopter by drifting under
-  // it - it's airborne, not on the water. A mine deliberately dropped on
-  // its cell still hits normally; this only guards the passive wander.
-  const isDetectable = !(candidateCell.occupied && candidateCell.shipCode === 'H');
+  if (candidateCell.effect === 'untargeted' && candidateCell.occupied && isShipImmuneToWeapon(candidateCell.shipCode, 'mine')) {
+    return {
+      navy: exposeCellWithoutDamage(navy, newIndex),
+      mineIndex: newIndex,
+      hit: false,
+      audioSequence: [],
+    };
+  }
 
-  if (candidateCell.effect === 'untargeted' && candidateCell.occupied && isDetectable) {
+  if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
     const result = resolveMineHit(navy, newIndex);
 
     return {
@@ -433,7 +517,7 @@ export function moveMine(navy: NavyState, mineIndex: number): MineMoveResult {
     };
   }
 
-  const nextNavy = candidateCell.effect === 'untargeted' && isDetectable
+  const nextNavy = candidateCell.effect === 'untargeted'
     ? setCellState(navy, newIndex, {
         effect: 'targeted',
         targeting: false,
@@ -523,18 +607,26 @@ export function getWeaponTravelIndexes(cellIndex: number, axis: WeaponTravelAxis
  * hit, or sunk) are passed over untouched, an untargeted empty cell is
  * silently marked targeted (no sound), and every untargeted occupied cell
  * in the run detonates (standard hit, including oil-ignition odds) - so a
- * single shot can hit more than one ship. Running off the edge of the
- * board just ends the run early.
+ * single shot can hit more than one ship. An untargeted occupied cell whose
+ * ship is immune to weapon (see isShipImmuneToWeapon) is exposed instead of
+ * detonated - visible afterward, but left untargeted and passed over the
+ * same as an empty cell, rather than ending the run or counting as a hit.
+ * Running off the edge of the board just ends the run early.
  */
-function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTravelAxis): WeaponTravelResult {
-  const launchWithTargetedCell = setCellState(navy, cellIndex, { effect: 'targeted', targeting: false });
-  const launchResult = resolveTargetingSequence(launchWithTargetedCell, [cellIndex]);
+function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTravelAxis, weapon: WeaponType): WeaponTravelResult {
+  const launchCell = navy.cells[cellIndex];
+  const launchIsImmune = launchCell.occupied && isShipImmuneToWeapon(launchCell.shipCode, weapon);
+
+  const launchNavy = launchIsImmune
+    ? exposeCellWithoutDamage(navy, cellIndex)
+    : setCellState(navy, cellIndex, { effect: 'targeted', targeting: false });
+  const launchResult = resolveTargetingSequence(launchNavy, launchIsImmune ? [] : [cellIndex]);
 
   const steps: WeaponTravelStep[] = [
     {
       cellIndex,
       navy: launchResult.navy,
-      isHit: navy.cells[cellIndex].occupied,
+      isHit: !launchIsImmune && launchCell.occupied,
       audioSequence: launchResult.audioSequence,
       ignited: launchResult.ignited,
       ignitedCellIndexes: launchResult.ignitedCellIndexes,
@@ -545,6 +637,19 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
 
   for (const nextIndex of getWeaponTravelIndexes(cellIndex, axis)) {
     const candidateCell = currentNavy.cells[nextIndex];
+
+    if (candidateCell.effect === 'untargeted' && candidateCell.occupied && isShipImmuneToWeapon(candidateCell.shipCode, weapon)) {
+      currentNavy = exposeCellWithoutDamage(currentNavy, nextIndex);
+
+      steps.push({
+        cellIndex: nextIndex,
+        navy: currentNavy,
+        isHit: false,
+        audioSequence: [],
+      });
+
+      continue;
+    }
 
     if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
       const preparedNavy = setCellState(currentNavy, nextIndex, { effect: 'targeted', targeting: false });
@@ -580,12 +685,12 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
 
 /** Travels horizontally: rightward from columns 0-4, leftward from columns 5-9. */
 export function fireTorpedo(navy: NavyState, cellIndex: number): WeaponTravelResult {
-  return fireTravelingWeapon(navy, cellIndex, 'horizontal');
+  return fireTravelingWeapon(navy, cellIndex, 'horizontal', 'torpedo');
 }
 
 /** Travels vertically: downward from rows 0-4, upward from rows 5-9. */
 export function fireRocket(navy: NavyState, cellIndex: number): WeaponTravelResult {
-  return fireTravelingWeapon(navy, cellIndex, 'vertical');
+  return fireTravelingWeapon(navy, cellIndex, 'vertical', 'rocket');
 }
 
 /**
@@ -595,7 +700,7 @@ export function fireRocket(navy: NavyState, cellIndex: number): WeaponTravelResu
  * from the top-right, up-right from the bottom-left.
  */
 export function fireHarpoon(navy: NavyState, cellIndex: number): WeaponTravelResult {
-  return fireTravelingWeapon(navy, cellIndex, 'diagonal');
+  return fireTravelingWeapon(navy, cellIndex, 'diagonal', 'harpoon');
 }
 
 /**
@@ -660,13 +765,10 @@ export function fireDrone(navy: NavyState, cellIndex: number): DroneResult {
     (index) => navy.cells[index]?.effect === 'untargeted' && !navy.cells[index]?.droneRevealed,
   );
 
-  const revealedNavy = revealedIndexes.reduce((currentNavy, index) => {
-    const cell = currentNavy.cells[index];
-    return setCellState(currentNavy, index, {
-      droneRevealed: true,
-      exposure: cell.exposure === 'unknown' ? 'known' : cell.exposure,
-    });
-  }, navy);
+  const revealedNavy = revealedIndexes.reduce(
+    (currentNavy, index) => exposeCellWithoutDamage(currentNavy, index),
+    navy,
+  );
 
   // The press-and-hold preview highlight set on the launch cell (see
   // handleEnemyCellPressStart) needs clearing here regardless of whether
@@ -704,13 +806,14 @@ export function setCellTargeting(navy: NavyState, cellIndex: number, targeting: 
 }
 
 /**
- * Cells this side's own Drone has revealed as occupied but not yet
- * targeted - a confirmed ship location, no guessing required. Checked via
- * the cell's own droneRevealed flag, never exposure: exposure is already
- * 'known' everywhere on a side's own fleet regardless of any Drone use
- * (see CellState's droneRevealed doc comment), so it can't distinguish
- * "found by a Drone" from "was always visible to its owner" - droneRevealed
- * can.
+ * Cells this side has revealed without damaging - occupied but not yet
+ * targeted, whether a Drone found them or a weapon immune to that ship
+ * found them anyway (see CellState's droneRevealed doc comment) - a
+ * confirmed ship location, no guessing required. Checked via the cell's
+ * own droneRevealed flag, never exposure: exposure is already 'known'
+ * everywhere on a side's own fleet regardless of any of that, so it can't
+ * distinguish "found this way" from "was always visible to its owner" -
+ * droneRevealed can.
  */
 export function getRevealedTargetIndexes(navy: NavyState): number[] {
   return navy.cells.reduce<number[]>((indexes, cell, index) => {
