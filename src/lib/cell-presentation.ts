@@ -2,6 +2,19 @@ import type { CellState } from './armada-game';
 
 export type CellPresentation = { className: string; value: string; label: string };
 
+// A filled circle rather than an asterisk: an asterisk's glyph sits high in
+// its own em-box in most fonts (it was designed as a footnote-reference
+// mark, not a centered symbol), so it never actually lines up with the
+// vertically-centered ship letters around it. A circle centers the same
+// way a letter does, and it matches the Mine weapon's own CircleDot icon
+// used everywhere else in the UI (weapon button, weapon bar) rather than
+// introducing an unrelated shape just for this one indicator.
+export const MINE_GLYPH = '●';
+// Applied regardless of whether the cell is occupied, so the mine glyph
+// always reads as its own distinct red marker rather than blending into
+// whatever white/green ship-letter color the cell would otherwise use.
+export const MINE_GLYPH_COLOR_CLASS = 'text-red-500';
+
 export function getCellPresentation(cell: CellState, hasMine: boolean): CellPresentation {
   const base = computeBaseCellPresentation(cell);
 
@@ -9,16 +22,21 @@ export function getCellPresentation(cell: CellState, hasMine: boolean): CellPres
     return base;
   }
 
-  // An unoccupied cell holding a mine shows only the asterisk - there's
+  // An unoccupied cell holding a mine shows only the glyph - there's
   // nothing else to combine it with, and this also means a mine sitting on
   // a previous miss hides that miss's dash while it's there. An occupied
   // cell leaves its own value untouched here; GridCell (Index.tsx) overlays
-  // a second, independently-centered asterisk on top of it instead of
-  // folding the two into one text value, so both stay fully legible at
-  // once - e.g. a mine visibly drifting across an already-sunk ship's own
-  // letter (see hasMineOverlay).
+  // a second, independently-centered glyph on top of it instead of folding
+  // the two into one text value, so both stay fully legible at once - e.g.
+  // a mine visibly drifting across an already-sunk ship's own letter (see
+  // hasMineOverlay).
   if (!cell.occupied) {
-    return { ...base, value: '*', label: `${base.label}, mine present` };
+    return {
+      ...base,
+      value: MINE_GLYPH,
+      className: `${base.className} ${MINE_GLYPH_COLOR_CLASS}`,
+      label: `${base.label}, mine present`,
+    };
   }
 
   return { ...base, label: `${base.label}, mine present` };

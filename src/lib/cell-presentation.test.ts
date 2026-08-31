@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getCellPresentation } from './cell-presentation';
+import { getCellPresentation, MINE_GLYPH, MINE_GLYPH_COLOR_CLASS } from './cell-presentation';
 import type { CellState } from './armada-game';
 
 function makeCell(overrides: Partial<CellState> = {}): CellState {
@@ -19,17 +19,18 @@ describe('getCellPresentation - mine display', () => {
     expect(getCellPresentation(cell, false).value).toBe('S');
   });
 
-  it('shows only an asterisk for a mine on an untargeted, unoccupied cell', () => {
+  it('shows only the mine glyph, in red, for a mine on an untargeted, unoccupied cell', () => {
     const cell = makeCell();
     const presentation = getCellPresentation(cell, true);
-    expect(presentation.value).toBe('*');
+    expect(presentation.value).toBe(MINE_GLYPH);
+    expect(presentation.className).toContain(MINE_GLYPH_COLOR_CLASS);
     expect(presentation.label).toContain('mine present');
   });
 
-  it('shows only an asterisk for a mine on a previously-missed (targeted, unoccupied) cell - no dash', () => {
+  it('shows only the mine glyph for a mine on a previously-missed (targeted, unoccupied) cell - no dash', () => {
     const cell = makeCell({ effect: 'targeted' });
     const presentation = getCellPresentation(cell, true);
-    expect(presentation.value).toBe('*');
+    expect(presentation.value).toBe(MINE_GLYPH);
   });
 
   it('leaves an occupied cell\'s own value untouched when a mine is present, for GridCell to overlay separately', () => {
@@ -45,7 +46,7 @@ describe('getCellPresentation - mine display', () => {
     expect(presentation.value).toBe('E');
   });
 
-  it('does not change className based on hasMine - only value/label', () => {
+  it('leaves className untouched for an occupied cell - the mine glyph is colored via GridCell\'s own overlay instead', () => {
     const cell = makeCell({ occupied: true, shipCode: 'F', effect: 'sunk' });
     const without = getCellPresentation(cell, false);
     const withMine = getCellPresentation(cell, true);

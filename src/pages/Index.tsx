@@ -61,7 +61,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { getCellPresentation } from '@/lib/cell-presentation';
+import { getCellPresentation, MINE_GLYPH, MINE_GLYPH_COLOR_CLASS } from '@/lib/cell-presentation';
 import { cn } from '@/lib/utils';
 
 type GameOverState = {
@@ -2608,11 +2608,12 @@ function GridCell({
   const { className, value, label } = getCellPresentation(cell, hasMine ?? false);
   const WeaponIcon = armedWeapon ? getWeaponPreviewIcon(armedWeapon, cellIndex) : null;
   // The unoccupied case is handled by getCellPresentation() itself (value
-  // becomes just '*'). An occupied cell keeps its own value from that
-  // function untouched, and gets this second, independently-centered
-  // asterisk layered on top of it instead - so a mine sitting on, say, an
-  // already-sunk ship still shows that ship's own letter, with the
-  // asterisk visibly overlaid on top of it rather than replacing it.
+  // becomes just MINE_GLYPH, already colored). An occupied cell keeps its
+  // own value from that function untouched, and gets this second,
+  // independently-centered glyph layered on top of it instead - so a mine
+  // sitting on, say, an already-sunk ship still shows that ship's own
+  // letter, with the mine glyph visibly overlaid on top of it rather than
+  // replacing it.
   const hasMineOverlay = Boolean(hasMine) && cell.occupied;
 
   if (onClick) {
@@ -2654,8 +2655,8 @@ function GridCell({
       >
         <div className="flex h-full items-center justify-center">{value}</div>
         {hasMineOverlay ? (
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
-            *
+          <span className={`pointer-events-none absolute inset-0 flex items-center justify-center ${MINE_GLYPH_COLOR_CLASS}`} aria-hidden="true">
+            {MINE_GLYPH}
           </span>
         ) : null}
         {cell.targeting && WeaponIcon ? (
@@ -2690,8 +2691,8 @@ function GridCell({
     >
       <div className="flex h-full items-center justify-center">{value}</div>
       {hasMineOverlay ? (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
-          *
+        <span className={`pointer-events-none absolute inset-0 flex items-center justify-center ${MINE_GLYPH_COLOR_CLASS}`} aria-hidden="true">
+          {MINE_GLYPH}
         </span>
       ) : null}
       {isExploding ? (

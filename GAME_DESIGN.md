@@ -287,20 +287,30 @@ tuning either mechanic, since they're designed to interact.
   or reveal, before ship immunity generalized "found but can't be
   damaged" into its own shared mechanic.
 
-  Any cell currently holding a mine renders an asterisk, via the `hasMine`
-  plumbing through `NavyPanel`/`GridCell`/`getCellPresentation` in
-  `Index.tsx` (the actual per-cell logic lives in
-  `src/lib/cell-presentation.ts`, split out from `Index.tsx` so it can be
-  unit tested directly without breaking that file's Fast Refresh - see the
-  test-suite policy in `CLAUDE.md`). An unoccupied cell shows *only* the
-  asterisk - nothing else there to combine it with, and this also hides a
-  previous miss's dash for as long as the mine sits on top of it. An
-  occupied cell keeps its own value (a live ship's letter, or an
-  already-sunk one) untouched, with the asterisk layered on top as a
-  second, independently-centered element rather than appended as a second
-  character - so, for example, a mine that's drifted onto an already-sunk
-  ship still shows that ship's own letter, with the asterisk visibly
-  overlaid on top of it, both fully legible at once.
+  Any cell currently holding a mine renders a red filled circle
+  (`MINE_GLYPH`, `'●'`), via the `hasMine` plumbing through
+  `NavyPanel`/`GridCell`/`getCellPresentation` in `Index.tsx` (the actual
+  per-cell logic lives in `src/lib/cell-presentation.ts`, split out from
+  `Index.tsx` so it can be unit tested directly without breaking that
+  file's Fast Refresh - see the test-suite policy in `CLAUDE.md`). A
+  circle, not an asterisk: an asterisk glyph sits high in its own em-box in
+  most fonts (designed as a footnote-reference mark, not a centered
+  symbol), so it never actually lined up with the vertically-centered ship
+  letters around it - a circle centers the same way a letter does, and
+  matches the Mine weapon's own `CircleDot` icon used everywhere else in
+  the UI rather than introducing an unrelated shape just for this
+  indicator. Colored `text-red-500` unconditionally, whether or not the
+  cell is occupied, so the mine reads as its own distinct marker rather
+  than blending into the white/green a ship's own letter already uses. An
+  unoccupied cell shows *only* the glyph - nothing else there to combine
+  it with, and this also hides a previous miss's dash for as long as the
+  mine sits on top of it. An occupied cell keeps its own value (a live
+  ship's letter, or an already-sunk one) and its own color untouched, with
+  the glyph layered on top as a second, independently-centered element
+  rather than appended as a second character - so, for example, a mine
+  that's drifted onto an already-sunk ship still shows that ship's own
+  letter in its usual color, with the red mine glyph visibly overlaid on
+  top of it, both fully legible at once.
 
 - **Torpedo, Rocket, and Harpoon** (`fireTorpedo()`/`fireRocket()`/
   `fireHarpoon()` in `armada-game.ts`, all thin wrappers around a shared
