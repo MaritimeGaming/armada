@@ -279,17 +279,28 @@ tuning either mechanic, since they're designed to interact.
   that shaped this: only an actual hit (always a real ship cell) ever
   risks ignition, never a passive reveal.
 
-  The Helicopter is the one occupied cell a mine's wander can never
-  resolve either way, hit or reveal - it drifts past completely
-  undetected, exactly as airborne implies, leaving that cell's
-  `untargeted`/`unknown` state entirely alone, same as if nothing were
-  there at all.
+  The Ensign and Helicopter are the two ships a mine's wander can never
+  detonate - see the ship-immunity rules below. Wandering onto one of
+  them exposes it (same `exposeCellWithoutDamage()` used everywhere else
+  immunity applies) rather than leaving the cell untouched: this used to
+  be a Helicopter-only special case that skipped the cell entirely, hit
+  or reveal, before ship immunity generalized "found but can't be
+  damaged" into its own shared mechanic.
 
-  A debug aid for validating this during development: any cell currently
-  holding a mine renders an asterisk (alone if the cell is still hidden by
-  fog of war, appended to whatever the cell would otherwise show if it's
-  visible) - see the `hasMine` plumbing through `NavyPanel`/`GridCell`/
-  `getCellPresentation` in `Index.tsx`.
+  Any cell currently holding a mine renders an asterisk, via the `hasMine`
+  plumbing through `NavyPanel`/`GridCell`/`getCellPresentation` in
+  `Index.tsx` (the actual per-cell logic lives in
+  `src/lib/cell-presentation.ts`, split out from `Index.tsx` so it can be
+  unit tested directly without breaking that file's Fast Refresh - see the
+  test-suite policy in `CLAUDE.md`). An unoccupied cell shows *only* the
+  asterisk - nothing else there to combine it with, and this also hides a
+  previous miss's dash for as long as the mine sits on top of it. An
+  occupied cell keeps its own value (a live ship's letter, or an
+  already-sunk one) untouched, with the asterisk layered on top as a
+  second, independently-centered element rather than appended as a second
+  character - so, for example, a mine that's drifted onto an already-sunk
+  ship still shows that ship's own letter, with the asterisk visibly
+  overlaid on top of it, both fully legible at once.
 
 - **Torpedo, Rocket, and Harpoon** (`fireTorpedo()`/`fireRocket()`/
   `fireHarpoon()` in `armada-game.ts`, all thin wrappers around a shared

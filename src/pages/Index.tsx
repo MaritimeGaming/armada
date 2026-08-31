@@ -61,6 +61,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { getCellPresentation } from '@/lib/cell-presentation';
 import { cn } from '@/lib/utils';
 
 type GameOverState = {
@@ -2606,6 +2607,13 @@ function GridCell({
   const exposure = cell.exposure;
   const { className, value, label } = getCellPresentation(cell, hasMine ?? false);
   const WeaponIcon = armedWeapon ? getWeaponPreviewIcon(armedWeapon, cellIndex) : null;
+  // The unoccupied case is handled by getCellPresentation() itself (value
+  // becomes just '*'). An occupied cell keeps its own value from that
+  // function untouched, and gets this second, independently-centered
+  // asterisk layered on top of it instead - so a mine sitting on, say, an
+  // already-sunk ship still shows that ship's own letter, with the
+  // asterisk visibly overlaid on top of it rather than replacing it.
+  const hasMineOverlay = Boolean(hasMine) && cell.occupied;
 
   if (onClick) {
     const handlePressStart = () => {
@@ -2645,6 +2653,11 @@ function GridCell({
         aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
       >
         <div className="flex h-full items-center justify-center">{value}</div>
+        {hasMineOverlay ? (
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
+            *
+          </span>
+        ) : null}
         {cell.targeting && WeaponIcon ? (
           // Mobile has no hover cursor to preview the armed weapon with, so
           // while the player is pressing-and-holding the target cell, show
@@ -2676,6 +2689,11 @@ function GridCell({
       aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}
     >
       <div className="flex h-full items-center justify-center">{value}</div>
+      {hasMineOverlay ? (
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
+          *
+        </span>
+      ) : null}
       {isExploding ? (
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className="cell-explosion">
@@ -2689,131 +2707,6 @@ function GridCell({
   );
 }
 
-function getCellPresentation(cell: CellState, hasMine: boolean): { className: string; value: string; label: string } {
-  const base = computeBaseCellPresentation(cell);
-
-  if (!hasMine) {
-    return base;
-  }
-
-  // Debug aid for validating mine movement during this initial
-  // implementation: mark the mine's current cell with an asterisk - alone
-  // if the cell is still hidden (so it doesn't leak anything else about
-  // the cell), appended to whatever would otherwise show if it's visible.
-  const value = cell.exposure === 'unknown' ? '*' : `${base.value}*`;
-
-  return { ...base, value, label: `${base.label}, mine present` };
-}
-
-function computeBaseCellPresentation(cell: CellState): { className: string; value: string; label: string } {
-  // Oil hides a ship's identity only while the cell itself is still hidden
-  // by fog of war. Once a cell is visible (the player's own navy, or a
-  // future reveal effect on the enemy's), a ship under the oil should still
-  // show its letter.
-  const value = cell.oil && cell.effect === 'untargeted' && cell.exposure === 'unknown'
-    ? ''
-    : cell.occupied ? (cell.shipCode ?? '') : cell.effect === 'targeted' ? '–' : '';
-
-  // Signals "this ship is known but hasn't been damaged" - a Drone find, or
-  // a weapon that discovered a ship it's immune to (see
-  // isShipImmuneToWeapon in armada-game.ts). A live (not yet targeted)
-  // occupied cell in this state shows its letter in a bright, bold green
-  // instead of the plain white/semibold every other visible ship cell
-  // uses, on either grid, so the reveal stays visible after the fact even
-  // though nothing about the cell's background changes. green-300 (rather
-  // than the darker green-600-ish #00B200 the end-of-game reveal uses, or
-  // the dimmer green-400 this used before) so it actually pops against the
-  // blue "untargeted" background; bold adds a second, non-color signal for
-  // the same state, since color alone was judged not visible enough.
-  const isExposedUntargeted = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted';
-  const shipTextColorClass = isExposedUntargeted ? 'text-green-300' : 'text-white';
-  const shipFontWeightClass = isExposedUntargeted ? 'font-bold' : '';
-
-  if (cell.targeting) {
-    return {
-      className: 'border-[#00FFFF] bg-[#00FFFF] text-slate-950',
-      // Fog of war: don't leak the ship identifier while previewing a shot
-      // on a cell that hasn't been revealed yet. Once exposure is 'known'
-      // (the player's own navy, or a cell already hit), the identity isn't
-      // a secret, so show it as normal.
-      value: cell.exposure === 'unknown' ? '' : value,
-      label: cell.occupied ? 'occupied and targeting' : 'empty and targeting',
-    };
-  }
-
-  if (cell.shipCode === 'O' && cell.effect === 'sunk') {
-    return {
-      className: 'border-[#202020] bg-[#202020] text-white',
-      value,
-      label: 'oil tanker sunk',
-    };
-  }
-
-  if (cell.occupied && cell.exposure === 'revealed') {
-    return {
-      className: 'border-[#00B200] bg-[#00B200] text-white',
-      value,
-      label: 'occupied and revealed',
-    };
-  }
-
-  if (!cell.occupied && cell.effect === 'targeted') {
-    // A splash into oil over an empty cell has nothing to burn off, so the
-    // oil survives the shot and still reads as oil, just with the hyphen
-    // for "targeted" layered on top of it.
-    if (cell.oil) {
-      return {
-        className: 'border-[#404040] bg-[#404040] text-white',
-        value,
-        label: 'empty with oil, targeted',
-      };
-    }
-
-    return {
-      className: 'border-[#0000FF] bg-[#0000FF] text-white',
-      value,
-      label: 'empty and targeted',
-    };
-  }
-
-  if (cell.effect === 'sunk') {
-    return {
-      className: 'border-[#0000B2] bg-[#0000B2] text-white',
-      value,
-      label: 'occupied and sunk',
-    };
-  }
-
-  if (cell.effect === 'targeted') {
-    return {
-      className: 'border-[#FF0000] bg-[#FF0000] text-white',
-      value,
-      label: 'occupied and targeted',
-    };
-  }
-
-  if (cell.oil) {
-    return {
-      className: `border-[#404040] bg-[#404040] ${shipTextColorClass} ${shipFontWeightClass}`,
-      value,
-      label: cell.occupied ? 'occupied with oil' : 'empty with oil',
-    };
-  }
-
-  if (cell.exposure === 'unknown') {
-    return {
-      className: 'border-[#C0C0C0] bg-[#C0C0C0] text-white',
-      value: '',
-      label: cell.effect,
-    };
-  }
-
-  return {
-    className: `border-[#0000FF] bg-[#0000FF] ${shipTextColorClass} ${shipFontWeightClass}`,
-    value,
-    label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
-  };
-}
 
 function revealUntargetedShips(navy: GameState['player']): GameState['player'] {
   const nextCells = navy.cells.map((cell) => {
