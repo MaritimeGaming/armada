@@ -2643,7 +2643,7 @@ function GridCell({
         onTouchCancel={handlePressCancel}
         onBlur={handlePressCancel}
         className={cn(
-          'relative aspect-square overflow-hidden rounded-[2px] border-[0.5px] text-center text-[clamp(1rem,5vw,1.3rem)] lg:text-[1.75rem] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
+          'relative aspect-square overflow-hidden rounded-[2px] border-[0.5px] text-center text-[clamp(0.75rem,3.3vw,1.04rem)] lg:text-[1.265rem] font-semibold leading-none shadow-sm transition-colors duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-200',
           className
         )}
         style={{
@@ -2684,7 +2684,7 @@ function GridCell({
   return (
     <div
       className={cn(
-        'relative aspect-square overflow-hidden rounded-[2px] border-[0.5px] text-center text-[clamp(1rem,5vw,1.3rem)] lg:text-[1.75rem] font-semibold leading-none shadow-sm transition-colors duration-300',
+        'relative aspect-square overflow-hidden rounded-[2px] border-[0.5px] text-center text-[clamp(0.75rem,3.3vw,1.04rem)] lg:text-[1.265rem] font-semibold leading-none shadow-sm transition-colors duration-300',
         className
       )}
       aria-label={`${exposure === 'known' ? 'Known' : 'Unknown'} cell${label ? `, ${label}` : ''}`}

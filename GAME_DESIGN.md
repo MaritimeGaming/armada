@@ -310,21 +310,27 @@ tuning either mechanic, since they're designed to interact.
   top of it, both fully legible at once.
 
 **Grid cell font size** (`GridCell` in `Index.tsx`, both the interactive
-`<button>` and static `<div>` variants): sized to fill roughly 60-65% of
+`<button>` and static `<div>` variants): sized to fill roughly 44-52% of
 the cell's own width - large enough to read at a glance, without touching
-the cell's edges. Uses `text-[clamp(1rem,5vw,1.3rem)] lg:text-[1.75rem]`
-rather than a single `vw`-based `clamp()` across the whole range, because
-cell size itself isn't a smooth function of viewport width: it holds flat
-around 32px from roughly 375px up through 767px wide (single-panel mobile
-layout), then jumps to a flat 46px at the `lg` breakpoint (1024px, where
-`DESKTOP_LAYOUT_QUERY` switches to the side-by-side two-panel layout) and
-stays there at any wider desktop size - both panel widths are themselves
-capped, not viewport-proportional. A single continuous `clamp()` can't
-track a step function like that: tuned to hit the right size at 1024px+,
-it would overshoot everywhere in the flat 375-767px plateau below it. The
-mobile-range `clamp()` still carries its own small `vw` term rather than a
-fixed size, purely to keep scaling down gracefully below 375px (a 320px-wide
-phone gets a smaller cell too, around 26px).
+the cell's edges. Uses `text-[clamp(0.75rem,3.3vw,1.04rem)]
+lg:text-[1.265rem]` rather than a single `vw`-based `clamp()` across the
+whole range, because cell size itself isn't a smooth function of viewport
+width: it holds flat around 32px from roughly 375px up through 767px wide
+(single-panel mobile layout), then jumps to a flat 46px at the `lg`
+breakpoint (1024px, where `DESKTOP_LAYOUT_QUERY` switches to the
+side-by-side two-panel layout) and stays there at any wider desktop size -
+both panel widths are themselves capped, not viewport-proportional. A
+single continuous `clamp()` can't track a step function like that: tuned
+to hit the right size at 1024px+, it would overshoot everywhere in the
+flat 375-767px plateau below it. The mobile-range `clamp()` still carries
+its own small `vw` term rather than a fixed size, purely to keep scaling
+down gracefully below 375px (a 320px-wide phone gets a smaller cell too,
+around 26px). These values are the exact midpoint, parameter by parameter,
+between the original `clamp(0.5rem,1.6vw,0.78rem)` (~25-38% fill, judged
+too small to read comfortably) and a first pass at
+`clamp(1rem,5vw,1.3rem) lg:text-[1.75rem]` (~60-65% fill, judged too large)
+- landing here once real use showed both ends of that range were wrong in
+opposite directions.
 
 - **Torpedo, Rocket, and Harpoon** (`fireTorpedo()`/`fireRocket()`/
   `fireHarpoon()` in `armada-game.ts`, all thin wrappers around a shared
