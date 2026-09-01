@@ -309,6 +309,23 @@ tuning either mechanic, since they're designed to interact.
   letter in its usual color, with the red mine glyph visibly overlaid on
   top of it, both fully legible at once.
 
+**Grid cell font size** (`GridCell` in `Index.tsx`, both the interactive
+`<button>` and static `<div>` variants): sized to fill roughly 60-65% of
+the cell's own width - large enough to read at a glance, without touching
+the cell's edges. Uses `text-[clamp(1rem,5vw,1.3rem)] lg:text-[1.75rem]`
+rather than a single `vw`-based `clamp()` across the whole range, because
+cell size itself isn't a smooth function of viewport width: it holds flat
+around 32px from roughly 375px up through 767px wide (single-panel mobile
+layout), then jumps to a flat 46px at the `lg` breakpoint (1024px, where
+`DESKTOP_LAYOUT_QUERY` switches to the side-by-side two-panel layout) and
+stays there at any wider desktop size - both panel widths are themselves
+capped, not viewport-proportional. A single continuous `clamp()` can't
+track a step function like that: tuned to hit the right size at 1024px+,
+it would overshoot everywhere in the flat 375-767px plateau below it. The
+mobile-range `clamp()` still carries its own small `vw` term rather than a
+fixed size, purely to keep scaling down gracefully below 375px (a 320px-wide
+phone gets a smaller cell too, around 26px).
+
 - **Torpedo, Rocket, and Harpoon** (`fireTorpedo()`/`fireRocket()`/
   `fireHarpoon()` in `armada-game.ts`, all thin wrappers around a shared
   `fireTravelingWeapon()` engine, parameterized by a `WeaponTravelAxis` of
@@ -422,7 +439,7 @@ tuning either mechanic, since they're designed to interact.
   pre-targeting: once the cell is actually hit or sunk, the ordinary
   hit/sunk colors and white/semibold text take back over.
 
-  This green tint shipped with a bug that made it invisible in practice for
+  This droneRevealed tint shipped with a bug that made it invisible in practice for
   a few commits: `GridCell` renders the cell's letter inside its own inner
   `<div>`, which had a hardcoded `text-white` class - completely
   overriding whatever color the outer cell element computed, `shipTextColorClass`
