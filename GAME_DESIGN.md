@@ -6,10 +6,7 @@ it does, not just *how*. It exists because several design choices look like
 bugs or oversights if you don't know the reasoning behind them.
 
 Core game logic lives in [`src/lib/armada-game.ts`](src/lib/armada-game.ts);
-UI/state wiring lives in [`src/pages/Index.tsx`](src/pages/Index.tsx). Note
-that [`AGENTS.md`](AGENTS.md) is leftover generic Nostr-client boilerplate
-from the template this project started from — it is not specific to this
-game and should not be treated as a source of design intent.
+UI/state wiring lives in [`src/pages/Index.tsx`](src/pages/Index.tsx).
 
 ## Core philosophy: playability over realism
 

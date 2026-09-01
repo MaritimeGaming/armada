@@ -1,9 +1,7 @@
 # Working on Armada
 
 See [GAME_DESIGN.md](GAME_DESIGN.md) for design philosophy and the reasoning
-behind existing mechanics — read it before making gameplay changes. (Ignore
-[AGENTS.md](AGENTS.md): it's leftover boilerplate from the template this
-project started from, not specific to this game.)
+behind existing mechanics — read it before making gameplay changes.
 
 ## Test suite
 
