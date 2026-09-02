@@ -153,6 +153,13 @@ const Index = () => {
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
+  // Starts true so the very first render never animates into place. Every
+  // *programmatic* activeView reset (initial load from storage, New Game)
+  // sets this back to true for one render, so the mobile swipe carousel
+  // snaps straight to the target panel instead of sliding - see the
+  // instantViewSwitch effect below for why that matters. A manual swipe
+  // (the arrow buttons) leaves this alone, so it still animates.
+  const [instantViewSwitch, setInstantViewSwitch] = useState(true);
   const [gameOver, setGameOver] = useState<GameOverState>({ isOpen: false, winner: null });
   // gameOver.isOpen only flips true after concludeGame()'s 2-second reveal
   // delay, but the game is already decided the instant a winning shot
@@ -224,6 +231,7 @@ const Index = () => {
   });
   const [panelWidth, setPanelWidth] = useState(0);
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const swipeInstantSwitchFrameRef = useRef(0);
   const isDesktopLayout = useMediaQuery(DESKTOP_LAYOUT_QUERY);
   const [armedWeapon, setArmedWeapon] = useState<WeaponType | null>(null);
   // Which weapon type currently has a "pending" shot in progress on each
@@ -278,6 +286,7 @@ const Index = () => {
             const restoredState = parsedState as GameState;
             setGameState(restoredState);
             setActiveView(restoredState.currentTurn === 'app' ? 'player' : 'enemy');
+            setInstantViewSwitch(true);
             return;
           }
         }
@@ -292,11 +301,33 @@ const Index = () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
     setGameState(nextState);
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
+    setInstantViewSwitch(true);
   }, [shipSetOptions]);
 
   const activeIndex = navyViewOrder.indexOf(activeView);
   const canGoLeft = activeIndex > 0;
   const canGoRight = activeIndex < navyViewOrder.length - 1;
+
+  // Re-arms the swipe transition after an instant (untransitioned) view
+  // switch has actually painted. Without this, the fix above for one snap
+  // would permanently disable the animation for every swipe after it: a
+  // single rAF here would still land in the same frame the instant switch
+  // itself painted in on most browsers, since effects and the following
+  // paint aren't guaranteed to be separated by only one frame - a second
+  // rAF reliably lands one full frame after the first has painted.
+  useEffect(() => {
+    if (!instantViewSwitch) {
+      return;
+    }
+
+    const firstFrame = requestAnimationFrame(() => {
+      const secondFrame = requestAnimationFrame(() => setInstantViewSwitch(false));
+      swipeInstantSwitchFrameRef.current = secondFrame;
+    });
+    swipeInstantSwitchFrameRef.current = firstFrame;
+
+    return () => cancelAnimationFrame(swipeInstantSwitchFrameRef.current);
+  }, [instantViewSwitch]);
 
   const activeNavy = useMemo(() => {
     if (!gameState) return null;
@@ -444,6 +475,7 @@ const Index = () => {
       setGameState(nextState);
 
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
+    setInstantViewSwitch(true);
     setGameOver({ isOpen: false, winner: null });
   };
 
@@ -1868,7 +1900,7 @@ const Index = () => {
               <section className="flex min-h-0 flex-1 flex-col gap-2">
                 <div ref={swipeViewportRef} className="overflow-hidden rounded-[24px] border border-white/10 bg-white/5 shadow-[0_18px_60px_rgba(14,116,144,0.16)] backdrop-blur-md">
                   <div
-                    className="flex w-[200%] transition-transform duration-1000 ease-out"
+                    className={`flex w-[200%] ${instantViewSwitch ? '' : 'transition-transform duration-1000 ease-out'}`}
                     style={
                       panelWidth
                         ? { width: panelWidth * 2, transform: `translateX(-${activeIndex * panelWidth}px)` }

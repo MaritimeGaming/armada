@@ -44,3 +44,34 @@ global.ResizeObserver = vi.fn().mockImplementation(function (_callback) {
     disconnect: vi.fn(),
   };
 });
+
+// jsdom has no PointerEvent constructor at all (as of the jsdom version this
+// project pins), and no Pointer Capture API on Element - both of which
+// Radix UI's interactive primitives (DropdownMenu, Select, Tooltip, etc.)
+// depend on to open/close. Without these, a plain fireEvent.pointerDown()
+// in a test silently does nothing (Radix's own handlers just never run).
+// This is the standard minimal shim for testing Radix components under
+// jsdom - a real PointerEvent subclassing MouseEvent, plus no-op capture
+// methods, is enough for Radix's own event handling to work normally.
+if (!('PointerEvent' in window)) {
+  class PointerEventPolyfill extends MouseEvent {
+    pointerId?: number;
+    pointerType?: string;
+    isPrimary?: boolean;
+
+    constructor(type: string, params: PointerEventInit = {}) {
+      super(type, params);
+      this.pointerId = params.pointerId;
+      this.pointerType = params.pointerType;
+      this.isPrimary = params.isPrimary;
+    }
+  }
+
+  Object.defineProperty(window, 'PointerEvent', { value: PointerEventPolyfill, writable: true });
+  Object.defineProperty(global, 'PointerEvent', { value: PointerEventPolyfill, writable: true });
+}
+
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.setPointerCapture ??= () => {};
+Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.scrollIntoView ??= () => {};

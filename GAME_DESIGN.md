@@ -643,6 +643,36 @@ one cell every turn regardless of what else happens (see Variable B) — both
 are background world-state advancing independently of the player's chosen
 action for the turn, rather than a discrete "shot" that competes with it.
 
+### Mobile swipe carousel: instant vs. animated view switches
+
+On mobile, "My Navy" and "Enemy Navy" live side by side in a `w-[200%]`
+flex row inside an `overflow-hidden` viewport, and `activeView` (`'player'`
+| `'enemy'`) picks which one shows by translating that row by 0 or one full
+panel width. Plenty of moments *drive* this - firing a shot, taking an AI
+turn, the end-of-game reveal (below) all call `setActiveView()` to point the
+player at whatever the game wants them looking at - and a full-second
+`transition-transform` on the row turns each of those into a deliberate,
+visible pan, the same visual language as the player's own manual swipe via
+the arrow buttons. That's the point for gameplay-driven switches: a slide
+reads as "look over here," not as an error.
+
+It's the wrong behavior for a handful of *reset* moments that also call
+`setActiveView()`, though: the very first render, restoring a saved game
+from storage, and New Game. None of those are directing attention anywhere
+- they're establishing a starting state - but without a fix they'd still
+animate over the full second, because the transition class was applied
+unconditionally. A user who glanced at the screen (or took a screenshot)
+during that second could catch the carousel mid-slide, showing a sliver of
+both grids at once - reported as "clicking New Game sometimes leaves the
+grids offset, showing only the last couple columns of one navy and the
+first few of the other." The fix, `instantViewSwitch` in `Index.tsx`, is a
+one-render flag those three call sites set alongside `setActiveView()`: it
+drops the transition class for that single update so the row jumps straight
+to its target position, then re-arms itself via a double
+`requestAnimationFrame` (one frame to let the untransitioned jump actually
+paint, a second to be sure that paint has landed) so the very next
+gameplay-driven switch or manual swipe animates normally again.
+
 ### End-of-game reveal sequence
 
 `concludeGame()` in `Index.tsx` runs the instant the losing side's last
