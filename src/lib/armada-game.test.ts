@@ -75,6 +75,42 @@ describe('Oil Tanker targeting priority', () => {
       expect(selectAppTargetIndex(navy)).toBe(50);
     }
   });
+
+  it('ignores a different ship\'s revealed cell entirely while the Oil Tanker has not been found', () => {
+    const navy = makeNavy({
+      80: { occupied: true, shipCode: 'B', droneRevealed: true },
+    });
+
+    // Finding the tanker is the top priority - a free kill on some other
+    // ship isn't worth a turn not spent looking for it, so this should
+    // read as plain random selection, not always landing on 80.
+    const results = Array.from({ length: 200 }, () => selectAppTargetIndex(navy));
+    expect(results.some((index) => index !== 80)).toBe(true);
+  });
+
+  it('still ignores a different ship\'s revealed cell while hunting a found-but-not-yet-sunk Oil Tanker', () => {
+    const navy = makeNavy({
+      50: { occupied: true, shipCode: 'O', effect: 'targeted' },
+      80: { occupied: true, shipCode: 'B', droneRevealed: true },
+    });
+
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      expect([40, 41, 51, 60, 61]).toContain(selectAppTargetIndex(navy)); // adjacent to the tanker hit at 50
+    }
+  });
+
+  it('picks up a different ship\'s revealed cell once the Oil Tanker is sunk', () => {
+    const navy = makeNavy({
+      50: { occupied: true, shipCode: 'O', effect: 'sunk' },
+      51: { occupied: true, shipCode: 'O', effect: 'sunk' },
+      52: { occupied: true, shipCode: 'O', effect: 'sunk' },
+      80: { occupied: true, shipCode: 'B', droneRevealed: true },
+    });
+
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      expect(selectAppTargetIndex(navy)).toBe(80);
+    }
+  });
 });
 
 describe('Oil slick management', () => {

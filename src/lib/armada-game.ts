@@ -937,44 +937,54 @@ export function selectAppTargetIndex(navy: NavyState): number | null {
     return null;
   }
 
-  // A Drone reveal means a ship's location is already known outright, no
-  // deduction needed - this outranks the hit-based hunting below
-  // regardless of ship. But among revealed cells themselves, the Oil
-  // Tanker still comes first: if it has one, that's what gets picked, even
-  // over a different ship's own revealed (and therefore equally "free")
-  // cell - the Oil Tanker outranks every other known ship, not just every
-  // other guess.
+  // Finding (and then sinking) the Oil Tanker is the single top priority
+  // for as long as it's still alive - see the "Oil Tanker targeting
+  // priority" writeup in GAME_DESIGN.md. A revealed Oil Tanker cell is
+  // itself the best possible way to find it, so that always wins
+  // immediately, before anything else below.
   const revealedIndexes = getRevealedTargetIndexes(navy);
-  if (revealedIndexes.length > 0) {
-    const revealedOilTankerIndexes = revealedIndexes.filter((index) => navy.cells[index]?.shipCode === 'O');
-    return randomItem(revealedOilTankerIndexes.length > 0 ? revealedOilTankerIndexes : revealedIndexes);
+  const revealedOilTankerIndexes = revealedIndexes.filter((index) => navy.cells[index]?.shipCode === 'O');
+  if (revealedOilTankerIndexes.length > 0) {
+    return randomItem(revealedOilTankerIndexes);
   }
 
-  // The Oil Tanker gets priority over hunting any other wounded ship, for
-  // exactly as long as it takes to actually find and sink it - see the
-  // "Oil Tanker targeting priority" writeup in GAME_DESIGN.md. Until at
-  // least one of its cells has been hit, the computer doesn't hunt at all
-  // (plain random selection, same as it would if no ship anywhere had ever
-  // been hit) - it's not trying to protect some other partial hit, it's
-  // just not looking for the tanker specifically yet, so nothing here
-  // should nudge it toward one. Once found, every further shot goes at the
-  // tanker specifically (via the general hunt logic, restricted to just
-  // its own ship code) until it's sunk, before any other wounded ship gets
-  // a look in.
   const oilTankerCells = navy.cells.filter((cell) => cell.shipCode === 'O');
   const oilTankerFound = oilTankerCells.some((cell) => cell.effect !== 'untargeted');
   const oilTankerSunk = oilTankerCells.length > 0 && oilTankerCells.every((cell) => cell.effect === 'sunk');
 
+  // Until at least one of its cells has been hit, the computer doesn't
+  // hunt at all (plain random selection, same as it would if no ship
+  // anywhere had ever been hit) - it's not trying to protect some other
+  // partial hit, it's just not looking for the tanker specifically yet, so
+  // nothing here should nudge it toward one. This deliberately ignores a
+  // revealed cell on any *other* ship too: chasing a different ship's free
+  // kill would spend a turn not spent looking for the tanker, and that
+  // other ship isn't going anywhere - it'll get picked up once the tanker
+  // is sunk and the slick-management phase below runs its own revealed-cell
+  // check.
   if (!oilTankerFound) {
     return randomItem(untargetedIndexes);
   }
 
+  // Found but not yet sunk: every further shot goes at the tanker
+  // specifically (via the general hunt logic, restricted to just its own
+  // ship code) until it's sunk, before any other wounded ship - revealed
+  // or merely hit - gets a look in.
   if (!oilTankerSunk) {
     const tankerCandidateIndexes = getHuntCandidateIndexes(navy, 'O');
     return randomItem(tankerCandidateIndexes.length > 0 ? tankerCandidateIndexes : untargetedIndexes);
   }
 
-  // The Oil Tanker is sunk and the slick is spreading - let it grow to
+  // The Oil Tanker is sunk - this is the "pick it up eventually" moment:
+  // any other ship's revealed cell (deferred by both branches above) is
+  // now fair game, and gets the same unconditional top priority a
+  // revealed cell always used to have, before the slick-management logic
+  // below even runs.
+  if (revealedIndexes.length > 0) {
+    return randomItem(revealedIndexes);
+  }
+
+  // The slick is spreading - let it grow to
   // roughly the size of everything else still unexplored before the
   // computer starts risking shots inside it (a 1-in-12 ignition chance per
   // shot - see OIL_IGNITION_ODDS). "Room to expand" is checked first so a

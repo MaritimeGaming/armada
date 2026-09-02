@@ -86,25 +86,44 @@ described here, and restricted to `'O'` for the Oil Tanker priority below.
 If no hit-derived candidate cells exist yet, it falls back to a plain
 random pick among all untargeted cells.
 
-**Oil Tanker targeting priority**: the hunt logic above doesn't engage at
-all — for *any* ship — until the Oil Tanker itself has taken at least one
-hit. Before that point, `selectAppTargetIndex()` picks a plain random
-untargeted cell every turn, same as if nothing anywhere had ever been hit;
-it isn't trying to protect some other ship's partial hit, it just isn't
-looking for the tanker specifically yet, so nothing should nudge it toward
-one prematurely. The moment the tanker takes its first hit, every further
-shot goes at *it* specifically (`getHuntCandidateIndexes(navy, 'O')`) —
-adjacency for one hit, its own remaining line for two or more, exactly the
-general hunt's own rules, just scoped to one ship — ahead of any other
-wounded ship, until it's sunk. The one thing that outranks even this: a
-Drone reveal (see Variable D) is still an unconditional free kill regardless
-of ship, *except* the Oil Tanker jumps ahead of other revealed ships too —
-if the tanker itself has a revealed-but-untargeted cell, that's what gets
-picked over a different ship's own revealed cell, not a random pick between
-them. Once the tanker is fully sunk, targeting falls through to the general
-hunt above, unrestricted — see the slick-management behavior in Variable B
-for what changes about *which* untargeted cells that hunt (and the random
-fallback beneath it) is allowed to consider once the tanker's down.
+**Oil Tanker targeting priority**: finding, then sinking, the Oil Tanker is
+the single top priority for `selectAppTargetIndex()`, ahead of everything
+else described above — including a Drone reveal on some *other* ship.
+Concretely, in order:
+
+1. **A revealed Oil Tanker cell always wins first.** If the tanker itself
+   has a revealed-but-untargeted cell (`getRevealedTargetIndexes()`,
+   filtered to `shipCode === 'O'`), that's the shot, unconditionally — a
+   revealed tanker cell *is* the tanker being found, so nothing outranks
+   taking it.
+2. **Until the tanker has taken at least one hit, everything else is
+   ignored** — including a Drone reveal on a different ship. Target
+   selection is a plain random pick across every untargeted cell, same as
+   if nothing anywhere had ever been hit. This is deliberate, not an
+   oversight: a free kill on some other ship is still a turn not spent
+   looking for the tanker, and that other ship isn't going anywhere — see
+   point 4. The hunt logic below doesn't engage for *any* ship during this
+   phase either, so a wounded-but-not-revealed ship gets no special
+   treatment yet either.
+3. **Found but not yet sunk: every further shot goes at the tanker
+   specifically** (`getHuntCandidateIndexes(navy, 'O')` — adjacency for one
+   hit, its own remaining line for two or more, exactly the general hunt's
+   own rules, just scoped to one ship), still ahead of any other wounded or
+   revealed ship.
+4. **Once the tanker is fully sunk, this is the "pick it up eventually"
+   moment** — any other ship's revealed cell (deferred by steps 2 and 3)
+   now gets the same unconditional top priority a revealed cell always
+   used to have, before the general hunt or slick-management logic below
+   even runs. From here targeting falls through to the general hunt,
+   unrestricted — see the slick-management behavior in Variable B for what
+   changes about *which* untargeted cells that hunt (and the random
+   fallback beneath it) is allowed to consider once the tanker's down.
+
+Earlier versions of this logic let *any* revealed cell win immediately,
+tanker or not - changed once real use showed that let the computer get
+distracted finishing off an already-found ship elsewhere on the board
+instead of staying focused on finding the tanker, which is supposed to be
+the more urgent goal.
 
 This same "play shrewdly" character also covers weapon use: whenever the
 computer decides to fire a MOAB, Mine, Torpedo, Rocket, Harpoon, or Drone,
