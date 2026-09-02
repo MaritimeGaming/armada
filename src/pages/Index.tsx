@@ -228,6 +228,7 @@ const Index = () => {
     helicopter: [],
     explosion: [],
     wingame: [],
+    deflect: [],
   });
   const [panelWidth, setPanelWidth] = useState(0);
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);

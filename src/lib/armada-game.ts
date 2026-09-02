@@ -96,7 +96,7 @@ export type GameState = {
   playerWeaponUseCounts: Record<WeaponType, number>;
 };
 
-export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame';
+export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'deflect';
 export type AudioSequence = AudioCue[];
 export type ShipSetOptions = {
   includeSingles: boolean;
@@ -195,6 +195,15 @@ export const AUDIO_FILES: Record<AudioCue, string> = {
   helicopter: `${import.meta.env.BASE_URL}audio/Helicopter.wav`,
   explosion: `${import.meta.env.BASE_URL}audio/Explosion.wav`,
   wingame: `${import.meta.env.BASE_URL}audio/WinGame.wav`,
+  // Reuses Splash.wav under its own cue name rather than a new asset - see
+  // the "deflect" cue's own doc comment on AudioCue-adjacent call sites
+  // (isShipImmuneToWeapon) for why this needs to be a distinct cue rather
+  // than just reusing 'splash' itself: 'splash' is deliberately dropped from
+  // a MOAB's own sequence (see playMoabSequence in Index.tsx) so the per-cell
+  // miss sound doesn't compete with the MOAB's own double-boom, and that
+  // same suppression would silently swallow a MOAB's immune-ship exposure
+  // too if it used the same cue name.
+  deflect: `${import.meta.env.BASE_URL}audio/Splash.wav`,
 };
 
 export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
@@ -294,6 +303,18 @@ function isShipImmuneToWeapon(shipCode: string | undefined, weapon: WeaponType):
  * the oil slick or risk ignition. Callers that need the turn's own oil-tick
  * still get it by calling resolveTargetingSequence with this cell excluded
  * from its target list, rather than skipping that call outright.
+ *
+ * Deliberately silent itself - callers decide whether the moment needs a
+ * sound. A Drone reveal (fireDrone) and a Mine's own passive wander
+ * (moveMine) stay fully silent, since both are cost-free background events,
+ * not something the player actively fired this turn. But when the player
+ * (or the computer) actually fires a real weapon - MOAB, a direct Mine
+ * drop, or a Torpedo/Rocket/Harpoon launch or mid-flight pass - straight at
+ * an immune ship, total silence reads as "nothing happened, is this
+ * broken?" rather than "the game blocked this on purpose." Those call
+ * sites add the 'deflect' cue themselves alongside this call, giving that
+ * moment its own distinct, audible "that didn't work" beat without
+ * touching the immunity rule itself.
  */
 function exposeCellWithoutDamage(navy: NavyState, cellIndex: number): NavyState {
   const cell = navy.cells[cellIndex];
@@ -308,6 +329,17 @@ function exposeCellWithoutDamage(navy: NavyState, cellIndex: number): NavyState 
     // for any other exposed cell, which was never true to begin with.
     targeting: false,
   });
+}
+
+/**
+ * Appends the 'deflect' cue (see exposeCellWithoutDamage's own doc comment)
+ * to an already-resolved audioSequence, if this shot's targeting actually
+ * exposed an immune ship rather than damaging it - a no-op otherwise.
+ * Shared by every call site that fires a real weapon (as opposed to a
+ * Drone reveal or a Mine's passive wander, which stay silent).
+ */
+function withDeflectCue(audioSequence: AudioSequence, exposedImmuneShip: boolean): AudioSequence {
+  return exposedImmuneShip ? [...audioSequence, 'deflect'] : audioSequence;
 }
 
 /** The cell itself plus its up-to-8 neighbors, clipped at grid edges - so a
@@ -338,7 +370,11 @@ export function fireMoab(navy: NavyState, cellIndex: number): TargetingResult {
 
   const result = resolveTargetingSequence(preparedNavy, targetIndexes);
 
-  return { ...result, targetedIndexes: targetIndexes };
+  return {
+    ...result,
+    audioSequence: withDeflectCue(result.audioSequence, exposedIndexes.length > 0),
+    targetedIndexes: targetIndexes,
+  };
 }
 
 /**
@@ -423,7 +459,7 @@ export function resolveMineHit(navy: NavyState, cellIndex: number): TargetingRes
     const exposedNavy = exposeCellWithoutDamage(navy, cellIndex);
     const result = resolveTargetingSequence(exposedNavy, []);
 
-    return { ...result, targetedIndexes: [] };
+    return { ...result, audioSequence: withDeflectCue(result.audioSequence, true), targetedIndexes: [] };
   }
 
   const extraIndex = findNearestUntargetedShipCell(navy, cellIndex);
@@ -610,8 +646,12 @@ export function getWeaponTravelIndexes(cellIndex: number, axis: WeaponTravelAxis
  * single shot can hit more than one ship. An untargeted occupied cell whose
  * ship is immune to weapon (see isShipImmuneToWeapon) is exposed instead of
  * detonated - visible afterward, but left untargeted and passed over the
- * same as an empty cell, rather than ending the run or counting as a hit.
- * Running off the edge of the board just ends the run early.
+ * same as an empty cell, rather than ending the run or counting as a hit -
+ * except that step's audioSequence still gets the 'deflect' cue (see
+ * exposeCellWithoutDamage), whether it's the launch cell itself or one the
+ * weapon merely crosses in flight, so a real weapon shrugged off by an
+ * immune ship never resolves in total silence. Running off the edge of the
+ * board just ends the run early.
  */
 function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTravelAxis, weapon: WeaponType): WeaponTravelResult {
   const launchCell = navy.cells[cellIndex];
@@ -627,7 +667,7 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
       cellIndex,
       navy: launchResult.navy,
       isHit: !launchIsImmune && launchCell.occupied,
-      audioSequence: launchResult.audioSequence,
+      audioSequence: withDeflectCue(launchResult.audioSequence, launchIsImmune),
       ignited: launchResult.ignited,
       ignitedCellIndexes: launchResult.ignitedCellIndexes,
     },
@@ -645,7 +685,7 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
         cellIndex: nextIndex,
         navy: currentNavy,
         isHit: false,
-        audioSequence: [],
+        audioSequence: withDeflectCue([], true),
       });
 
       continue;

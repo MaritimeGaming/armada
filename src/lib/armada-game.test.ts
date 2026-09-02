@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { selectAppTargetIndex, type CellState, type NavyState, type PlacedShip } from './armada-game';
+import {
+  fireMoab,
+  fireTorpedo,
+  moveMine,
+  resolveMineHit,
+  selectAppTargetIndex,
+  type CellState,
+  type NavyState,
+  type PlacedShip,
+} from './armada-game';
 
 function makeCell(overrides: Partial<CellState> = {}): CellState {
   return {
@@ -227,6 +236,89 @@ describe('Oil slick management', () => {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const index = selectAppTargetIndex(navy);
       expect(index).not.toBe(83);
+    }
+  });
+});
+
+// A 100-cell navy with no ships placed except whatever single-cell ships a
+// test layers on via `ships`. Good enough for the weapon-immunity tests
+// below - none of fireMoab/resolveMineHit/fireTravelingWeapon/moveMine
+// touch navy.ships on the immune-ship branch they're exercising here.
+function makeEmptyNavy(shipCells: Record<number, string>): NavyState {
+  const cells = Array.from({ length: 100 }, () => makeCell());
+
+  Object.entries(shipCells).forEach(([indexStr, shipCode]) => {
+    cells[Number(indexStr)] = makeCell({ occupied: true, shipCode });
+  });
+
+  return { side: 'player', label: 'Test Navy', knownCount: 100, ships: [], cells, oilPending: false };
+}
+
+// Regression coverage for the "every MOAB drop on a Submarine feels like a
+// bug" problem: a weapon that's actually fired and finds a ship it's
+// immune to now gets an audible 'deflect' cue instead of resolving in
+// total silence, while a cost-free background reveal (a Drone find, or a
+// Mine's own passive wander) stays silent - see exposeCellWithoutDamage's
+// doc comment in armada-game.ts.
+describe("Weapon immunity: the 'deflect' audio cue", () => {
+  it('plays deflect (not just splash/explosion) when a MOAB finds an immune Submarine', () => {
+    // Submarine (S) is immune to the MOAB; centering the blast on it means
+    // every other footprint cell is plain empty water.
+    const navy = makeEmptyNavy({ 55: 'S' });
+
+    const result = fireMoab(navy, 55);
+
+    expect(result.audioSequence).toContain('deflect');
+    expect(result.navy.cells[55].effect).toBe('untargeted');
+    expect(result.navy.cells[55].droneRevealed).toBe(true);
+  });
+
+  it('plays only deflect when a Mine is dropped directly on an immune Ensign', () => {
+    // Ensign (E) is immune to the Mine, and single-cell, so there's no
+    // same-ship bonus cell to worry about - the whole result is just this
+    // one exposure.
+    const navy = makeEmptyNavy({ 42: 'E' });
+
+    const result = resolveMineHit(navy, 42);
+
+    expect(result.audioSequence).toEqual(['deflect']);
+    expect(result.navy.cells[42].effect).toBe('untargeted');
+  });
+
+  it('plays deflect on the launch cell when a Torpedo is fired straight at an immune Helicopter', () => {
+    // Helicopter (H) is immune to the Torpedo.
+    const navy = makeEmptyNavy({ 40: 'H' });
+
+    const result = fireTorpedo(navy, 40);
+
+    expect(result.steps[0].audioSequence).toEqual(['deflect']);
+    expect(result.steps[0].isHit).toBe(false);
+  });
+
+  it('plays deflect on a mid-flight cell an in-flight Torpedo merely crosses over an immune Ensign', () => {
+    // Launch cell 30 is empty water; the Torpedo travels rightward
+    // (column 0 <= 4) through 31, 32, 33... - Ensign (E) placed at 32 is
+    // passed over, not detonated, but still isn't silent about it.
+    const navy = makeEmptyNavy({ 32: 'E' });
+
+    const result = fireTorpedo(navy, 30);
+    const crossedStep = result.steps.find((step) => step.cellIndex === 32);
+
+    expect(crossedStep?.audioSequence).toEqual(['deflect']);
+    expect(crossedStep?.isHit).toBe(false);
+  });
+
+  it('stays silent when a Mine\'s own passive wander drifts onto an immune ship', () => {
+    // The Mine sits at corner cell 0, whose only two neighbors (1 and 10)
+    // are both immune ships - so wherever selectMineWanderIndex's own
+    // randomness sends it, the result is a silent exposure either way,
+    // matching its sibling "quietly confirms nothing there" wander branch
+    // rather than the audible 'deflect' a player-fired weapon gets.
+    const navy = makeEmptyNavy({ 1: 'E', 10: 'H' });
+
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const result = moveMine(navy, 0);
+      expect(result.audioSequence).toEqual([]);
     }
   });
 });

@@ -595,9 +595,35 @@ AI-priority targeting (the computer's next plain shot goes straight for an
 exposed immune ship, same as it would a Drone-found one), and the ship
 stays fully vulnerable to a plain shot or to a weapon type it isn't immune
 to - immunity blocks specific weapons, not damage outright, so a game can
-never soft-lock on an unsinkable ship. No sound plays and nothing animates
-as an explosion for an exposure-only cell, matching a Drone reveal's own
-silence.
+never soft-lock on an unsinkable ship. Nothing animates as an explosion for
+an exposure-only cell, matching a Drone reveal's own visual treatment.
+
+**Silence is reserved for cost-free background events, not a real weapon
+shrugged off.** This immunity mechanic is realism added deliberately in
+service of fun (see the core philosophy above) - a Torpedo sinking a
+Helicopter, or a MOAB reaching a submerged Submarine, felt silly enough to
+fix, and "which weapon beats which target" is a genuine tactical layer, not
+just flavor. But the first version of this feature exposed an immune ship
+in total silence, matching a Drone reveal's own silence exactly - and that
+turned out to be its own playability problem: dropping a MOAB and getting
+back *nothing*, not even a sound, reads as "did that just not work, is this
+broken?" rather than "the game blocked this on purpose." A Drone reveal
+earns its silence (it's a free look, nothing was actually fired), and so
+does a Mine's own passive per-turn wander (see Turn economy below) landing
+on an immune ship - both are background events, not a turn's chosen action.
+A real weapon the player (or computer) actually fired - MOAB, a direct Mine
+drop, or a Torpedo/Rocket/Harpoon's launch or a cell it merely passes
+through mid-flight - getting deflected by immunity now plays its own
+`'deflect'` audio cue instead, so the moment reads as "that ship dodged it"
+the instant it happens. `withDeflectCue()` in `armada-game.ts` is the single
+seam every real-weapon call site routes through; a MOAB shot needed its own
+distinct cue name rather than reusing `'splash'`, since `playMoabSequence()`
+in `Index.tsx` already strips `'splash'`/`'explosion'` from a MOAB's own
+sequence so they don't compete with its double-boom - reusing `'splash'`
+would have silently un-fixed the exact MOAB case that motivated this. The
+cue's actual sound file is the same `Splash.wav` `'splash'` already uses -
+a "this cell didn't take damage" beat the player already recognizes, now
+also reachable under a name a MOAB's own filter doesn't catch.
 
 Immunity is checked per cell, independent of the rest of the shot: MOAB's
 blast can expose a Submarine cell while still detonating every other cell
