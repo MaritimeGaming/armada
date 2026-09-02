@@ -154,6 +154,17 @@ const Index = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
   const [gameOver, setGameOver] = useState<GameOverState>({ isOpen: false, winner: null });
+  // gameOver.isOpen only flips true after concludeGame()'s 2-second reveal
+  // delay, but the game is already decided the instant a winning shot
+  // resolves - concludeGame sets gameOver.winner immediately, well before
+  // isOpen. Every "is it still safe to act" guard below needs this earlier
+  // signal, not isOpen: currentTurn alone isn't enough, since it stays
+  // pointed at the winner for the rest of that delay (see
+  // nextTurnAfterPlayerFire/nextTurnAfterAppFire) - which is exactly the
+  // condition the *winning* side's own turn-effect or handlers would
+  // otherwise treat as "my turn, go again," previewing or firing a target
+  // that no longer means anything.
+  const isGameConcluded = gameOver.winner !== null;
   const [shipSetOptions, setShipSetOptions] = useState<ShipSetOptions>(() => {
     const storedOptions = window.localStorage.getItem(SHIP_SET_STORAGE_KEY);
 
@@ -451,7 +462,7 @@ const Index = () => {
   };
 
   const handleWeaponButtonClick = (weapon: WeaponType) => {
-    if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen || isWeaponInFlight) {
+    if (!gameState || gameState.currentTurn !== 'player' || isGameConcluded || isWeaponInFlight) {
       return;
     }
 
@@ -532,6 +543,11 @@ const Index = () => {
   const concludeGame = (winner: Winner, state: GameState) => {
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
+      // Set immediately, not just when the dialog opens 2 seconds from now
+      // (isOpen below) - this is what every turn-effect/handler guard below
+      // actually needs, so the winning side doesn't keep acting on its own
+      // win during the reveal delay (see isGameConcluded).
+      setGameOver({ isOpen: false, winner });
       // Deliberately not clearing explosionCells here: this runs in the same
       // tick as the triggerCellExplosions() call for the winning shot, and
       // clearing synchronously would erase that explosion before React ever
@@ -602,7 +618,7 @@ const Index = () => {
 
     flushSync(() => {
       setGameState((currentState) => {
-        if (!currentState || currentState.currentTurn !== 'player' || gameOver.isOpen) {
+        if (!currentState || currentState.currentTurn !== 'player' || isGameConcluded) {
           return currentState;
         }
 
@@ -632,7 +648,7 @@ const Index = () => {
     }
 
     setGameState((state) => {
-      if (!state || state.currentTurn !== 'player' || gameOver.isOpen) {
+      if (!state || state.currentTurn !== 'player' || isGameConcluded) {
         return state;
       }
 
@@ -1156,7 +1172,7 @@ const Index = () => {
       return;
     }
 
-    if (!gameState || gameOver.isOpen || gameState.currentTurn !== 'app') {
+    if (!gameState || isGameConcluded || gameState.currentTurn !== 'app') {
       appPreviewIndexRef.current = null;
       appWeaponChoiceRef.current = undefined;
       return;
@@ -1688,25 +1704,25 @@ const Index = () => {
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
     };
-  }, [gameOver.isOpen, gameState, shipSetOptions]);
+  }, [isGameConcluded, gameState, shipSetOptions]);
 
   // Safety net: an armed weapon only ever makes sense while it's the
   // player's move. If the turn moves on (or a new game starts) without it
   // being fired, drop the armed state instead of leaving it stuck armed.
   useEffect(() => {
-    if (!gameState || gameState.currentTurn !== 'player' || gameOver.isOpen) {
+    if (!gameState || gameState.currentTurn !== 'player' || isGameConcluded) {
       setArmedWeapon(null);
     }
-  }, [gameState, gameOver.isOpen]);
+  }, [gameState, isGameConcluded]);
 
   // Same safety net, mirrored for the computer's own armed/firing dot
   // indicators - only meaningful while it's the computer's move.
   useEffect(() => {
-    if (!gameState || gameState.currentTurn !== 'app' || gameOver.isOpen) {
+    if (!gameState || gameState.currentTurn !== 'app' || isGameConcluded) {
       setAppArmedWeapon(null);
       setAppFiringWeaponType(null);
     }
-  }, [gameState, gameOver.isOpen]);
+  }, [gameState, isGameConcluded]);
 
   // Hidden until at least one game has been completed, then persists for
   // the lifetime of the install (not reset by New Game).
@@ -1752,7 +1768,7 @@ const Index = () => {
     />
   );
 
-  const isPlayerTurnActive = Boolean(gameState) && gameState?.currentTurn === 'player' && !gameOver.isOpen && !isWeaponInFlight;
+  const isPlayerTurnActive = Boolean(gameState) && gameState?.currentTurn === 'player' && !isGameConcluded && !isWeaponInFlight;
   const playerWeaponsUsed = gameState?.playerWeaponsUsed ?? 0;
   const weaponQuotaReached = playerWeaponsUsed >= SPECIAL_WEAPON_QUOTA;
   const hasActiveMine = (gameState?.playerMineIndex ?? null) !== null;

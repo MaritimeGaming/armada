@@ -673,6 +673,34 @@ The travelling-weapon in-flight completion callback (`runWeaponTravelSteps`'s
 before ever reaching its own `currentTurn` flip, so a win found mid-flight
 never got this bug in the first place.
 
+**That fix has a second-order consequence the guards above didn't account
+for: the winning side's own turn-effect can re-trigger on its own win.**
+Keeping `currentTurn` pointed at the winner (rather than clearing it) means
+that after the computer wins, `currentTurn` is still `'app'` - which is
+*exactly* the condition the AI-turn effect's own guard
+(`gameState.currentTurn !== 'app'`) requires to proceed. Since
+`gameOver.isOpen` doesn't flip true until 2 seconds later, the effect would
+re-run on the post-win `gameState`, pick a fresh target on the (already
+irrelevant) losing navy, and start previewing it - visibly, as a cell
+briefly highlighting again right after the win. The symmetric case exists
+for a player win too: `currentTurn` stays `'player'`, which is exactly what
+`handleEnemyCellPressEnd`'s guard requires, so a real click during the
+2-second window could still fire a shot that means nothing.
+
+Fixed with `isGameConcluded` (`Index.tsx`, derived from `gameOver.winner`):
+`concludeGame()` now sets `gameOver.winner` immediately, via
+`setGameOver({ isOpen: false, winner })`, rather than waiting for the same
+call that flips `isOpen` true 2 seconds later. Every guard that used to
+check `gameOver.isOpen` to decide "is it still safe to act" - the AI-turn
+effect's top-level guard, both `armedWeapon`/`appArmedWeapon` safety-net
+effects, `handleWeaponButtonClick`, `handleEnemyCellPressStart`,
+`handleEnemyCellPressEnd`, and `isPlayerTurnActive` - now checks
+`isGameConcluded` instead, catching the game's end the instant it happens
+rather than 2 seconds later. `gameOver.isOpen` itself is untouched
+everywhere else: the `<Dialog open={...}>` prop still needs the real,
+delayed value, since the whole point of the 2-second hold is to *not* pop
+the dialog immediately.
+
 ### Randomized weapon loadout
 
 Each game draws only `ACTIVE_WEAPON_TYPE_COUNT` (3) of the 6 weapon types
