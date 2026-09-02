@@ -825,6 +825,42 @@ export function getRevealedTargetIndexes(navy: NavyState): number[] {
 }
 
 /**
+ * True once every still-unsunk ship has taken at least one hit - i.e.
+ * nothing left on the board is still sitting completely undiscovered.
+ * Used to decide whether a known hunt target may override oil-slick
+ * avoidance (see selectAppTargetIndex): while some ship remains entirely
+ * unfound, it could still be hiding in the very "outside" territory the
+ * slick-avoidance logic is trying to explore, so a different, already-
+ * wounded ship's oil-covered remaining cell isn't worth abandoning that
+ * search for. Only once nothing is left to discover does chasing a known
+ * lead - oil or not - stop trading away any exploration value.
+ */
+function haveFoundAllRemainingShips(navy: NavyState): boolean {
+  const cellsByShipCode = new Map<string, CellState[]>();
+
+  navy.cells.forEach((cell) => {
+    if (!cell.occupied || !cell.shipCode) {
+      return;
+    }
+
+    const cells = cellsByShipCode.get(cell.shipCode) ?? [];
+    cells.push(cell);
+    cellsByShipCode.set(cell.shipCode, cells);
+  });
+
+  for (const cells of cellsByShipCode.values()) {
+    const isSunk = cells.every((cell) => cell.effect === 'sunk');
+    const hasAnyHit = cells.some((cell) => cell.effect !== 'untargeted');
+
+    if (!isSunk && !hasAnyHit) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Cells worth targeting next because they're adjacent to (or, with 2+ hits,
  * in the same straight line as) an existing hit on a ship that isn't fully
  * sunk yet. shipCode narrows this to one specific ship (used for the Oil
@@ -950,9 +986,23 @@ export function selectAppTargetIndex(navy: NavyState): number | null {
   const shouldAvoidSlick = untargetedInsideSlickCount < untargetedOutsideSlick.length
     && getOilSlickSpreadCandidateIndexes(navy).length > 0;
   const eligibleIndexes = shouldAvoidSlick ? untargetedOutsideSlick : untargetedIndexes;
-  const eligibleIndexSet = new Set(eligibleIndexes);
 
-  const candidateIndexes = getHuntCandidateIndexes(navy).filter((index) => eligibleIndexSet.has(index));
+  const allCandidateIndexes = getHuntCandidateIndexes(navy);
+
+  // Once nothing on the board is still completely undiscovered, a known
+  // hunt target always outranks slick preservation, oil-covered or not -
+  // exploring "outside" only has value while some ship might still be
+  // hiding there, and with every remaining ship already found, that's no
+  // longer true. Until that point, a known lead still has to compete with
+  // the slick like anything else: a different, already-found ship could
+  // still be waiting somewhere outside it.
+  if (haveFoundAllRemainingShips(navy) && allCandidateIndexes.length > 0) {
+    return randomItem(allCandidateIndexes);
+  }
+
+  const eligibleIndexSet = new Set(eligibleIndexes);
+  const candidateIndexes = allCandidateIndexes.filter((index) => eligibleIndexSet.has(index));
+
   if (candidateIndexes.length > 0) {
     return randomItem(candidateIndexes);
   }

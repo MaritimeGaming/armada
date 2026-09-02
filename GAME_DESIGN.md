@@ -166,20 +166,40 @@ forever or ignoring it entirely - `selectAppTargetIndex()` compares the
 count of untargeted cells inside the slick against the count outside it:
 while the slick still has room to grow (`getOilSlickSpreadCandidateIndexes()`
 - shared with `spreadOilSlick()`'s own logic, so both always agree on
-"can it get bigger") *and* inside is still the smaller pool, both the hunt
-above and its plain-random fallback are restricted to cells outside the
-slick; once inside catches up to outside, or the slick has nowhere left to
-spread, that restriction lifts and any untargeted cell - oil or not - is
-back on the table. This converges on its own without ever stalling: each
-turn the slick can still grow, "inside" gains exactly one cell while
-"outside" loses at least one (the turn's own shot) and typically two (the
-spread itself eats one more "outside" cell converting it to oil), so the
-gap closes turn over turn regardless of how large "outside" started; and
-the "room to expand" check means a slick that's boxed in can never be
-avoided past the point where waiting stops accomplishing anything. This
-lands on "roughly balanced," not "literally maximal" - the slick isn't
-deferred until *every* other cell on the board has been tried, just until
-it's no longer clearly the smaller unknown.
+"can it get bigger") *and* inside is still the smaller pool, its
+plain-random fallback (see below for the hunt) is restricted to cells
+outside the slick; once inside catches up to outside, or the slick has
+nowhere left to spread, that restriction lifts and any untargeted cell -
+oil or not - is back on the table. This converges on its own without ever
+stalling: each turn the slick can still grow, "inside" gains exactly one
+cell while "outside" loses at least one (the turn's own shot) and
+typically two (the spread itself eats one more "outside" cell converting
+it to oil), so the gap closes turn over turn regardless of how large
+"outside" started; and the "room to expand" check means a slick that's
+boxed in can never be avoided past the point where waiting stops
+accomplishing anything. This lands on "roughly balanced," not "literally
+maximal" - the slick isn't deferred until *every* other cell on the board
+has been tried, just until it's no longer clearly the smaller unknown.
+
+**A known hunt target only defers to slick avoidance while some ship might
+still be hiding in the very territory being explored.** `selectAppTargetIndex()`
+checks `haveFoundAllRemainingShips()` - true once every still-unsunk ship
+has taken at least one hit, i.e. nothing on the board is still sitting
+completely undiscovered - before letting the general hunt's own candidate
+cells be filtered by the outside-only restriction above. While some ship
+remains entirely unfound, a *different*, already-wounded ship's own
+remaining cell doesn't get to jump the queue just because it's known: that
+cell could wait, but the still-hidden ship might only ever be found by
+continuing to explore "outside," so slick avoidance still wins and the
+known lead is filtered out same as before, falling through to a random
+outside pick. Once nothing remains undiscovered, though, there's no more
+exploration value left to protect - a known lead, oil-covered or not,
+always outranks a slick that's now just delaying an inevitable, already-
+identified kill. This was a real bug, not a hypothetical: a wounded ship's
+own last untargeted cell could otherwise sit ignored indefinitely - the
+computer randomly picking off empty water outside the slick instead of
+just finishing it off - whenever that one remaining cell happened to be
+oil-covered.
 
 ## Variable C: Single-cell ships
 
