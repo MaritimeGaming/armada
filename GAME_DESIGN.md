@@ -318,7 +318,7 @@ tuning either mechanic, since they're designed to interact.
   the UI rather than introducing an unrelated shape just for this
   indicator. Colored `text-red-500` unconditionally, whether or not the
   cell is occupied, so the mine reads as its own distinct marker rather
-  than blending into the white/yellow a ship's own letter already uses. An
+  than blending into the white a ship's own letter already uses. An
   unoccupied cell shows *only* the glyph - nothing else there to combine
   it with, and this also hides a previous miss's dash for as long as the
   mine sits on top of it. An occupied cell keeps its own value (a live
@@ -454,31 +454,49 @@ shrink toward zero from a number the player doesn't already know offhand
   plain ship-colored cell the player's own always-visible navy uses, or to
   the oil color if oil has spread over it).
 
-  The one deliberate exception: `computeBaseCellPresentation()` colors a
-  droneRevealed, still-untargeted, occupied cell's own letter a bright,
-  bold yellow (`shipTextColorClass`/`shipFontWeightClass`, Tailwind
-  `text-yellow-300 font-bold` instead of the plain white/semibold every
-  other visible ship cell uses) rather than leaving it fully
+  The one deliberate exception: `computeBaseCellPresentation()` gives a
+  droneRevealed, still-untargeted, occupied cell its own distinct
+  background (with plain white bold text) rather than leaving it fully
   indistinguishable from an ordinary visible ship cell - on *either* grid,
   since a Drone (or a weapon exposing a ship it's immune to - see Variable
   D below) can reveal either side's ships. This exists purely so the
   reveal is still visible after the fact: without it, nothing on screen
   would ever confirm the computer actually fired a Drone (or found an
   immune ship), since a droneRevealed cell's background is otherwise
-  identical to a plain visible cell's. Deliberately not the same green
-  `revealUntargetedShips()` uses for its own end-of-game reveal (see
-  below) - a different hue entirely (not just a different shade of the
-  same one) keeps the two states visually unambiguous at a glance, never
-  requiring a side-by-side comparison to tell which one a given cell means.
-  Went through two green shades first - plain `text-green-400` (matching
-  the weapon button's pulsing use-count dot), then the lighter `green-300`
-  plus bold once real use showed color alone wasn't reading as visible
-  enough - before landing on yellow, chosen once green itself turned out to
-  still not stand out enough against the blue "untargeted" background.
-  Bold stays on regardless of hue, as a second, non-color signal for the
-  same state rather than leaning on saturation alone. It only applies
-  pre-targeting: once the cell is actually hit or sunk, the ordinary
-  hit/sunk colors and white/semibold text take back over.
+  identical to a plain visible cell's.
+
+  This went through several attempts at recoloring just the *letter*
+  first - plain `text-green-400` (matching the weapon button's pulsing
+  use-count dot), then the lighter `green-300` plus bold, then
+  `text-yellow-300` plus bold once green itself wasn't standing out enough
+  - all eventually judged too subtle. The real problem wasn't the specific
+  hue: a color change on a single small glyph just doesn't carry much
+  visual weight next to a whole cell's worth of background, so no amount
+  of hue-picking on the text alone was ever going to fix it reliably.
+  Shifting the cell's own *background* instead is the same trick oil
+  already uses (`#404040` instead of blue) to make a state change
+  unmissable - it colors the whole cell, not a few pixels of glyph.
+  Deliberately not the same vivid `#00B200` `revealUntargetedShips()` uses
+  for its own end-of-game reveal (see below): that green is a legitimate
+  "shoot here" signal for a different moment entirely (ships that survived
+  to the end of the game), and reusing it here would carry the same
+  urgency for what's meant to be a much quieter "there's a live ship under
+  this, FYI" cue.
+
+  **Two shades, not one** (`exposedBackgroundClassName` /
+  `exposedOilBackgroundClassName` in `cell-presentation.ts`): a plain
+  exposed cell gets `border-[#0B7A5C] bg-[#0B7A5C]`, a noticeably green
+  teal; an exposed cell that's *also* oil-covered gets the more muted
+  `border-[#0B5D73] bg-[#0B5D73]` instead - both a real, noticeable step
+  away from the ordinary `#0000FF` blue without leaving the blue family
+  the way the vivid end-of-game green would, but the oil case is pulled
+  back toward blue specifically so it doesn't compete for attention with
+  oil's own `#404040` gray sitting right next to it on the board. Bold
+  stays on in both cases as a second, non-color signal (useful for
+  colorblind players, since this is a hue change rather than a brightness
+  change). Either way, it only applies pre-targeting: once the cell is
+  actually hit or sunk, the ordinary hit/sunk colors and white/semibold
+  text take back over.
 
   This droneRevealed tint shipped with a bug that made it invisible in practice for
   a few commits: `GridCell` renders the cell's letter inside its own inner
@@ -533,7 +551,7 @@ shrink toward zero from a number the player doesn't already know offhand
   which then lands on the revealed cell via the priority check above. The
   player gets the equivalent benefit for free, just visually: a
   Drone-revealed enemy ship is simply no longer fogged on the Enemy Navy
-  grid (and its letter shows in the yellow droneRevealed tint described
+  grid (and its cell shows the teal droneRevealed background described
   above), so there's nothing to build - the player already sees it and can
   just tap it.
 
@@ -552,8 +570,8 @@ empty water - it exposes it (`exposeCellWithoutDamage()`, sharing the exact
 mechanism `fireDrone()` uses for its own reveals: `droneRevealed: true`,
 `exposure` bumped from `'unknown'` to `'known'`), leaving `effect` at
 `'untargeted'` rather than marking it a hit. The result reads identically
-to a Drone find on both sides of the interaction: the same yellow
-`droneRevealed` letter tint, the same `getRevealedTargetIndexes()`
+to a Drone find on both sides of the interaction: the same teal
+`droneRevealed` background, the same `getRevealedTargetIndexes()`
 AI-priority targeting (the computer's next plain shot goes straight for an
 exposed immune ship, same as it would a Drone-found one), and the ship
 stays fully vulnerable to a plain shot or to a weapon type it isn't immune

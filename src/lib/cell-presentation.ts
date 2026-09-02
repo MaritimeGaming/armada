@@ -54,17 +54,35 @@ function computeBaseCellPresentation(cell: CellState): CellPresentation {
   // Signals "this ship is known but hasn't been damaged" - a Drone find, or
   // a weapon that discovered a ship it's immune to (see
   // isShipImmuneToWeapon in armada-game.ts). A live (not yet targeted)
-  // occupied cell in this state shows its letter in a bright, bold yellow
-  // instead of the plain white/semibold every other visible ship cell
-  // uses, on either grid, so the reveal stays visible after the fact even
-  // though nothing about the cell's background changes. yellow-300 (this
-  // used green-300, then green-400, before) so it pops against the blue
-  // "untargeted" background even more than green did; bold adds a second,
-  // non-color signal for the same state, since color alone was judged not
-  // visible enough.
+  // occupied cell in this state needs to read as visibly different from an
+  // ordinary visible ship cell, on either grid, so the reveal stays
+  // noticeable after the fact. This went through several attempts at
+  // recoloring just the letter first (green-400, then green-300, then
+  // yellow-300) - all judged too subtle, because a color change on a
+  // single small glyph just doesn't carry much visual weight next to a
+  // whole cell's worth of background. Shifting the cell's own background
+  // instead (see exposedBackgroundClassName below) is the same trick oil
+  // already uses (`#404040` instead of blue) to make a state change
+  // unmissable - it colors the whole cell, not a few pixels of glyph. The
+  // letter itself goes back to plain white to match every ordinary ship
+  // cell, since the background now carries the signal; bold stays on as a
+  // second, non-color signal (useful for colorblind players, since the
+  // background shift below is a hue change).
   const isExposedUntargeted = cell.occupied && cell.droneRevealed && cell.effect === 'untargeted';
-  const shipTextColorClass = isExposedUntargeted ? 'text-yellow-300' : 'text-white';
   const shipFontWeightClass = isExposedUntargeted ? 'font-bold' : '';
+  // Two muted shades, neither the vivid `#00B200` revealUntargetedShips()
+  // uses for its own end-of-game reveal (see below) - that green is a
+  // deliberate "shoot here" signal for a different moment (ships that
+  // survived to the end of the game), and reusing it here would carry the
+  // same urgency for what's meant to be a much quieter "there's a live
+  // ship under this, FYI" cue. `#0B5D73` (a muted teal) is used when the
+  // cell is also oil-covered - a real step away from pure `#0000FF` blue
+  // without leaving the blue family, subtle enough to sit on top of oil's
+  // own gray without the two competing. `#0B7A5C` - the same idea, pushed
+  // noticeably greener - is used everywhere else, since without oil
+  // competing for attention a stronger shift reads better.
+  const exposedOilBackgroundClassName = 'border-[#0B5D73] bg-[#0B5D73] text-white';
+  const exposedBackgroundClassName = 'border-[#0B7A5C] bg-[#0B7A5C] text-white';
 
   if (cell.targeting) {
     return {
@@ -130,8 +148,16 @@ function computeBaseCellPresentation(cell: CellState): CellPresentation {
   }
 
   if (cell.oil) {
+    if (isExposedUntargeted) {
+      return {
+        className: `${exposedOilBackgroundClassName} ${shipFontWeightClass}`,
+        value,
+        label: 'occupied with oil',
+      };
+    }
+
     return {
-      className: `border-[#404040] bg-[#404040] ${shipTextColorClass} ${shipFontWeightClass}`,
+      className: 'border-[#404040] bg-[#404040] text-white',
       value,
       label: cell.occupied ? 'occupied with oil' : 'empty with oil',
     };
@@ -145,8 +171,16 @@ function computeBaseCellPresentation(cell: CellState): CellPresentation {
     };
   }
 
+  if (isExposedUntargeted) {
+    return {
+      className: `${exposedBackgroundClassName} ${shipFontWeightClass}`,
+      value,
+      label: 'occupied and untargeted',
+    };
+  }
+
   return {
-    className: `border-[#0000FF] bg-[#0000FF] ${shipTextColorClass} ${shipFontWeightClass}`,
+    className: 'border-[#0000FF] bg-[#0000FF] text-white',
     value,
     label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
   };

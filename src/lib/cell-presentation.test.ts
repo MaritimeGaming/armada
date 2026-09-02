@@ -55,23 +55,43 @@ describe('getCellPresentation - mine display', () => {
 });
 
 describe('getCellPresentation - exposed (droneRevealed) ship styling', () => {
-  it('colors a live, droneRevealed, untargeted ship cell bright yellow and bold', () => {
+  it('gives a live, droneRevealed, untargeted, oil-free ship cell the greener background and bold text', () => {
     const cell = makeCell({ occupied: true, shipCode: 'S', droneRevealed: true });
     const presentation = getCellPresentation(cell, false);
-    expect(presentation.className).toContain('text-yellow-300');
+    expect(presentation.className).toContain('#0B7A5C');
     expect(presentation.className).toContain('font-bold');
-  });
-
-  it('does not color an ordinary (not droneRevealed) untargeted ship cell yellow', () => {
-    const cell = makeCell({ occupied: true, shipCode: 'S' });
-    const presentation = getCellPresentation(cell, false);
-    expect(presentation.className).not.toContain('text-yellow-300');
     expect(presentation.className).toContain('text-white');
   });
 
-  it('stops coloring a droneRevealed cell yellow once it has actually been hit', () => {
+  it('gives a live, droneRevealed, untargeted, oil-covered ship cell the muted teal background instead', () => {
+    const cell = makeCell({ occupied: true, shipCode: 'S', droneRevealed: true, oil: true });
+    const presentation = getCellPresentation(cell, false);
+    expect(presentation.className).toContain('#0B5D73');
+    expect(presentation.className).not.toContain('#0B7A5C');
+    expect(presentation.className).toContain('font-bold');
+  });
+
+  it('does not give an ordinary (not droneRevealed) untargeted ship cell either exposed background', () => {
+    const cell = makeCell({ occupied: true, shipCode: 'S' });
+    const presentation = getCellPresentation(cell, false);
+    expect(presentation.className).not.toContain('#0B7A5C');
+    expect(presentation.className).not.toContain('#0B5D73');
+    expect(presentation.className).toContain('bg-[#0000FF]');
+    expect(presentation.className).toContain('text-white');
+  });
+
+  it('does not give an ordinary (not droneRevealed) untargeted, oil-covered ship cell the exposed background', () => {
+    const cell = makeCell({ occupied: true, shipCode: 'S', oil: true });
+    const presentation = getCellPresentation(cell, false);
+    expect(presentation.className).not.toContain('#0B7A5C');
+    expect(presentation.className).not.toContain('#0B5D73');
+    expect(presentation.className).toContain('bg-[#404040]');
+  });
+
+  it('stops giving a droneRevealed cell the exposed background once it has actually been hit', () => {
     const cell = makeCell({ occupied: true, shipCode: 'S', droneRevealed: true, effect: 'targeted' });
     const presentation = getCellPresentation(cell, false);
-    expect(presentation.className).not.toContain('text-yellow-300');
+    expect(presentation.className).not.toContain('#0B7A5C');
+    expect(presentation.className).not.toContain('#0B5D73');
   });
 });
