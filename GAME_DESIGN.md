@@ -352,6 +352,21 @@ too small to read comfortably) and a first pass at
 - landing here once real use showed both ends of that range were wrong in
 opposite directions.
 
+**Ship Legend hit counter** (top-right of each Legend, `NavyPanel` in
+`Index.tsx`): reads "Hits: `hitCellCount` / `occupiedCellCount`" -
+`occupiedCellCount` is just every occupied cell this navy started the game
+with (fixed for the whole game), `hitCellCount` is however many of those
+are no longer `'untargeted'` (hit, whether merely `'targeted'` or already
+`'sunk'`). Counts up monotonically over the course of a game, reaching
+`occupiedCellCount` exactly when every ship is sunk - a quick "how much of
+this fleet is left" readout that doesn't require counting Legend rows by
+eye. Replaced an earlier "Cells: N" counter that counted down instead (the
+number of occupied, still-untargeted cells) - functionally the complement
+of the same information, swapped to count up because "how much damage have
+I done" reads more naturally as it climbing than as watching a number
+shrink toward zero from a number the player doesn't already know offhand
+(the fleet's exact total occupied-cell count).
+
 - **Torpedo, Rocket, and Harpoon** (`fireTorpedo()`/`fireRocket()`/
   `fireHarpoon()` in `armada-game.ts`, all thin wrappers around a shared
   `fireTravelingWeapon()` engine, parameterized by a `WeaponTravelAxis` of

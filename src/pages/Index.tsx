@@ -2273,11 +2273,16 @@ function NavyPanel({
     }, 2000);
   };
 
-  // Mirrors the Legend's own white-vs-red split (see ShipRow below) without
-  // walking the ships a second time: an occupied, still-untargeted cell is
-  // exactly one white ship-code character in the Legend.
-  const remainingCellCount = useMemo(
-    () => navy.cells.filter((cell) => cell.occupied && cell.effect === 'untargeted').length,
+  // Counts up as the fleet takes damage: a hit is any occupied cell no
+  // longer 'untargeted' (targeted or sunk), out of every occupied cell
+  // this navy started with - so it reaches occupiedCellCount exactly when
+  // every ship is fully sunk.
+  const occupiedCellCount = useMemo(
+    () => navy.cells.filter((cell) => cell.occupied).length,
+    [navy.cells],
+  );
+  const hitCellCount = useMemo(
+    () => navy.cells.filter((cell) => cell.occupied && cell.effect !== 'untargeted').length,
     [navy.cells],
   );
 
@@ -2415,7 +2420,7 @@ function NavyPanel({
 
       <div className="px-6">
         <div className="flex items-center justify-end pb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/60">
-          <span>Cells: {remainingCellCount}</span>
+          <span>Hits: {hitCellCount} / {occupiedCellCount}</span>
         </div>
         <div className="grid grid-cols-[max-content_max-content] justify-center gap-x-7 gap-y-0.5">
           {Array.from({ length: Math.max(leftColumnShips.length, rightColumnShips.length) }, (_, rowIndex) => {
