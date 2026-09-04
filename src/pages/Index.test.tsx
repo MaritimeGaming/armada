@@ -22,6 +22,13 @@ function getSwipeWrapper(container: HTMLElement): HTMLDivElement {
   return wrapper as HTMLDivElement;
 }
 
+// The title screen is the first thing every fresh mount renders (see
+// showTitleScreen in Index.tsx) and has to be dismissed before any of the
+// board/carousel is on screen to interact with.
+function dismissTitleScreen() {
+  fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+}
+
 describe('mobile swipe carousel view switching', () => {
   let randomSpy: ReturnType<typeof vi.spyOn>;
 
@@ -47,6 +54,7 @@ describe('mobile swipe carousel view switching', () => {
   it('does not animate the very first view placement on mount', async () => {
     forcePlayerViewNextGame();
     const { container } = render(<App />);
+    dismissTitleScreen();
     const wrapper = getSwipeWrapper(container);
     expect(wrapper.className).not.toContain('transition-transform');
 
@@ -58,6 +66,7 @@ describe('mobile swipe carousel view switching', () => {
   it('keeps the transition enabled for a manual swipe via the arrow buttons', async () => {
     forcePlayerViewNextGame();
     const { container } = render(<App />);
+    dismissTitleScreen();
     const wrapper = getSwipeWrapper(container);
     await waitFor(() => expect(wrapper.className).toContain('transition-transform'));
 
@@ -69,6 +78,7 @@ describe('mobile swipe carousel view switching', () => {
   it('snaps instantly, without animating, when New Game resets the active view', async () => {
     forcePlayerViewNextGame();
     const { container } = render(<App />);
+    dismissTitleScreen();
     const wrapper = getSwipeWrapper(container);
     await waitFor(() => expect(wrapper.className).toContain('transition-transform'));
 

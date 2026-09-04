@@ -49,6 +49,7 @@ import {
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
 import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
+import { TitleScreen } from '@/components/TitleScreen';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -151,6 +152,12 @@ const Index = () => {
     description: 'A mobile-first Armada board showing randomized navy setup for both fleets.',
   });
 
+  // Shown once per app launch (cold start), never again for the rest of the
+  // session -- New Game, the win/lose dialog, etc. all skip straight back to
+  // the board. Game-state loading below isn't gated on this, so the board is
+  // already ready the moment the player taps past the title screen instead
+  // of flashing "Preparing fleets" right after.
+  const [showTitleScreen, setShowTitleScreen] = useState(true);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
   // Starts true so the very first render never animates into place. Every
@@ -317,7 +324,14 @@ const Index = () => {
   // paint aren't guaranteed to be separated by only one frame - a second
   // rAF reliably lands one full frame after the first has painted.
   useEffect(() => {
-    if (!instantViewSwitch) {
+    // The carousel doesn't exist in the DOM at all until the title screen is
+    // dismissed (see showTitleScreen's early return below), so this can't
+    // start counting frames toward "has the instant switch painted yet"
+    // before then - otherwise this fires and re-arms the transition while
+    // the title screen is still up, long before the carousel's real first
+    // paint, silently reintroducing the animated-first-placement bug this
+    // effect exists to prevent.
+    if (!instantViewSwitch || showTitleScreen) {
       return;
     }
 
@@ -328,7 +342,7 @@ const Index = () => {
     swipeInstantSwitchFrameRef.current = firstFrame;
 
     return () => cancelAnimationFrame(swipeInstantSwitchFrameRef.current);
-  }, [instantViewSwitch]);
+  }, [instantViewSwitch, showTitleScreen]);
 
   const activeNavy = useMemo(() => {
     if (!gameState) return null;
@@ -1878,6 +1892,10 @@ const Index = () => {
     );
   };
 
+  if (showTitleScreen) {
+    return <TitleScreen onPlay={() => setShowTitleScreen(false)} />;
+  }
+
   return (
     <>
       <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
@@ -2357,6 +2375,22 @@ function NavyPanel({
     return [sorted.slice(0, splitIndex), rightColumn];
   }, [availableShips]);
 
+  // leftColumnShips is always either the same length as rightColumnShips
+  // (an even ship-type count - Singles off) or exactly one longer (an odd
+  // count - Singles on, splitIndex rounds up), so the grid's very last row
+  // already has an empty right-column cell in exactly the Singles-on case.
+  // The Hits stat below reuses that existing gap there instead of adding a
+  // whole extra row, and only adds one of its own when there isn't a gap
+  // to reuse.
+  const shipRowCount = Math.max(leftColumnShips.length, rightColumnShips.length);
+  const hitsFillsTrailingGap = rightColumnShips.length < leftColumnShips.length;
+
+  const hitsStat = (
+    <div className="flex items-center justify-end text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/60">
+      Hits: {hitCellCount}/{occupiedCellCount}
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col gap-1.5">
       <div className="relative flex min-h-8 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
@@ -2382,7 +2416,11 @@ function NavyPanel({
               </Tooltip>
             ) : null}
 
-            <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
+            {/* Shortened to just "Enemy" here (unlike the desktop header
+                below, and unlike "My Navy" on this same mobile header) -
+                the full "Enemy Navy" was long enough at this width to
+                overlap the left-arrow button beside it. */}
+            <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy'}</div>
 
             {onGoRight ? (
               <Tooltip>
@@ -2452,13 +2490,11 @@ function NavyPanel({
       {weaponsBarSlot}
 
       <div className="px-6">
-        <div className="flex items-center justify-end pb-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/60">
-          <span>Hits: {hitCellCount} / {occupiedCellCount}</span>
-        </div>
         <div className="grid grid-cols-[max-content_max-content] justify-center gap-x-7 gap-y-0.5">
-          {Array.from({ length: Math.max(leftColumnShips.length, rightColumnShips.length) }, (_, rowIndex) => {
+          {Array.from({ length: shipRowCount }, (_, rowIndex) => {
             const leftShip = leftColumnShips[rowIndex];
             const rightShip = rightColumnShips[rowIndex];
+            const isTrailingGapRow = hitsFillsTrailingGap && rowIndex === shipRowCount - 1;
 
             return (
               <Fragment key={rowIndex}>
@@ -2472,7 +2508,7 @@ function NavyPanel({
                 ) : (
                   <div />
                 )}
-                {rightShip ? (
+                {isTrailingGapRow ? hitsStat : rightShip ? (
                   <ShipRow
                     ship={rightShip}
                     status={shipStatusByCode[rightShip.code] ?? { targetedCount: 0, isSunk: false }}
@@ -2485,6 +2521,12 @@ function NavyPanel({
               </Fragment>
             );
           })}
+          {hitsFillsTrailingGap ? null : (
+            <Fragment>
+              <div />
+              {hitsStat}
+            </Fragment>
+          )}
         </div>
       </div>
     </div>
