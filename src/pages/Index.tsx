@@ -2385,8 +2385,17 @@ function NavyPanel({
   const shipRowCount = Math.max(leftColumnShips.length, rightColumnShips.length);
   const hitsFillsTrailingGap = rightColumnShips.length < leftColumnShips.length;
 
+  // The ship-legend grid below is centered (justify-center) and its own
+  // columns are sized to max-content, so a cell placed *inside* it can only
+  // ever be as wide as its own text - there's no slack left for justify-end
+  // to align against, and the grid block itself sits narrower than, and
+  // centered within, the surrounding padded container. To actually reach
+  // that wider container's right edge (matching the grid/weapons bar above
+  // it), this renders as an absolutely-positioned overlay against the
+  // container instead of a normal grid cell - see the `relative` wrapper
+  // and empty placeholder cell below.
   const hitsStat = (
-    <div className="flex items-center justify-end text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/60">
+    <div className="pointer-events-none absolute bottom-0 right-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/60">
       Hits: {hitCellCount}/{occupiedCellCount}
     </div>
   );
@@ -2489,12 +2498,11 @@ function NavyPanel({
 
       {weaponsBarSlot}
 
-      <div className="px-6">
+      <div className="relative px-6">
         <div className="grid grid-cols-[max-content_max-content] justify-center gap-x-7 gap-y-0.5">
           {Array.from({ length: shipRowCount }, (_, rowIndex) => {
             const leftShip = leftColumnShips[rowIndex];
             const rightShip = rightColumnShips[rowIndex];
-            const isTrailingGapRow = hitsFillsTrailingGap && rowIndex === shipRowCount - 1;
 
             return (
               <Fragment key={rowIndex}>
@@ -2508,7 +2516,7 @@ function NavyPanel({
                 ) : (
                   <div />
                 )}
-                {isTrailingGapRow ? hitsStat : rightShip ? (
+                {rightShip ? (
                   <ShipRow
                     ship={rightShip}
                     status={shipStatusByCode[rightShip.code] ?? { targetedCount: 0, isSunk: false }}
@@ -2524,10 +2532,11 @@ function NavyPanel({
           {hitsFillsTrailingGap ? null : (
             <Fragment>
               <div />
-              {hitsStat}
+              <div />
             </Fragment>
           )}
         </div>
+        {hitsStat}
       </div>
     </div>
   );
