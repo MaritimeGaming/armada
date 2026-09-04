@@ -8,7 +8,7 @@ const TITLE_SCREEN_IMAGE = `${import.meta.env.BASE_URL}images/title-screen.jpg`;
 export function TitleScreen({ onPlay }: { onPlay: () => void }) {
   return (
     <main
-      className="relative flex min-h-screen items-end justify-center bg-slate-950 bg-cover bg-center p-8 pb-16"
+      className="relative flex min-h-screen items-end justify-center bg-slate-950 bg-contain bg-center bg-no-repeat p-8 pb-16"
       style={{ backgroundImage: `url(${TITLE_SCREEN_IMAGE})` }}
     >
       <Button
