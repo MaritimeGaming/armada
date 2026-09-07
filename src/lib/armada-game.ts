@@ -94,6 +94,22 @@ export type GameState = {
    * mid-game, so their own exhaustion already enforces the same cap.
    */
   playerWeaponUseCounts: Record<WeaponType, number>;
+  /** Total turns the player has taken this game (every weapon type, Drone included, plus a plain shot - see applyShotOutcome). Feeds the Quickest Win record. */
+  playerTurnsTaken: number;
+  /** Mirrors playerTurnsTaken for the computer. Feeds the Quickest Loss record. */
+  appTurnsTaken: number;
+  /** The player's current run of consecutive damage-dealing turns - see ShotOutcome/applyShotOutcome for exactly what counts. Resets to 0 on a miss; untouched by a turn that doesn't count toward the streak at all (a Drone, or a Mine dropped on empty water). */
+  playerCurrentHitStreak: number;
+  /** The highest playerCurrentHitStreak has reached at any point this game - not necessarily where it stands now, since it can fall back after a later miss. Feeds the Longest Hit Streak (You) record. */
+  playerHitStreakPeak: number;
+  /** Mirrors playerCurrentHitStreak for the computer. */
+  appCurrentHitStreak: number;
+  /** Mirrors playerHitStreakPeak for the computer. Feeds the Longest Hit Streak (Computer) record. */
+  appHitStreakPeak: number;
+  /** The largest single oil-slick chain reaction (see resolveTargetingSequence's own ignited/ignitedCellIndexes) triggered by the player this game, whether from a direct shot/weapon or their own mine's passive wander. Feeds the Biggest Oil Detonation (You) record. */
+  playerOilDetonationPeak: number;
+  /** Mirrors playerOilDetonationPeak for the computer. Feeds the Biggest Oil Detonation (Computer) record. */
+  appOilDetonationPeak: number;
 };
 
 export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'deflect';
@@ -112,8 +128,109 @@ export type TargetingResult = {
   targetedIndexes?: number[];
 };
 
+/**
+ * What one turn's chosen action actually accomplished, for the Hit Streak
+ * and Oil Detonation statistics (see GAME_DESIGN.md's Statistics section) -
+ * derived after the fact from a TargetingResult/WeaponTravelResult, not
+ * threaded through the targeting engine itself.
+ */
+export type ShotOutcome = {
+  /** Real damage dealt to at least one occupied, non-immune cell this turn - an exposure without damage (see exposeCellWithoutDamage) never counts on its own. */
+  dealtDamage: boolean;
+  /**
+   * False for a Drone (never deals damage - see isShipImmuneToWeapon's own
+   * doc comment) and for a Mine dropped on empty water (still armed and
+   * pending until its passive wander eventually connects or not - see
+   * moveMine): these are excluded from the hit-streak sequence entirely
+   * rather than counted as a miss, so neither ever costs a streak in
+   * progress. Every other weapon, and a Mine that lands on any occupied
+   * cell (hit or immune), fully resolves this turn and always counts.
+   */
+  countsTowardHitStreak: boolean;
+  /** Size of the oil-slick chain reaction this action triggered, 0 if none. */
+  oilDetonationSize: number;
+};
+
+/** A Drone can never deal damage or ignite anything, and is excluded from the hit streak entirely - see ShotOutcome. */
+export const DRONE_SHOT_OUTCOME: ShotOutcome = { dealtDamage: false, countsTowardHitStreak: false, oilDetonationSize: 0 };
+
+/** Derives a ShotOutcome from a fireMoab/resolveMineHit/plain-shot result - anything built on a single TargetingResult plus the cell(s) it actually tried to target (as opposed to merely exposed - see targetIndexes on each of those). */
+export function shotOutcomeFromTargetingResult(
+  result: TargetingResult,
+  targetIndexes: number[],
+  countsTowardHitStreak: boolean,
+): ShotOutcome {
+  return {
+    dealtDamage: targetIndexes.some((index) => result.navy.cells[index]?.occupied),
+    countsTowardHitStreak,
+    oilDetonationSize: result.ignited && result.ignitedCellIndexes ? result.ignitedCellIndexes.length : 0,
+  };
+}
+
+/** Derives a ShotOutcome from a fireTorpedo/fireRocket/fireHarpoon result - a hit anywhere along the run counts as a hit for the whole turn, and the biggest single ignition among its steps (never their sum) is what could set an Oil Detonation record. */
+export function shotOutcomeFromTravelSteps(steps: WeaponTravelStep[]): ShotOutcome {
+  return {
+    dealtDamage: steps.some((step) => step.isHit),
+    countsTowardHitStreak: true,
+    oilDetonationSize: steps.reduce(
+      (peak, step) => Math.max(peak, step.ignited && step.ignitedCellIndexes ? step.ignitedCellIndexes.length : 0),
+      0,
+    ),
+  };
+}
+
+/**
+ * Folds one turn's ShotOutcome into its side's running stats: increments
+ * turns taken (every turn, regardless of countsTowardHitStreak - a Drone
+ * turn still counts as a turn for Quickest Win/Loss purposes, just not for
+ * the hit streak), advances or resets the hit streak, and raises either
+ * peak if this turn set a new in-game high. A turn excluded from the hit
+ * streak (countsTowardHitStreak: false) leaves the current streak
+ * untouched rather than resetting it.
+ */
+export function applyShotOutcome(state: GameState, side: TurnOwner, outcome: ShotOutcome): GameState {
+  const isPlayer = side === 'player';
+  const currentStreak = isPlayer ? state.playerCurrentHitStreak : state.appCurrentHitStreak;
+  const nextStreak = !outcome.countsTowardHitStreak
+    ? currentStreak
+    : outcome.dealtDamage
+      ? currentStreak + 1
+      : 0;
+  const streakPeak = isPlayer ? state.playerHitStreakPeak : state.appHitStreakPeak;
+  const oilPeak = isPlayer ? state.playerOilDetonationPeak : state.appOilDetonationPeak;
+  const nextOilPeak = Math.max(oilPeak, outcome.oilDetonationSize);
+
+  return {
+    ...state,
+    ...(isPlayer
+      ? {
+          playerTurnsTaken: state.playerTurnsTaken + 1,
+          playerCurrentHitStreak: nextStreak,
+          playerHitStreakPeak: Math.max(streakPeak, nextStreak),
+          playerOilDetonationPeak: nextOilPeak,
+        }
+      : {
+          appTurnsTaken: state.appTurnsTaken + 1,
+          appCurrentHitStreak: nextStreak,
+          appHitStreakPeak: Math.max(streakPeak, nextStreak),
+          appOilDetonationPeak: nextOilPeak,
+        }),
+  };
+}
+
+/** A mine's own passive wander (see moveMine) never counts toward the hit streak, but a chain reaction it triggers can still set an Oil Detonation record - this folds just that in, leaving turnsTaken/hit-streak fields untouched since the wander isn't itself a turn. */
+export function applyMineWanderOilDetonation(state: GameState, side: TurnOwner, oilDetonationSize: number): GameState {
+  if (oilDetonationSize <= 0) {
+    return state;
+  }
+
+  return side === 'player'
+    ? { ...state, playerOilDetonationPeak: Math.max(state.playerOilDetonationPeak, oilDetonationSize) }
+    : { ...state, appOilDetonationPeak: Math.max(state.appOilDetonationPeak, oilDetonationSize) };
+}
+
 export const GRID_SIZE = 10;
-export const GAME_STATE_VERSION = 19;
+export const GAME_STATE_VERSION = 20;
 // Total special-weapon shots (any type, combined) allowed per side per game -
 // independent of how large a standing inventory ad-refills have built up.
 export const SPECIAL_WEAPON_QUOTA = 5;
@@ -1194,7 +1311,157 @@ export function createGameState(options: ShipSetOptions = DEFAULT_SHIP_SET_OPTIO
     appMineIndex: null,
     activeWeaponTypes: pickActiveWeaponTypes(),
     playerWeaponUseCounts: Object.fromEntries(ALL_WEAPON_TYPES.map((type) => [type, 0])) as Record<WeaponType, number>,
+    playerTurnsTaken: 0,
+    appTurnsTaken: 0,
+    playerCurrentHitStreak: 0,
+    playerHitStreakPeak: 0,
+    appCurrentHitStreak: 0,
+    appHitStreakPeak: 0,
+    playerOilDetonationPeak: 0,
+    appOilDetonationPeak: 0,
   };
+}
+
+/**
+ * Lifetime records, not part of GameState - survive New Game and browser
+ * restarts, same as the existing games-played/games-won counts these
+ * absorb (see Index.tsx's SESSION_STATS_STORAGE_KEY). null means "not yet
+ * achieved" for the four record fields that only make sense once at least
+ * one win or loss has happened - 0 would be a real, meaningful value for
+ * any of them (a flawless win with 0 shots is impossible, but a margin of
+ * 0 - won without a single untouched cell to spare - is a real result), so
+ * it can't double as the "never happened" sentinel the way it can for the
+ * streak/hit-streak/oil fields below.
+ */
+export type SessionStats = {
+  gamesPlayed: number;
+  gamesWon: number;
+  /** Fewest shots (turns) the player has ever taken to win a game. */
+  quickestWin: number | null;
+  /** Fewest shots the computer has ever taken to beat the player. */
+  quickestLoss: number | null;
+  /** Most of the player's own occupied cells ever left untargeted at the end of a game the player won. */
+  marginOfVictory: number | null;
+  /** Most of the computer's own occupied cells ever left untargeted at the end of a game the player lost. */
+  marginOfDefeat: number | null;
+  /** Consecutive wins right up to the most recently completed game - 0 the moment a loss happens. */
+  currentWinStreak: number;
+  /** The highest currentWinStreak has ever reached. */
+  bestWinStreak: number;
+  /** The player's own longest Hit Streak (see ShotOutcome) ever reached in a single game. */
+  longestHitStreakPlayer: number;
+  /** Mirrors longestHitStreakPlayer for the computer. */
+  longestHitStreakApp: number;
+  /** The player's own biggest single oil-slick chain reaction ever triggered in a single game. */
+  biggestOilDetonationPlayer: number;
+  /** Mirrors biggestOilDetonationPlayer for the computer. */
+  biggestOilDetonationApp: number;
+};
+
+export const DEFAULT_SESSION_STATS: SessionStats = {
+  gamesPlayed: 0,
+  gamesWon: 0,
+  quickestWin: null,
+  quickestLoss: null,
+  marginOfVictory: null,
+  marginOfDefeat: null,
+  currentWinStreak: 0,
+  bestWinStreak: 0,
+  longestHitStreakPlayer: 0,
+  longestHitStreakApp: 0,
+  biggestOilDetonationPlayer: 0,
+  biggestOilDetonationApp: 0,
+};
+
+function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+function countUntargetedOccupiedCells(navy: NavyState): number {
+  return navy.cells.filter((cell) => cell.occupied && cell.effect === 'untargeted').length;
+}
+
+/**
+ * Folds one just-concluded game's final GameState into the running
+ * SessionStats, returning both the updated stats (for the caller to
+ * persist) and a plain-English list of whatever records or streaks
+ * actually changed this game - exactly what the Victory/Defeat dialog
+ * shows off (see GAME_DESIGN.md's Statistics section: "Wins plus any new
+ * records set by this finished game, or any streak that was extended or
+ * broken"). Pure and storage-agnostic - Index.tsx owns reading/writing
+ * localStorage around this call.
+ */
+export function computeSessionStatsUpdate(
+  previous: SessionStats,
+  state: GameState,
+  winner: Winner,
+): { next: SessionStats; updates: string[] } {
+  const updates: string[] = [];
+  const next: SessionStats = { ...previous, gamesPlayed: previous.gamesPlayed + 1 };
+
+  if (winner === 'player') {
+    next.gamesWon = previous.gamesWon + 1;
+    next.currentWinStreak = previous.currentWinStreak + 1;
+
+    if (next.currentWinStreak > previous.bestWinStreak) {
+      next.bestWinStreak = next.currentWinStreak;
+      updates.push(`New record! Best Win Streak: ${next.bestWinStreak}`);
+    } else {
+      updates.push(`Win Streak: ${next.currentWinStreak}`);
+    }
+
+    if (previous.quickestWin === null || state.playerTurnsTaken < previous.quickestWin) {
+      next.quickestWin = state.playerTurnsTaken;
+      updates.push(`New record! Quickest Win: ${pluralize(state.playerTurnsTaken, 'shot')}`);
+    }
+
+    const marginOfVictory = countUntargetedOccupiedCells(state.player);
+    if (previous.marginOfVictory === null || marginOfVictory > previous.marginOfVictory) {
+      next.marginOfVictory = marginOfVictory;
+      updates.push(`New record! Margin of Victory: ${marginOfVictory}`);
+    }
+  } else {
+    if (previous.currentWinStreak > 0) {
+      updates.push(`Win Streak broken (was ${previous.currentWinStreak})`);
+    }
+    next.currentWinStreak = 0;
+
+    if (previous.quickestLoss === null || state.appTurnsTaken < previous.quickestLoss) {
+      next.quickestLoss = state.appTurnsTaken;
+      updates.push(`New record! Quickest Loss: ${pluralize(state.appTurnsTaken, 'shot')}`);
+    }
+
+    const marginOfDefeat = countUntargetedOccupiedCells(state.enemy);
+    if (previous.marginOfDefeat === null || marginOfDefeat > previous.marginOfDefeat) {
+      next.marginOfDefeat = marginOfDefeat;
+      updates.push(`New record! Margin of Defeat: ${marginOfDefeat}`);
+    }
+  }
+
+  // Hit Streak and Oil Detonation are tracked for both sides every game,
+  // regardless of who won - even in a loss, the computer setting its own
+  // personal best is worth knowing about.
+  if (state.playerHitStreakPeak > previous.longestHitStreakPlayer) {
+    next.longestHitStreakPlayer = state.playerHitStreakPeak;
+    updates.push(`New record! Your Longest Hit Streak: ${state.playerHitStreakPeak}`);
+  }
+
+  if (state.appHitStreakPeak > previous.longestHitStreakApp) {
+    next.longestHitStreakApp = state.appHitStreakPeak;
+    updates.push(`New record! Computer's Longest Hit Streak: ${state.appHitStreakPeak}`);
+  }
+
+  if (state.playerOilDetonationPeak > previous.biggestOilDetonationPlayer) {
+    next.biggestOilDetonationPlayer = state.playerOilDetonationPeak;
+    updates.push(`New record! Your Biggest Oil Detonation: ${pluralize(state.playerOilDetonationPeak, 'cell')}`);
+  }
+
+  if (state.appOilDetonationPeak > previous.biggestOilDetonationApp) {
+    next.biggestOilDetonationApp = state.appOilDetonationPeak;
+    updates.push(`New record! Computer's Biggest Oil Detonation: ${pluralize(state.appOilDetonationPeak, 'cell')}`);
+  }
+
+  return { next, updates };
 }
 
 function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {

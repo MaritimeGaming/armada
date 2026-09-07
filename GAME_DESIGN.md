@@ -1078,3 +1078,97 @@ strategy advice (e.g. no mention of *when* it's good to sink the tanker).
 An interactive "Getting Started" tutorial is the intended home for actual
 play instruction and strategy; these two dialogs exist so a player can look
 up "what does this icon mean" without launching that heavier sequence.
+
+## Statistics
+
+A lifetime record, entirely separate from any single game's `GameState`:
+persisted as `SessionStats` (`armada-game.ts`) under the single
+`armada:session-stats` localStorage key, surfaced two places - the full
+list in a scrollable Settings > Statistics dialog, and a "what changed this
+game" callout on the Victory/Defeat dialog (see below). Nine categories,
+eleven tracked values (Hit Streak and Oil Detonation are each tracked once
+per side):
+
+- **Wins** - ratio and percentage. The only one that predates this feature
+  (previously two standalone `games-played`/`games-won` counters); an
+  install that already has those gets them folded into its first
+  `SessionStats` blob the first time `loadSessionStats()` runs (`Index.tsx`)
+  rather than silently resetting to zero.
+- **Quickest Win / Quickest Loss** - fewest turns (any action - a plain
+  shot or any weapon, Drone included) the player has ever needed to win, or
+  the computer has ever needed to beat the player. Needed a new counter
+  that didn't exist before this feature: `GameState.playerTurnsTaken` /
+  `appTurnsTaken`, incremented by `applyShotOutcome()` on every turn
+  regardless of what else it did.
+- **Margin of Victory / Margin of Defeat** - the winning side's own
+  occupied-but-never-targeted cell count at the moment the game ends: how
+  much of the winner's fleet never even took a hit. Margin of Victory reads
+  the player's own navy on a win; Margin of Defeat reads the computer's on
+  a loss - the same number either way, just whichever side actually won.
+- **Current Win Streak / Best Win Streak** - consecutive wins right up to
+  the most recent game, and the highest that's ever reached. Resets to 0
+  the instant a loss happens; the Victory/Defeat dialog calls out either an
+  extension, a new best, or the streak breaking (see below).
+- **Longest Hit Streak (You / Computer)** - see "The Hit Streak" below.
+- **Biggest Oil Detonation (You / Computer)** - the largest single oil-slick
+  chain reaction (`resolveTargetingSequence`'s own `ignited`/
+  `ignitedCellIndexes` - the 1-in-12 chain reaction, not the ordinary
+  single-cell oil burn-off every hit on an oiled ship cell already causes
+  regardless of that roll) either side has ever triggered, whether from a
+  direct shot/weapon or their own Mine's passive wander landing on oil.
+  Tracked for both sides every game, win or lose - even in a loss, the
+  computer setting its own personal best is worth knowing about.
+
+**The Hit Streak** is the one genuinely non-obvious stat, because "did this
+turn count as a hit" isn't as simple as "did a ship take damage" once
+Drone and Mine are in the mix. `ShotOutcome` (`armada-game.ts`) is the
+single answer every weapon-fire call site in `Index.tsx` funnels through
+(`shotOutcomeFromTargetingResult()` for MOAB/Mine/a plain shot,
+`shotOutcomeFromTravelSteps()` for Torpedo/Rocket/Harpoon, the constant
+`DRONE_SHOT_OUTCOME` for a Drone), then `applyShotOutcome()` folds into the
+running streak:
+
+- A turn counts as a hit only if it dealt real damage to at least one
+  occupied, non-immune cell. Exposing a ship the weapon is immune to (see
+  Variable D's ship-immunity rules) is not damage on its own - a MOAB that
+  finds only an immune Submarine in its blast is a miss for streak
+  purposes, same as splashing into empty water.
+- A multi-cell action (MOAB's blast, a travelling weapon's whole run) is
+  judged as one turn, one verdict: a hit if *any* cell in it actually took
+  damage, a miss only if the whole thing whiffed.
+- **A Drone never counts either way** - not a hit (it can't deal damage by
+  design; see Variable D), but deliberately not a miss either. It's
+  excluded from the sequence entirely, so scouting with a Drone can never
+  cost a streak in progress.
+- **A Mine drop that lands on empty water is also excluded**, for a
+  different reason: the mine stays armed and pending, and its outcome
+  isn't decided yet (see the Mine's passive per-turn wander, Variable D). A
+  drop that lands on any occupied cell - a real hit, or an immune ship
+  merely exposed - fully resolves that turn either way, so it always
+  counts, as a hit or a miss respectively. This was a deliberate call: the
+  first design (miss = miss, no exception for the Mine) would have made
+  using the Mine at all a streak risk for a payoff that might not land for
+  another ten turns, which felt like it would just teach players to avoid
+  the weapon.
+- **A Mine's own passive wander is excluded too**, on both counts - it's
+  not a turn action at all, just something that happens alongside whatever
+  the player actually chose to do that turn (see the Turn economy section
+  above). Its damage still counts everywhere else (Margin of Victory/
+  Defeat, etc.) - it's only invisible to this one streak, since there's no
+  clean single turn to credit it to. Rejected alternative: crediting a
+  wander-hit retroactively back to the turn the mine was originally
+  dropped, so a delayed payoff could still "redeem" that turn's miss. Ruled
+  out as disproportionate - it would mean replaying the streak's entire
+  history forward from that point every time a mine finally connects,
+  since un-breaking an old miss can cascade into merging or resurrecting
+  streaks the player already saw reported as final.
+
+**The Victory/Defeat dialog's callout** (`concludeGame()` in `Index.tsx`)
+shows the standing Wins line plus a plain-English line for every record or
+streak `computeSessionStatsUpdate()` reports as having changed *this*
+game - a new Quickest Win, a Margin of Defeat record, a streak extending,
+or a streak breaking - computed by diffing the previous `SessionStats`
+against the numbers this just-concluded `GameState` produced, before the
+new values are persisted. Nothing is shown for a value that didn't move
+(an ordinary win that doesn't beat any personal best just shows the Wins
+line and, if applicable, the plain win-streak count).

@@ -1,13 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyMineWanderOilDetonation,
+  applyShotOutcome,
+  computeSessionStatsUpdate,
+  createGameState,
+  DEFAULT_SESSION_STATS,
+  DRONE_SHOT_OUTCOME,
   fireMoab,
   fireTorpedo,
   moveMine,
   resolveMineHit,
   selectAppTargetIndex,
+  shotOutcomeFromTargetingResult,
+  shotOutcomeFromTravelSteps,
   type CellState,
+  type GameState,
   type NavyState,
   type PlacedShip,
+  type SessionStats,
+  type ShotOutcome,
+  type TargetingResult,
+  type WeaponTravelStep,
 } from './armada-game';
 
 function makeCell(overrides: Partial<CellState> = {}): CellState {
@@ -320,5 +333,255 @@ describe("Weapon immunity: the 'deflect' audio cue", () => {
       const result = moveMine(navy, 0);
       expect(result.audioSequence).toEqual([]);
     }
+  });
+});
+
+function makeTargetingResult(overrides: Partial<TargetingResult> = {}): TargetingResult {
+  return { navy: makeNavy(), audioSequence: [], ...overrides };
+}
+
+function makeTravelStep(overrides: Partial<WeaponTravelStep> = {}): WeaponTravelStep {
+  return { cellIndex: 0, navy: makeNavy(), isHit: false, audioSequence: [], ...overrides };
+}
+
+describe('shotOutcomeFromTargetingResult', () => {
+  it('reports dealtDamage when a target index ended up occupied', () => {
+    const navy = makeNavy({ 5: { occupied: true, shipCode: 'X', effect: 'targeted' } });
+    const outcome = shotOutcomeFromTargetingResult(makeTargetingResult({ navy }), [5], true);
+    expect(outcome.dealtDamage).toBe(true);
+  });
+
+  it('reports no damage when every target index is empty water', () => {
+    const navy = makeNavy({ 5: { occupied: false, effect: 'targeted' } });
+    const outcome = shotOutcomeFromTargetingResult(makeTargetingResult({ navy }), [5], true);
+    expect(outcome.dealtDamage).toBe(false);
+  });
+
+  it('carries the ignited chain size through as oilDetonationSize', () => {
+    const outcome = shotOutcomeFromTargetingResult(
+      makeTargetingResult({ ignited: true, ignitedCellIndexes: [1, 2, 3] }),
+      [1],
+      true,
+    );
+    expect(outcome.oilDetonationSize).toBe(3);
+  });
+
+  it('is 0 when nothing ignited', () => {
+    expect(shotOutcomeFromTargetingResult(makeTargetingResult(), [1], true).oilDetonationSize).toBe(0);
+  });
+
+  it('passes countsTowardHitStreak straight through - false models a Mine drop on empty water', () => {
+    const navy = makeNavy({ 5: { occupied: false, effect: 'targeted' } });
+    const outcome = shotOutcomeFromTargetingResult(makeTargetingResult({ navy }), [5], false);
+    expect(outcome.countsTowardHitStreak).toBe(false);
+  });
+});
+
+describe('shotOutcomeFromTravelSteps', () => {
+  it('counts as a hit if any step along the run connected', () => {
+    const outcome = shotOutcomeFromTravelSteps([
+      makeTravelStep({ isHit: false }),
+      makeTravelStep({ isHit: true }),
+      makeTravelStep({ isHit: false }),
+    ]);
+    expect(outcome.dealtDamage).toBe(true);
+  });
+
+  it('is a miss when every step whiffed', () => {
+    const outcome = shotOutcomeFromTravelSteps([makeTravelStep(), makeTravelStep(), makeTravelStep()]);
+    expect(outcome.dealtDamage).toBe(false);
+  });
+
+  it('always counts toward the hit streak - a travelling weapon never has a pending outcome', () => {
+    expect(shotOutcomeFromTravelSteps([makeTravelStep()]).countsTowardHitStreak).toBe(true);
+  });
+
+  it('takes the single biggest ignition among its steps, not their sum', () => {
+    const outcome = shotOutcomeFromTravelSteps([
+      makeTravelStep({ ignited: true, ignitedCellIndexes: [1, 2] }),
+      makeTravelStep({ ignited: true, ignitedCellIndexes: [3, 4, 5, 6] }),
+    ]);
+    expect(outcome.oilDetonationSize).toBe(4);
+  });
+});
+
+function makeShotOutcome(overrides: Partial<ShotOutcome> = {}): ShotOutcome {
+  return { dealtDamage: false, countsTowardHitStreak: true, oilDetonationSize: 0, ...overrides };
+}
+
+function makeGameState(overrides: Partial<GameState> = {}): GameState {
+  return { ...createGameState(), ...overrides };
+}
+
+describe('applyShotOutcome', () => {
+  it('increments turnsTaken for the firing side regardless of outcome', () => {
+    const state = makeGameState({ playerTurnsTaken: 3, appTurnsTaken: 7 });
+    expect(applyShotOutcome(state, 'player', makeShotOutcome()).playerTurnsTaken).toBe(4);
+    expect(applyShotOutcome(state, 'app', makeShotOutcome()).appTurnsTaken).toBe(8);
+  });
+
+  it('increments turnsTaken even for a turn excluded from the hit streak (a Drone)', () => {
+    const state = makeGameState({ playerTurnsTaken: 0 });
+    expect(applyShotOutcome(state, 'player', DRONE_SHOT_OUTCOME).playerTurnsTaken).toBe(1);
+  });
+
+  it('extends the current hit streak, and its peak, on a hit', () => {
+    const state = makeGameState({ playerCurrentHitStreak: 2, playerHitStreakPeak: 2 });
+    const next = applyShotOutcome(state, 'player', makeShotOutcome({ dealtDamage: true }));
+    expect(next.playerCurrentHitStreak).toBe(3);
+    expect(next.playerHitStreakPeak).toBe(3);
+  });
+
+  it('resets the current hit streak to 0 on a miss that counts, without erasing this game\'s peak', () => {
+    const state = makeGameState({ playerCurrentHitStreak: 5, playerHitStreakPeak: 5 });
+    const next = applyShotOutcome(state, 'player', makeShotOutcome({ dealtDamage: false }));
+    expect(next.playerCurrentHitStreak).toBe(0);
+    expect(next.playerHitStreakPeak).toBe(5);
+  });
+
+  it('leaves the current streak untouched for a turn excluded entirely (Drone)', () => {
+    const state = makeGameState({ playerCurrentHitStreak: 4, playerHitStreakPeak: 4 });
+    const next = applyShotOutcome(state, 'player', DRONE_SHOT_OUTCOME);
+    expect(next.playerCurrentHitStreak).toBe(4);
+    expect(next.playerHitStreakPeak).toBe(4);
+  });
+
+  it('raises the oil detonation peak, never lowers it', () => {
+    const state = makeGameState({ playerOilDetonationPeak: 6 });
+    expect(applyShotOutcome(state, 'player', makeShotOutcome({ oilDetonationSize: 10 })).playerOilDetonationPeak).toBe(10);
+    expect(applyShotOutcome(state, 'player', makeShotOutcome({ oilDetonationSize: 2 })).playerOilDetonationPeak).toBe(6);
+  });
+
+  it('tracks the player and the computer independently', () => {
+    const state = makeGameState({ playerCurrentHitStreak: 1, appCurrentHitStreak: 1 });
+    const next = applyShotOutcome(state, 'app', makeShotOutcome({ dealtDamage: true }));
+    expect(next.appCurrentHitStreak).toBe(2);
+    expect(next.playerCurrentHitStreak).toBe(1);
+  });
+});
+
+describe('applyMineWanderOilDetonation', () => {
+  it('is a no-op when nothing ignited', () => {
+    const state = makeGameState({ playerOilDetonationPeak: 3 });
+    expect(applyMineWanderOilDetonation(state, 'player', 0)).toBe(state);
+  });
+
+  it("raises the firing side's oil detonation peak", () => {
+    const state = makeGameState({ appOilDetonationPeak: 2 });
+    expect(applyMineWanderOilDetonation(state, 'app', 9).appOilDetonationPeak).toBe(9);
+  });
+
+  it('never lowers an existing peak', () => {
+    const state = makeGameState({ playerOilDetonationPeak: 12 });
+    expect(applyMineWanderOilDetonation(state, 'player', 4).playerOilDetonationPeak).toBe(12);
+  });
+});
+
+function makeSessionStats(overrides: Partial<SessionStats> = {}): SessionStats {
+  return { ...DEFAULT_SESSION_STATS, ...overrides };
+}
+
+describe('computeSessionStatsUpdate', () => {
+  it('increments gamesPlayed and gamesWon, and extends the win streak, on a win', () => {
+    const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+    const { next } = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 4, gamesWon: 2, currentWinStreak: 1 }), state, 'player');
+    expect(next.gamesPlayed).toBe(5);
+    expect(next.gamesWon).toBe(3);
+    expect(next.currentWinStreak).toBe(2);
+  });
+
+  it('resets the win streak to 0 on a loss, and reports it as broken', () => {
+    const state = makeGameState({ appTurnsTaken: 15, enemy: makeNavy() });
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 3 }), state, 'app');
+    expect(next.currentWinStreak).toBe(0);
+    expect(updates.some((update) => update.includes('broken') && update.includes('3'))).toBe(true);
+  });
+
+  it('does not report a broken streak when there was no streak to break', () => {
+    const state = makeGameState({ appTurnsTaken: 15, enemy: makeNavy() });
+    const { updates } = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 0 }), state, 'app');
+    expect(updates.some((update) => update.includes('broken'))).toBe(false);
+  });
+
+  it('sets a new Best Win Streak record only once the current streak actually exceeds it', () => {
+    const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+
+    const tying = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 2, bestWinStreak: 3 }), state, 'player');
+    expect(tying.next.currentWinStreak).toBe(3);
+    expect(tying.next.bestWinStreak).toBe(3);
+    expect(tying.updates.some((update) => update.includes('New record') && update.includes('Best Win Streak'))).toBe(false);
+
+    const beating = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 3, bestWinStreak: 3 }), state, 'player');
+    expect(beating.next.bestWinStreak).toBe(4);
+    expect(beating.updates.some((update) => update.includes('New record! Best Win Streak: 4'))).toBe(true);
+  });
+
+  it('sets a new Quickest Win record only when this game took fewer turns', () => {
+    const faster = makeGameState({ playerTurnsTaken: 10, player: makeNavy() });
+    const fasterResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), faster, 'player');
+    expect(fasterResult.next.quickestWin).toBe(10);
+    expect(fasterResult.updates.some((update) => update.includes('Quickest Win: 10 shots'))).toBe(true);
+
+    const slower = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+    const slowerResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), slower, 'player');
+    expect(slowerResult.next.quickestWin).toBe(15);
+    expect(slowerResult.updates.some((update) => update.includes('Quickest Win'))).toBe(false);
+  });
+
+  it("sets Margin of Victory to the winner's own untouched cell count", () => {
+    // Battleship (80-83) takes one hit, Oil Tanker (50-52) stays untouched -
+    // 6 of the navy's 7 occupied cells are left untargeted.
+    const navy = makeNavy({ 80: { occupied: true, shipCode: 'B', effect: 'targeted' } });
+    const state = makeGameState({ playerTurnsTaken: 20, player: navy });
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'player');
+    expect(next.marginOfVictory).toBe(6);
+    expect(updates.some((update) => update.includes('Margin of Victory: 6'))).toBe(true);
+  });
+
+  it("sets Margin of Defeat to the computer's own untouched cell count on a loss", () => {
+    const navy = makeNavy({ 50: { occupied: true, shipCode: 'O', effect: 'targeted' } });
+    const state = makeGameState({ appTurnsTaken: 20, enemy: navy });
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'app');
+    expect(next.marginOfDefeat).toBe(6);
+    expect(updates.some((update) => update.includes('Margin of Defeat: 6'))).toBe(true);
+  });
+
+  it('tracks Hit Streak and Oil Detonation records for both sides regardless of who won', () => {
+    // The player LOSES this game, but the computer sets two personal bests
+    // along the way - both should still be reported (see GAME_DESIGN.md:
+    // "even in defeat, the computer setting its own personal best is worth
+    // knowing about").
+    const state = makeGameState({
+      appTurnsTaken: 20,
+      enemy: makeNavy(),
+      playerHitStreakPeak: 6,
+      appHitStreakPeak: 9,
+      playerOilDetonationPeak: 4,
+      appOilDetonationPeak: 11,
+    });
+    const { next, updates } = computeSessionStatsUpdate(
+      makeSessionStats({ longestHitStreakPlayer: 3, longestHitStreakApp: 3, biggestOilDetonationPlayer: 1, biggestOilDetonationApp: 1 }),
+      state,
+      'app',
+    );
+
+    expect(next.longestHitStreakPlayer).toBe(6);
+    expect(next.longestHitStreakApp).toBe(9);
+    expect(next.biggestOilDetonationPlayer).toBe(4);
+    expect(next.biggestOilDetonationApp).toBe(11);
+    expect(updates.some((update) => update.includes("Computer's Longest Hit Streak: 9"))).toBe(true);
+    expect(updates.some((update) => update.includes('Your Longest Hit Streak: 6'))).toBe(true);
+  });
+
+  it('does not regress a Hit Streak record this game fell short of', () => {
+    const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy(), playerHitStreakPeak: 2, appHitStreakPeak: 1 });
+    const { next, updates } = computeSessionStatsUpdate(
+      makeSessionStats({ longestHitStreakPlayer: 8, longestHitStreakApp: 5 }),
+      state,
+      'player',
+    );
+    expect(next.longestHitStreakPlayer).toBe(8);
+    expect(next.longestHitStreakApp).toBe(5);
+    expect(updates.some((update) => update.includes('Longest Hit Streak'))).toBe(false);
   });
 });

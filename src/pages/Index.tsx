@@ -23,10 +23,15 @@ import {
 } from 'lucide-react';
 
 import {
+  applyMineWanderOilDetonation,
+  applyShotOutcome,
   areAllShipsSunk,
   AUDIO_FILES,
+  computeSessionStatsUpdate,
   createGameState,
+  DEFAULT_SESSION_STATS,
   DEFAULT_SHIP_SET_OPTIONS,
+  DRONE_SHOT_OUTCOME,
   fireDrone,
   fireHarpoon,
   fireMoab,
@@ -40,6 +45,8 @@ import {
   moveMine,
   resolveMineHit,
   resolveTargetingSequence,
+  shotOutcomeFromTargetingResult,
+  shotOutcomeFromTravelSteps,
   SPECIAL_WEAPON_QUOTA,
   selectAppTargetIndex,
   selectAppWeaponChoice,
@@ -48,7 +55,7 @@ import {
   setCellTargeting,
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, ShipDefinition, ShipSetOptions, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, SessionStats, ShipDefinition, ShipSetOptions, ShotOutcome, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
 import { TitleScreen } from '@/components/TitleScreen';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -105,10 +112,14 @@ const WEAPON_TRAVEL_STEP_DELAY_MS = 500;
 // with no further animation) how long its use-count dot keeps flashing
 // after firing before settling to solid red.
 const WEAPON_FIRE_ANIMATION_MS = 380;
-// Lifetime record, not part of GameState: survives New Game and browser
-// restarts, and only ever grows as games are completed.
+// Lifetime records, not part of GameState: survive New Game and browser
+// restarts. Superseded by SESSION_STATS_STORAGE_KEY below, kept only as a
+// one-time migration source (see loadSessionStats) for anyone who already
+// has games-played/games-won saved from before the rest of the Statistics
+// panel existed.
 const GAMES_PLAYED_STORAGE_KEY = 'armada:games-played';
 const GAMES_WON_STORAGE_KEY = 'armada:games-won';
+const SESSION_STATS_STORAGE_KEY = 'armada:session-stats';
 const DESKTOP_LAYOUT_QUERY = '(min-width: 1024px)';
 
 // Wide enough to show both navies side by side (laptop/desktop) instead of
@@ -137,6 +148,35 @@ function readStoredCount(storageKey: string, fallback: number): number {
 
   const parsedCount = Number(storedCount);
   return Number.isFinite(parsedCount) ? parsedCount : fallback;
+}
+
+// Reads the persisted SessionStats blob, migrating a pre-Statistics-panel
+// install's separate games-played/games-won counts into it the first time
+// this runs (so upgrading never quietly resets someone's win/loss history)
+// rather than losing them under DEFAULT_SESSION_STATS's own zeros.
+function loadSessionStats(): SessionStats {
+  const stored = window.localStorage.getItem(SESSION_STATS_STORAGE_KEY);
+
+  if (stored) {
+    try {
+      return { ...DEFAULT_SESSION_STATS, ...(JSON.parse(stored) as Partial<SessionStats>) };
+    } catch {
+      return DEFAULT_SESSION_STATS;
+    }
+  }
+
+  const legacyGamesPlayed = window.localStorage.getItem(GAMES_PLAYED_STORAGE_KEY);
+  const legacyGamesWon = window.localStorage.getItem(GAMES_WON_STORAGE_KEY);
+
+  if (legacyGamesPlayed === null && legacyGamesWon === null) {
+    return DEFAULT_SESSION_STATS;
+  }
+
+  return {
+    ...DEFAULT_SESSION_STATS,
+    gamesPlayed: readStoredCount(GAMES_PLAYED_STORAGE_KEY, 0),
+    gamesWon: readStoredCount(GAMES_WON_STORAGE_KEY, 0),
+  };
 }
 
 // A Torpedo or Rocket can now hit more than one ship in a single run, so
@@ -204,8 +244,11 @@ const Index = () => {
   const [rocketCount, setRocketCount] = useState<number>(() => readStoredCount(ROCKET_COUNT_STORAGE_KEY, ROCKET_STARTING_COUNT));
   const [harpoonCount, setHarpoonCount] = useState<number>(() => readStoredCount(HARPOON_COUNT_STORAGE_KEY, HARPOON_STARTING_COUNT));
   const [droneCount, setDroneCount] = useState<number>(() => readStoredCount(DRONE_COUNT_STORAGE_KEY, DRONE_STARTING_COUNT));
-  const [gamesPlayed, setGamesPlayed] = useState<number>(() => readStoredCount(GAMES_PLAYED_STORAGE_KEY, 0));
-  const [gamesWon, setGamesWon] = useState<number>(() => readStoredCount(GAMES_WON_STORAGE_KEY, 0));
+  const [sessionStats, setSessionStats] = useState<SessionStats>(loadSessionStats);
+  // The Victory/Defeat dialog's own "what changed this game" callout (see
+  // concludeGame) - a plain-English line per record set or streak
+  // extended/broken, cleared on the next New Game.
+  const [gameOverRecordUpdates, setGameOverRecordUpdates] = useState<string[]>([]);
   // A Torpedo's or Rocket's travel can take several seconds; turn ownership
   // deliberately doesn't pass to the computer until it fully resolves (see
   // handleEnemyCellPressEnd's torpedo/rocket branches), so this blocks the
@@ -251,7 +294,7 @@ const Index = () => {
   const [appArmedWeapon, setAppArmedWeapon] = useState<WeaponType | null>(null);
   const [appFiringWeaponType, setAppFiringWeaponType] = useState<WeaponType | null>(null);
   const [procuringWeapon, setProcuringWeapon] = useState<WeaponType | null>(null);
-  const [infoDialog, setInfoDialog] = useState<'ships' | 'weapons' | null>(null);
+  const [infoDialog, setInfoDialog] = useState<'ships' | 'weapons' | 'statistics' | null>(null);
 
   // A callback ref, not an effect: the swipe viewport only exists once
   // gameState is loaded, so an effect with an empty dependency array would
@@ -492,6 +535,7 @@ const Index = () => {
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
     setInstantViewSwitch(true);
     setGameOver({ isOpen: false, winner: null });
+    setGameOverRecordUpdates([]);
   };
 
   const handleSinglesToggle = (includeSingles: boolean) => {
@@ -502,10 +546,10 @@ const Index = () => {
   };
 
   const handleResetStatistics = () => {
-    window.localStorage.setItem(GAMES_PLAYED_STORAGE_KEY, '0');
-    window.localStorage.setItem(GAMES_WON_STORAGE_KEY, '0');
-    setGamesPlayed(0);
-    setGamesWon(0);
+    window.localStorage.removeItem(GAMES_PLAYED_STORAGE_KEY);
+    window.localStorage.removeItem(GAMES_WON_STORAGE_KEY);
+    window.localStorage.setItem(SESSION_STATS_STORAGE_KEY, JSON.stringify(DEFAULT_SESSION_STATS));
+    setSessionStats(DEFAULT_SESSION_STATS);
   };
 
   const handleWeaponButtonClick = (weapon: WeaponType) => {
@@ -612,19 +656,10 @@ const Index = () => {
     const winningSide: NavySide = winner === 'player' ? 'player' : 'enemy';
     setActiveView(losingSide);
 
-    setGamesPlayed((current) => {
-      const nextCount = current + 1;
-      window.localStorage.setItem(GAMES_PLAYED_STORAGE_KEY, String(nextCount));
-      return nextCount;
-    });
-
-    if (winner === 'player') {
-      setGamesWon((current) => {
-        const nextCount = current + 1;
-        window.localStorage.setItem(GAMES_WON_STORAGE_KEY, String(nextCount));
-        return nextCount;
-      });
-    }
+    const { next: nextSessionStats, updates } = computeSessionStatsUpdate(sessionStats, state, winner);
+    window.localStorage.setItem(SESSION_STATS_STORAGE_KEY, JSON.stringify(nextSessionStats));
+    setSessionStats(nextSessionStats);
+    setGameOverRecordUpdates(updates);
 
     // Give the losing navy's final explosion (audio + animation, already
     // queued by whatever shot or weapon just resolved) two full seconds to
@@ -657,6 +692,20 @@ const Index = () => {
 
   const nextTurnAfterAppFire = (updatedPlayer: NavyState): TurnOwner =>
     areAllShipsSunk(updatedPlayer, shipSetOptions) ? 'app' : 'player';
+
+  // Folds a turn's ShotOutcome (see armada-game.ts) into baseState for
+  // whichever side just fired, plus any oil detonation that side's own
+  // mine triggered on its passive wander this same turn (0 when there
+  // wasn't an active mine, or it didn't ignite anything) - the single spot
+  // every weapon-fire branch below routes its nextState through so the
+  // Statistics panel's per-turn counters (turns taken, hit streak, oil
+  // detonation) stay in sync with every other field on that same object.
+  const finalizeShotState = (
+    baseState: GameState,
+    side: TurnOwner,
+    outcome: ShotOutcome,
+    mineWanderOilDetonationSize: number,
+  ): GameState => applyMineWanderOilDetonation(applyShotOutcome(baseState, side, outcome), side, mineWanderOilDetonationSize);
 
   const handleEnemyCellPressStart = (cellIndex: number) => {
     if (activeView !== 'enemy' || isWeaponInFlight) {
@@ -712,6 +761,12 @@ const Index = () => {
         let currentEnemy = state.enemy;
         let mineIndex = state.playerMineIndex;
         let mineCausedExtendedDelay = false;
+        // A mine's own passive wander never counts toward the player's Hit
+        // Streak (see ShotOutcome), but a chain reaction it triggers can
+        // still set a Biggest Oil Detonation record - applied below
+        // alongside whatever this turn's own chosen action did (see
+        // applyMineWanderOilDetonation).
+        let mineWanderOilDetonationSize = 0;
 
         if (mineIndex !== null) {
           const moveResult = moveMine(currentEnemy, mineIndex);
@@ -721,6 +776,7 @@ const Index = () => {
           if (moveResult.hit) {
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
               triggerCellExplosions('enemy', moveResult.ignitedCellIndexes);
+              mineWanderOilDetonationSize = moveResult.ignitedCellIndexes.length;
             } else if (moveResult.hitIndexes) {
               triggerCellExplosions('enemy', moveResult.hitIndexes);
             }
@@ -736,7 +792,9 @@ const Index = () => {
         }
 
         if (armedWeapon === 'moab') {
-          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = fireMoab(currentEnemy, releaseIndex);
+          const moabResult = fireMoab(currentEnemy, releaseIndex);
+          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = moabResult;
+          const shotOutcome = shotOutcomeFromTargetingResult(moabResult, moabResult.targetedIndexes ?? [], true);
 
           // Always animate the MOAB's full blast footprint (hit, miss, or
           // already-targeted) so the explosion visually covers every cell
@@ -759,14 +817,19 @@ const Index = () => {
             return nextCount;
           });
 
-          const nextState: GameState = {
-            ...state,
-            currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
-            enemy: updatedEnemy,
-            playerWeaponsUsed: state.playerWeaponsUsed + 1,
-            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, moab: state.playerWeaponUseCounts.moab + 1 },
-            playerMineIndex: mineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...state,
+              currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
+              enemy: updatedEnemy,
+              playerWeaponsUsed: state.playerWeaponsUsed + 1,
+              playerWeaponUseCounts: { ...state.playerWeaponUseCounts, moab: state.playerWeaponUseCounts.moab + 1 },
+              playerMineIndex: mineIndex,
+            },
+            'player',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -784,7 +847,13 @@ const Index = () => {
         }
 
         if (armedWeapon === 'mine') {
-          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = resolveMineHit(currentEnemy, releaseIndex);
+          const mineResult = resolveMineHit(currentEnemy, releaseIndex);
+          const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = mineResult;
+          // A drop that lands on empty water doesn't count toward the hit
+          // streak either way - the mine is still armed and pending (see
+          // ShotOutcome) - but one that lands on any occupied cell (hit or
+          // immune) fully resolves this turn, so it does.
+          const shotOutcome = shotOutcomeFromTargetingResult(mineResult, targetedIndexes ?? [], targetCell.occupied);
 
           if (ignited && ignitedCellIndexes) {
             triggerCellExplosions('enemy', ignitedCellIndexes);
@@ -810,14 +879,19 @@ const Index = () => {
           // player's next turn.
           const nextMineIndex = targetCell.occupied ? mineIndex : releaseIndex;
 
-          const nextState: GameState = {
-            ...state,
-            currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
-            enemy: updatedEnemy,
-            playerWeaponsUsed: state.playerWeaponsUsed + 1,
-            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, mine: state.playerWeaponUseCounts.mine + 1 },
-            playerMineIndex: nextMineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...state,
+              currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
+              enemy: updatedEnemy,
+              playerWeaponsUsed: state.playerWeaponsUsed + 1,
+              playerWeaponUseCounts: { ...state.playerWeaponUseCounts, mine: state.playerWeaponUseCounts.mine + 1 },
+              playerMineIndex: nextMineIndex,
+            },
+            'player',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -837,6 +911,7 @@ const Index = () => {
         if (armedWeapon === 'torpedo') {
           const result = fireTorpedo(currentEnemy, releaseIndex);
           const [launchStep, ...travelSteps] = result.steps;
+          const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
@@ -867,17 +942,22 @@ const Index = () => {
             setIsWeaponInFlight(true);
           }
 
-          const nextState: GameState = {
-            ...state,
-            // A miss keeps travelling for several more seconds of animation -
-            // turn ownership doesn't pass to the computer until that finishes,
-            // so its own turn can't start mid-flight (see runWeaponTravelSteps).
-            currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
-            enemy: launchStep.navy,
-            playerWeaponsUsed: state.playerWeaponsUsed + 1,
-            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, torpedo: state.playerWeaponUseCounts.torpedo + 1 },
-            playerMineIndex: mineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...state,
+              // A miss keeps travelling for several more seconds of animation -
+              // turn ownership doesn't pass to the computer until that finishes,
+              // so its own turn can't start mid-flight (see runWeaponTravelSteps).
+              currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
+              enemy: launchStep.navy,
+              playerWeaponsUsed: state.playerWeaponsUsed + 1,
+              playerWeaponUseCounts: { ...state.playerWeaponUseCounts, torpedo: state.playerWeaponUseCounts.torpedo + 1 },
+              playerMineIndex: mineIndex,
+            },
+            'player',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -922,6 +1002,7 @@ const Index = () => {
         if (armedWeapon === 'rocket') {
           const result = fireRocket(currentEnemy, releaseIndex);
           const [launchStep, ...travelSteps] = result.steps;
+          const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
@@ -952,17 +1033,22 @@ const Index = () => {
             setIsWeaponInFlight(true);
           }
 
-          const nextState: GameState = {
-            ...state,
-            // A miss keeps travelling for several more seconds of animation -
-            // turn ownership doesn't pass to the computer until that finishes,
-            // so its own turn can't start mid-flight (see runWeaponTravelSteps).
-            currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
-            enemy: launchStep.navy,
-            playerWeaponsUsed: state.playerWeaponsUsed + 1,
-            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, rocket: state.playerWeaponUseCounts.rocket + 1 },
-            playerMineIndex: mineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...state,
+              // A miss keeps travelling for several more seconds of animation -
+              // turn ownership doesn't pass to the computer until that finishes,
+              // so its own turn can't start mid-flight (see runWeaponTravelSteps).
+              currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
+              enemy: launchStep.navy,
+              playerWeaponsUsed: state.playerWeaponsUsed + 1,
+              playerWeaponUseCounts: { ...state.playerWeaponUseCounts, rocket: state.playerWeaponUseCounts.rocket + 1 },
+              playerMineIndex: mineIndex,
+            },
+            'player',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -1007,6 +1093,7 @@ const Index = () => {
         if (armedWeapon === 'harpoon') {
           const result = fireHarpoon(currentEnemy, releaseIndex);
           const [launchStep, ...travelSteps] = result.steps;
+          const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
@@ -1037,17 +1124,22 @@ const Index = () => {
             setIsWeaponInFlight(true);
           }
 
-          const nextState: GameState = {
-            ...state,
-            // A miss keeps travelling for several more seconds of animation -
-            // turn ownership doesn't pass to the computer until that finishes,
-            // so its own turn can't start mid-flight (see runWeaponTravelSteps).
-            currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
-            enemy: launchStep.navy,
-            playerWeaponsUsed: state.playerWeaponsUsed + 1,
-            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, harpoon: state.playerWeaponUseCounts.harpoon + 1 },
-            playerMineIndex: mineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...state,
+              // A miss keeps travelling for several more seconds of animation -
+              // turn ownership doesn't pass to the computer until that finishes,
+              // so its own turn can't start mid-flight (see runWeaponTravelSteps).
+              currentTurn: hasTravel ? 'player' : nextTurnAfterPlayerFire(launchStep.navy),
+              enemy: launchStep.navy,
+              playerWeaponsUsed: state.playerWeaponsUsed + 1,
+              playerWeaponUseCounts: { ...state.playerWeaponUseCounts, harpoon: state.playerWeaponUseCounts.harpoon + 1 },
+              playerMineIndex: mineIndex,
+            },
+            'player',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -1102,14 +1194,19 @@ const Index = () => {
 
           playerShotExtendedDelayRef.current = mineCausedExtendedDelay;
 
-          const nextState: GameState = {
-            ...state,
-            currentTurn: 'app',
-            enemy: updatedEnemy,
-            playerWeaponsUsed: state.playerWeaponsUsed + 1,
-            playerWeaponUseCounts: { ...state.playerWeaponUseCounts, drone: state.playerWeaponUseCounts.drone + 1 },
-            playerMineIndex: mineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...state,
+              currentTurn: 'app',
+              enemy: updatedEnemy,
+              playerWeaponsUsed: state.playerWeaponsUsed + 1,
+              playerWeaponUseCounts: { ...state.playerWeaponUseCounts, drone: state.playerWeaponUseCounts.drone + 1 },
+              playerMineIndex: mineIndex,
+            },
+            'player',
+            DRONE_SHOT_OUTCOME,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -1120,7 +1217,8 @@ const Index = () => {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+        const plainShotResult = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
+        const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = plainShotResult;
 
         if (ignited && ignitedCellIndexes) {
           triggerCellExplosions('enemy', ignitedCellIndexes);
@@ -1134,12 +1232,18 @@ const Index = () => {
           return state;
         }
 
-        const nextState: GameState = {
-          ...state,
-          currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
-          enemy: updatedEnemy,
-          playerMineIndex: mineIndex,
-        };
+        const shotOutcome = shotOutcomeFromTargetingResult(plainShotResult, [releaseIndex], true);
+        const nextState: GameState = finalizeShotState(
+          {
+            ...state,
+            currentTurn: nextTurnAfterPlayerFire(updatedEnemy),
+            enemy: updatedEnemy,
+            playerMineIndex: mineIndex,
+          },
+          'player',
+          shotOutcome,
+          mineWanderOilDetonationSize,
+        );
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       if (ignited) {
@@ -1321,6 +1425,9 @@ const Index = () => {
         let currentPlayer = currentState.player;
         let appMineIndex = currentState.appMineIndex;
         let mineCausedExtendedDelay = false;
+        // See the player-side mine-wander block above for why this is
+        // tracked separately from the turn's own ShotOutcome.
+        let mineWanderOilDetonationSize = 0;
 
         if (appMineIndex !== null) {
           const moveResult = moveMine(currentPlayer, appMineIndex);
@@ -1330,6 +1437,7 @@ const Index = () => {
           if (moveResult.hit) {
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
               triggerCellExplosions('player', moveResult.ignitedCellIndexes);
+              mineWanderOilDetonationSize = moveResult.ignitedCellIndexes.length;
             } else if (moveResult.hitIndexes) {
               triggerCellExplosions('player', moveResult.hitIndexes);
             }
@@ -1345,7 +1453,9 @@ const Index = () => {
         }
 
         if (weaponChoice === 'moab') {
-          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = fireMoab(currentPlayer, previewIndex);
+          const moabResult = fireMoab(currentPlayer, previewIndex);
+          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = moabResult;
+          const shotOutcome = shotOutcomeFromTargetingResult(moabResult, moabResult.targetedIndexes ?? [], true);
 
           const moabFootprint = getMoabTargetIndexes(previewIndex);
           const explosionIndexes = ignited && ignitedCellIndexes
@@ -1356,14 +1466,19 @@ const Index = () => {
 
           const hasStaggered = true;
 
-          const nextState: GameState = {
-            ...currentState,
-            currentTurn: nextTurnAfterAppFire(updatedPlayer),
-            player: updatedPlayer,
-            appMoabCount: currentState.appMoabCount - 1,
-            appWeaponsUsed: currentState.appWeaponsUsed + 1,
-            appMineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...currentState,
+              currentTurn: nextTurnAfterAppFire(updatedPlayer),
+              player: updatedPlayer,
+              appMoabCount: currentState.appMoabCount - 1,
+              appWeaponsUsed: currentState.appWeaponsUsed + 1,
+              appMineIndex,
+            },
+            'app',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
           if (ignited) {
@@ -1385,7 +1500,9 @@ const Index = () => {
 
         if (weaponChoice === 'mine') {
           const targetCell = currentPlayer.cells[previewIndex];
-          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = resolveMineHit(currentPlayer, previewIndex);
+          const mineResult = resolveMineHit(currentPlayer, previewIndex);
+          const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = mineResult;
+          const shotOutcome = shotOutcomeFromTargetingResult(mineResult, targetedIndexes ?? [], Boolean(targetCell?.occupied));
 
           if (ignited && ignitedCellIndexes) {
             triggerCellExplosions('player', ignitedCellIndexes);
@@ -1405,14 +1522,19 @@ const Index = () => {
           // computer's next turn.
           const nextAppMineIndex = targetCell?.occupied ? appMineIndex : previewIndex;
 
-          const nextState: GameState = {
-            ...currentState,
-            currentTurn: nextTurnAfterAppFire(updatedPlayer),
-            player: updatedPlayer,
-            appMineCount: currentState.appMineCount - 1,
-            appWeaponsUsed: currentState.appWeaponsUsed + 1,
-            appMineIndex: nextAppMineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...currentState,
+              currentTurn: nextTurnAfterAppFire(updatedPlayer),
+              player: updatedPlayer,
+              appMineCount: currentState.appMineCount - 1,
+              appWeaponsUsed: currentState.appWeaponsUsed + 1,
+              appMineIndex: nextAppMineIndex,
+            },
+            'app',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
           if (ignited) {
@@ -1435,6 +1557,7 @@ const Index = () => {
         if (weaponChoice === 'torpedo') {
           const result = fireTorpedo(currentPlayer, previewIndex);
           const [launchStep, ...travelSteps] = result.steps;
+          const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
@@ -1460,14 +1583,19 @@ const Index = () => {
             appWeaponInFlightRef.current = true;
           }
 
-          const nextState: GameState = {
-            ...currentState,
-            currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
-            player: launchStep.navy,
-            appTorpedoCount: currentState.appTorpedoCount - 1,
-            appWeaponsUsed: currentState.appWeaponsUsed + 1,
-            appMineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...currentState,
+              currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
+              player: launchStep.navy,
+              appTorpedoCount: currentState.appTorpedoCount - 1,
+              appWeaponsUsed: currentState.appWeaponsUsed + 1,
+              appMineIndex,
+            },
+            'app',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -1519,6 +1647,7 @@ const Index = () => {
         if (weaponChoice === 'rocket') {
           const result = fireRocket(currentPlayer, previewIndex);
           const [launchStep, ...travelSteps] = result.steps;
+          const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
@@ -1544,14 +1673,19 @@ const Index = () => {
             appWeaponInFlightRef.current = true;
           }
 
-          const nextState: GameState = {
-            ...currentState,
-            currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
-            player: launchStep.navy,
-            appRocketCount: currentState.appRocketCount - 1,
-            appWeaponsUsed: currentState.appWeaponsUsed + 1,
-            appMineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...currentState,
+              currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
+              player: launchStep.navy,
+              appRocketCount: currentState.appRocketCount - 1,
+              appWeaponsUsed: currentState.appWeaponsUsed + 1,
+              appMineIndex,
+            },
+            'app',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -1603,6 +1737,7 @@ const Index = () => {
         if (weaponChoice === 'harpoon') {
           const result = fireHarpoon(currentPlayer, previewIndex);
           const [launchStep, ...travelSteps] = result.steps;
+          const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
@@ -1628,14 +1763,19 @@ const Index = () => {
             appWeaponInFlightRef.current = true;
           }
 
-          const nextState: GameState = {
-            ...currentState,
-            currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
-            player: launchStep.navy,
-            appHarpoonCount: currentState.appHarpoonCount - 1,
-            appWeaponsUsed: currentState.appWeaponsUsed + 1,
-            appMineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...currentState,
+              currentTurn: hasTravel ? 'app' : nextTurnAfterAppFire(launchStep.navy),
+              player: launchStep.navy,
+              appHarpoonCount: currentState.appHarpoonCount - 1,
+              appWeaponsUsed: currentState.appWeaponsUsed + 1,
+              appMineIndex,
+            },
+            'app',
+            shotOutcome,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -1688,14 +1828,19 @@ const Index = () => {
           const { navy: updatedPlayer } = fireDrone(currentPlayer, previewIndex);
           window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'drone' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
-          const nextState: GameState = {
-            ...currentState,
-            currentTurn: 'player',
-            player: updatedPlayer,
-            appDroneCount: currentState.appDroneCount - 1,
-            appWeaponsUsed: currentState.appWeaponsUsed + 1,
-            appMineIndex,
-          };
+          const nextState: GameState = finalizeShotState(
+            {
+              ...currentState,
+              currentTurn: 'player',
+              player: updatedPlayer,
+              appDroneCount: currentState.appDroneCount - 1,
+              appWeaponsUsed: currentState.appWeaponsUsed + 1,
+              appMineIndex,
+            },
+            'app',
+            DRONE_SHOT_OUTCOME,
+            mineWanderOilDetonationSize,
+          );
 
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 
@@ -1710,7 +1855,8 @@ const Index = () => {
           effect: 'targeted',
           targeting: false,
         });
-        const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+        const plainShotResult = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
+        const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = plainShotResult;
 
         if (ignited && ignitedCellIndexes) {
           triggerCellExplosions('player', ignitedCellIndexes);
@@ -1719,13 +1865,19 @@ const Index = () => {
         }
 
         const hasStaggered = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
+        const shotOutcome = shotOutcomeFromTargetingResult(plainShotResult, [previewIndex], true);
 
-        const nextState: GameState = {
-          ...currentState,
-          currentTurn: nextTurnAfterAppFire(updatedPlayer),
-          player: updatedPlayer,
-          appMineIndex,
-        };
+        const nextState: GameState = finalizeShotState(
+          {
+            ...currentState,
+            currentTurn: nextTurnAfterAppFire(updatedPlayer),
+            player: updatedPlayer,
+            appMineIndex,
+          },
+          'app',
+          shotOutcome,
+          mineWanderOilDetonationSize,
+        );
 
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         if (ignited) {
@@ -1773,14 +1925,33 @@ const Index = () => {
 
   // Hidden until at least one game has been completed, then persists for
   // the lifetime of the install (not reset by New Game).
-  const winsLabel = gamesPlayed > 0
-    ? `Wins: ${gamesWon}/${gamesPlayed} (${Math.round((gamesWon / gamesPlayed) * 100)}%)`
+  const winsLabel = sessionStats.gamesPlayed > 0
+    ? `Wins: ${sessionStats.gamesWon}/${sessionStats.gamesPlayed} (${Math.round((sessionStats.gamesWon / sessionStats.gamesPlayed) * 100)}%)`
     : null;
   const winsBadge = winsLabel ? (
     <span className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100/70">
       {winsLabel}
     </span>
   ) : null;
+
+  // The Statistics dialog's full list - see GAME_DESIGN.md's Statistics
+  // section for what each of these means and how it's tracked.
+  // pluralize the same way the underlying records themselves are pluralized
+  // (see armada-game.ts's own pluralize) so the two stay consistent.
+  const pluralizeStat = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  const statisticsRows: { label: string; value: string }[] = [
+    { label: 'Wins', value: winsLabel ?? 'No games played yet' },
+    { label: 'Quickest Win', value: sessionStats.quickestWin === null ? '—' : pluralizeStat(sessionStats.quickestWin, 'shot') },
+    { label: 'Quickest Loss', value: sessionStats.quickestLoss === null ? '—' : pluralizeStat(sessionStats.quickestLoss, 'shot') },
+    { label: 'Margin of Victory', value: sessionStats.marginOfVictory === null ? '—' : pluralizeStat(sessionStats.marginOfVictory, 'cell') },
+    { label: 'Margin of Defeat', value: sessionStats.marginOfDefeat === null ? '—' : pluralizeStat(sessionStats.marginOfDefeat, 'cell') },
+    { label: 'Current Win Streak', value: String(sessionStats.currentWinStreak) },
+    { label: 'Best Win Streak', value: String(sessionStats.bestWinStreak) },
+    { label: 'Longest Hit Streak (You)', value: String(sessionStats.longestHitStreakPlayer) },
+    { label: 'Longest Hit Streak (Computer)', value: String(sessionStats.longestHitStreakApp) },
+    { label: 'Biggest Oil Detonation (You)', value: pluralizeStat(sessionStats.biggestOilDetonationPlayer, 'cell') },
+    { label: 'Biggest Oil Detonation (Computer)', value: pluralizeStat(sessionStats.biggestOilDetonationApp, 'cell') },
+  ];
 
   const renderNavyPanel = (
     side: NavySide,
@@ -1794,6 +1965,7 @@ const Index = () => {
       onSinglesToggle={handleSinglesToggle}
       onNewGame={() => handleNewGame()}
       onResetStatistics={handleResetStatistics}
+      onShowStatistics={() => setInfoDialog('statistics')}
       onShowAboutShips={() => setInfoDialog('ships')}
       onShowAboutWeapons={() => setInfoDialog('weapons')}
       onGoLeft={showArrows && canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
@@ -1981,11 +2153,40 @@ const Index = () => {
                 : 'You lost! Click OK to play again.'}
             </DialogDescription>
           </DialogHeader>
+          {winsLabel || gameOverRecordUpdates.length > 0 ? (
+            <div className="space-y-1.5 rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
+              {winsLabel ? <p className="font-semibold text-cyan-100">{winsLabel}</p> : null}
+              {gameOverRecordUpdates.length > 0 ? (
+                <ul className="space-y-1 text-slate-300">
+                  {gameOverRecordUpdates.map((update) => (
+                    <li key={update}>{update}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
           <DialogFooter>
             <Button type="button" onClick={() => handleNewGame()} className="w-full sm:w-auto">
               OK
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={infoDialog === 'statistics'} onOpenChange={(open) => setInfoDialog(open ? 'statistics' : null)}>
+        <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto rounded-2xl border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Statistics</DialogTitle>
+            <DialogDescription className="text-slate-300">Your lifetime record against the computer.</DialogDescription>
+          </DialogHeader>
+          <ul className="divide-y divide-white/10">
+            {statisticsRows.map((row) => (
+              <li key={row.label} className="flex items-baseline justify-between gap-4 py-2 text-sm">
+                <span className="text-slate-300">{row.label}</span>
+                <span className="whitespace-nowrap font-semibold text-cyan-100">{row.value}</span>
+              </li>
+            ))}
+          </ul>
         </DialogContent>
       </Dialog>
 
@@ -2214,6 +2415,7 @@ type NavyPanelProps = {
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
   onResetStatistics: () => void;
+  onShowStatistics: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
   onGoLeft?: () => void;
@@ -2241,6 +2443,7 @@ type SettingsMenuProps = {
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
   onResetStatistics: () => void;
+  onShowStatistics: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
 };
@@ -2250,6 +2453,7 @@ function SettingsMenu({
   onSinglesToggle,
   onNewGame,
   onResetStatistics,
+  onShowStatistics,
   onShowAboutShips,
   onShowAboutWeapons,
 }: SettingsMenuProps) {
@@ -2276,6 +2480,7 @@ function SettingsMenu({
           Singles (E H L)
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onShowStatistics}>Statistics</DropdownMenuItem>
         <DropdownMenuItem onSelect={onResetStatistics}>Reset Statistics</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowAboutShips}>About Ships</DropdownMenuItem>
@@ -2291,6 +2496,7 @@ function NavyPanel({
   onSinglesToggle,
   onNewGame,
   onResetStatistics,
+  onShowStatistics,
   onShowAboutShips,
   onShowAboutWeapons,
   onGoLeft,
@@ -2464,6 +2670,7 @@ function NavyPanel({
                 onSinglesToggle={onSinglesToggle}
                 onNewGame={onNewGame}
                 onResetStatistics={onResetStatistics}
+                onShowStatistics={onShowStatistics}
                 onShowAboutShips={onShowAboutShips}
                 onShowAboutWeapons={onShowAboutWeapons}
               />
@@ -2532,7 +2739,18 @@ function NavyPanel({
           {hitsFillsTrailingGap ? null : (
             <Fragment>
               <div />
-              <div />
+              {/* An empty <div/> here would collapse to zero height (a
+                  CSS Grid row's height comes from its tallest cell, and
+                  both cells in this appended row would otherwise have no
+                  content at all) - the absolutely-positioned hitsStat
+                  below would then land right on top of the last real ship
+                  row instead of in its own reserved row beneath it. This
+                  invisible duplicate of hitsStat's own text reserves
+                  exactly the line height that overlay needs, at the same
+                  font size, without actually rendering a second copy. */}
+              <div aria-hidden="true" className="invisible text-[10px] font-semibold uppercase tracking-[0.18em]">
+                Hits: {hitCellCount}/{occupiedCellCount}
+              </div>
             </Fragment>
           )}
         </div>
