@@ -1964,7 +1964,6 @@ const Index = () => {
       shipSetOptions={shipSetOptions}
       onSinglesToggle={handleSinglesToggle}
       onNewGame={() => handleNewGame()}
-      onResetStatistics={handleResetStatistics}
       onShowStatistics={() => setInfoDialog('statistics')}
       onShowAboutShips={() => setInfoDialog('ships')}
       onShowAboutWeapons={() => setInfoDialog('weapons')}
@@ -2187,6 +2186,11 @@ const Index = () => {
               </li>
             ))}
           </ul>
+          <DialogFooter>
+            <Button type="button" variant="destructive" onClick={handleResetStatistics} className="w-full sm:w-auto">
+              Reset Statistics
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2414,7 +2418,6 @@ type NavyPanelProps = {
   shipSetOptions: ShipSetOptions;
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
-  onResetStatistics: () => void;
   onShowStatistics: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
@@ -2442,7 +2445,6 @@ type SettingsMenuProps = {
   shipSetOptions: ShipSetOptions;
   onSinglesToggle: (includeSingles: boolean) => void;
   onNewGame: () => void;
-  onResetStatistics: () => void;
   onShowStatistics: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
@@ -2452,7 +2454,6 @@ function SettingsMenu({
   shipSetOptions,
   onSinglesToggle,
   onNewGame,
-  onResetStatistics,
   onShowStatistics,
   onShowAboutShips,
   onShowAboutWeapons,
@@ -2481,7 +2482,6 @@ function SettingsMenu({
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowStatistics}>Statistics</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onResetStatistics}>Reset Statistics</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowAboutShips}>About Ships</DropdownMenuItem>
         <DropdownMenuItem onSelect={onShowAboutWeapons}>About Weapons</DropdownMenuItem>
@@ -2495,7 +2495,6 @@ function NavyPanel({
   shipSetOptions,
   onSinglesToggle,
   onNewGame,
-  onResetStatistics,
   onShowStatistics,
   onShowAboutShips,
   onShowAboutWeapons,
@@ -2669,7 +2668,6 @@ function NavyPanel({
                 shipSetOptions={shipSetOptions}
                 onSinglesToggle={onSinglesToggle}
                 onNewGame={onNewGame}
-                onResetStatistics={onResetStatistics}
                 onShowStatistics={onShowStatistics}
                 onShowAboutShips={onShowAboutShips}
                 onShowAboutWeapons={onShowAboutWeapons}
