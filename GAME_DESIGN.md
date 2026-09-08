@@ -646,6 +646,17 @@ other targeting path clears that flag as a side effect of setting `effect`,
 which this path deliberately never does; `exposeCellWithoutDamage()` clears
 it explicitly for exactly this reason.
 
+A direct Mine drop that lands on an immune ship leaves the Mine live and
+planted on that same cell, exactly as if it had landed on empty water -
+`resolveMineIndexAfterDrop()` in `Index.tsx` decides this from
+`ShotOutcome.dealtDamage`, not from the drop cell's raw occupancy. This
+fixed a real bug: occupancy alone can't tell "detonated" apart from
+"exposed an immune ship, survived" - the earlier logic treated an occupied
+cell as always consuming the mine, so a drop on an Ensign or Helicopter
+made the Mine vanish (no live mine left to render `MINE_GLYPH` on top of
+the exposed ship's own letter, no mine planted anywhere else either)
+instead of staying put for its usual wander to pick up next turn.
+
 This shipped as a rules-only change: the AI doesn't yet know which ships
 are immune to which weapon it's holding, so `selectAppWeaponChoice()` and
 `selectAppWeaponTargetIndex()` can still spend a Rocket on a Submarine and
@@ -1172,3 +1183,22 @@ against the numbers this just-concluded `GameState` produced, before the
 new values are persisted. Nothing is shown for a value that didn't move
 (an ordinary win that doesn't beat any personal best just shows the Wins
 line and, if applicable, the plain win-streak count).
+
+This list has no upper bound - a single game can set all nine records at
+once (a first-ever win sets nearly all of them simultaneously, having
+nothing yet on the books to compare against) - which fixed a real bug on
+mobile: the dialog used to be vertically centered on a fixed point
+(`top-[75%]`/`translate-y-[-50%]`), so a long enough list grew the dialog
+downward past the bottom of the screen with no way to reach it - `position:
+fixed` isn't page-scrollable, so whatever fell past the edge (usually the
+OK button, and the dialog's own X) was simply gone. It's anchored from the
+bottom edge instead now (`bottom-6`, growing upward only), and the record
+list itself is a separately capped, scrollable box (`max-h-40
+overflow-y-auto`) between the header and the footer - so the OK button and
+the dialog's own close button stay put and reachable no matter how many
+records a single game manages to break. The dialog's close button needed
+its own fix alongside this: `Dialog` here is fully externally controlled
+via `gameOver.isOpen` with no `onOpenChange`, so the built-in X (from
+`DialogContent`'s own `DialogPrimitive.Close`) had nothing wired to call
+and did nothing when clicked - it's now wired to `handleNewGame()`, same as
+OK, since there's no sensible "cancel" once a game has already concluded.

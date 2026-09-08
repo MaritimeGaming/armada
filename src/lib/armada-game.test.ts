@@ -10,6 +10,7 @@ import {
   fireTorpedo,
   moveMine,
   resolveMineHit,
+  resolveMineIndexAfterDrop,
   selectAppTargetIndex,
   shotOutcomeFromTargetingResult,
   shotOutcomeFromTravelSteps,
@@ -583,5 +584,28 @@ describe('computeSessionStatsUpdate', () => {
     expect(next.longestHitStreakPlayer).toBe(8);
     expect(next.longestHitStreakApp).toBe(5);
     expect(updates.some((update) => update.includes('Longest Hit Streak'))).toBe(false);
+  });
+});
+
+// Regression coverage for a reported bug: dropping a Mine directly on an
+// Ensign (immune to the Mine - see WEAPON_IMMUNE_SHIP_CODES) exposed the
+// cell as expected, but the Mine itself then vanished instead of staying
+// planted and visible on that same cell. The old logic decided this purely
+// from the drop cell's raw occupancy, which is wrong: an immune ship
+// survives the drop, so the Mine should stay live there exactly as if it
+// had landed on empty water - only a real detonation should consume it.
+describe('resolveMineIndexAfterDrop', () => {
+  it('stays planted at the drop cell when the drop dealt no damage (empty water, or an immune ship exposed)', () => {
+    const missOutcome = makeShotOutcome({ dealtDamage: false });
+    expect(resolveMineIndexAfterDrop(missOutcome, null, 42)).toBe(42);
+    // Also true when some other mine was already active elsewhere - the
+    // new drop still plants its own mine right where it landed.
+    expect(resolveMineIndexAfterDrop(missOutcome, 7, 42)).toBe(42);
+  });
+
+  it('is consumed (reverting to whatever mine index already existed) once the drop actually detonates', () => {
+    const hitOutcome = makeShotOutcome({ dealtDamage: true });
+    expect(resolveMineIndexAfterDrop(hitOutcome, null, 42)).toBeNull();
+    expect(resolveMineIndexAfterDrop(hitOutcome, 7, 42)).toBe(7);
   });
 });

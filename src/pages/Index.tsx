@@ -44,6 +44,7 @@ import {
   GRID_SIZE,
   moveMine,
   resolveMineHit,
+  resolveMineIndexAfterDrop,
   resolveTargetingSequence,
   shotOutcomeFromTargetingResult,
   shotOutcomeFromTravelSteps,
@@ -874,10 +875,7 @@ const Index = () => {
             return nextCount;
           });
 
-          // A hit consumes the newly-placed mine immediately - nothing left
-          // to activate. A miss plants it right here, stationary until the
-          // player's next turn.
-          const nextMineIndex = targetCell.occupied ? mineIndex : releaseIndex;
+          const nextMineIndex = resolveMineIndexAfterDrop(shotOutcome, mineIndex, releaseIndex);
 
           const nextState: GameState = finalizeShotState(
             {
@@ -1517,10 +1515,7 @@ const Index = () => {
 
           const hasStaggered = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
 
-          // A hit consumes the newly-placed mine immediately - nothing left
-          // to activate. A miss plants it right here, stationary until the
-          // computer's next turn.
-          const nextAppMineIndex = targetCell?.occupied ? appMineIndex : previewIndex;
+          const nextAppMineIndex = resolveMineIndexAfterDrop(shotOutcome, appMineIndex, previewIndex);
 
           const nextState: GameState = finalizeShotState(
             {
@@ -2139,10 +2134,35 @@ const Index = () => {
       </div>
       </main>
 
-      <Dialog open={gameOver.isOpen} modal={false}>
+      <Dialog
+        open={gameOver.isOpen}
+        modal={false}
+        // The only sensible destination once a game has concluded - there's
+        // no "cancel" that makes sense here, so the dialog's own close
+        // button (top-right X, from DialogContent's built-in
+        // DialogPrimitive.Close) does the same thing OK does instead of
+        // silently doing nothing (Dialog is otherwise fully externally
+        // controlled via gameOver.isOpen, so without this, that built-in
+        // close button had nothing wired to actually call).
+        onOpenChange={(open) => {
+          if (!open) {
+            handleNewGame();
+          }
+        }}
+      >
         <DialogContent
           overlayClassName="pointer-events-none"
-          className="top-[75%] max-w-sm translate-y-[-50%] rounded-2xl border-white/10 bg-slate-950 text-white sm:top-[75%]"
+          // Anchored a fixed distance above the bottom edge (not the
+          // previous top-[75%]/translate-y-[-50%] centering) so it only
+          // ever grows upward, no matter how long the records list below
+          // gets - a box centered on a fixed point can grow off the bottom
+          // of the screen once it's tall enough, with no way to reach
+          // whatever fell past the edge (position: fixed isn't page
+          // scrollable). max-h/overflow-y-auto here is just a last-resort
+          // safety net (e.g. a huge system font size) - the records list's
+          // own scroll box below is what actually keeps this short in
+          // ordinary cases.
+          className="bottom-6 top-auto flex max-h-[80vh] max-w-sm translate-y-0 flex-col overflow-y-auto rounded-2xl border-white/10 bg-slate-950 text-white sm:bottom-6 sm:top-auto"
         >
           <DialogHeader>
             <DialogTitle>{gameOver.winner === 'player' ? 'Victory' : 'Defeat'}</DialogTitle>
@@ -2153,7 +2173,7 @@ const Index = () => {
             </DialogDescription>
           </DialogHeader>
           {winsLabel || gameOverRecordUpdates.length > 0 ? (
-            <div className="space-y-1.5 rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
+            <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
               {winsLabel ? <p className="font-semibold text-cyan-100">{winsLabel}</p> : null}
               {gameOverRecordUpdates.length > 0 ? (
                 <ul className="space-y-1 text-slate-300">

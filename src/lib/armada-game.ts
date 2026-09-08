@@ -229,6 +229,21 @@ export function applyMineWanderOilDetonation(state: GameState, side: TurnOwner, 
     : { ...state, appOilDetonationPeak: Math.max(state.appOilDetonationPeak, oilDetonationSize) };
 }
 
+/**
+ * Where a freshly-dropped Mine ends up the instant it's placed: consumed
+ * (reverting to whatever the pre-existing active mine's own index already
+ * was, often null) if this drop actually detonated, or planted live right
+ * at the drop cell otherwise - whether because the cell was empty water, or
+ * because it hit a ship the Mine is immune to (exposed, not destroyed - see
+ * isShipImmuneToWeapon). The distinction has to be ShotOutcome.dealtDamage,
+ * not raw cell occupancy: a ship that survives the drop leaves the mine
+ * live and visible on its cell, not gone, even though the cell itself is
+ * occupied.
+ */
+export function resolveMineIndexAfterDrop(shotOutcome: ShotOutcome, previousMineIndex: number | null, dropIndex: number): number | null {
+  return shotOutcome.dealtDamage ? previousMineIndex : dropIndex;
+}
+
 export const GRID_SIZE = 10;
 export const GAME_STATE_VERSION = 20;
 // Total special-weapon shots (any type, combined) allowed per side per game -
