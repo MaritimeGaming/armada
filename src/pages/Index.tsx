@@ -1918,16 +1918,14 @@ const Index = () => {
     }
   }, [gameState, isGameConcluded]);
 
-  // Hidden until at least one game has been completed, then persists for
-  // the lifetime of the install (not reset by New Game).
+  // Null until at least one game has been completed. No longer shown as
+  // its own header badge (see GAME_DESIGN.md) - now that the Statistics
+  // dialog exists, a standing header badge just duplicated its own "Wins"
+  // row - still used for the Statistics row itself and the Victory/Defeat
+  // dialog's callout.
   const winsLabel = sessionStats.gamesPlayed > 0
     ? `Wins: ${sessionStats.gamesWon}/${sessionStats.gamesPlayed} (${Math.round((sessionStats.gamesWon / sessionStats.gamesPlayed) * 100)}%)`
     : null;
-  const winsBadge = winsLabel ? (
-    <span className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100/70">
-      {winsLabel}
-    </span>
-  ) : null;
 
   // The Statistics dialog's full list - see GAME_DESIGN.md's Statistics
   // section for what each of these means and how it's tracked.
@@ -1935,17 +1933,20 @@ const Index = () => {
   // (see armada-game.ts's own pluralize) so the two stay consistent.
   const pluralizeStat = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
   const statisticsRows: { label: string; value: string }[] = [
-    { label: 'Wins', value: winsLabel ?? 'No games played yet' },
+    // winsLabel already reads "Wins: X/Y (Z%)" for the header badge, which
+    // would repeat the row's own "Wins" label here - strip that prefix so
+    // the row just shows the ratio.
+    { label: 'Wins', value: winsLabel ? winsLabel.replace(/^Wins:\s*/, '') : 'No games played yet' },
     { label: 'Quickest Win', value: sessionStats.quickestWin === null ? '—' : pluralizeStat(sessionStats.quickestWin, 'shot') },
     { label: 'Quickest Loss', value: sessionStats.quickestLoss === null ? '—' : pluralizeStat(sessionStats.quickestLoss, 'shot') },
     { label: 'Margin of Victory', value: sessionStats.marginOfVictory === null ? '—' : pluralizeStat(sessionStats.marginOfVictory, 'cell') },
     { label: 'Margin of Defeat', value: sessionStats.marginOfDefeat === null ? '—' : pluralizeStat(sessionStats.marginOfDefeat, 'cell') },
     { label: 'Current Win Streak', value: String(sessionStats.currentWinStreak) },
     { label: 'Best Win Streak', value: String(sessionStats.bestWinStreak) },
-    { label: 'Longest Hit Streak (You)', value: String(sessionStats.longestHitStreakPlayer) },
-    { label: 'Longest Hit Streak (Computer)', value: String(sessionStats.longestHitStreakApp) },
-    { label: 'Biggest Oil Detonation (You)', value: pluralizeStat(sessionStats.biggestOilDetonationPlayer, 'cell') },
-    { label: 'Biggest Oil Detonation (Computer)', value: pluralizeStat(sessionStats.biggestOilDetonationApp, 'cell') },
+    { label: 'Longest Hit Streak (Me)', value: String(sessionStats.longestHitStreakPlayer) },
+    { label: 'Longest Hit Streak (Enemy)', value: String(sessionStats.longestHitStreakApp) },
+    { label: 'Biggest Oil Detonation (Me)', value: pluralizeStat(sessionStats.biggestOilDetonationPlayer, 'cell') },
+    { label: 'Biggest Oil Detonation (Enemy)', value: pluralizeStat(sessionStats.biggestOilDetonationApp, 'cell') },
   ];
 
   const renderNavyPanel = (
@@ -1974,9 +1975,6 @@ const Index = () => {
       reserveArrowSpace={showArrows}
       mineIndex={side === 'enemy' ? gameState?.playerMineIndex : gameState?.appMineIndex}
       armedWeapon={side === 'enemy' ? armedWeapon : undefined}
-      // Only the Enemy Navy panel shows it (mobile has a settings icon on
-      // both swiped panels, so this keeps it off "My Navy" there too).
-      headerExtraSlot={side === 'enemy' ? winsBadge : undefined}
       weaponsBarSlot={renderWeaponsBarForSide(side)}
     />
   );
@@ -2457,8 +2455,6 @@ type NavyPanelProps = {
   armedWeapon?: WeaponType | null;
   /** Rendered between the grid and the ship registry, so arming/firing a weapon doesn't require hopping over the registry. */
   weaponsBarSlot?: ReactNode;
-  /** Rendered in the header row, to the left of the settings icon. */
-  headerExtraSlot?: ReactNode;
 };
 
 type SettingsMenuProps = {
@@ -2531,7 +2527,6 @@ function NavyPanel({
   mineIndex = null,
   armedWeapon = null,
   weaponsBarSlot = null,
-  headerExtraSlot = null,
 }: NavyPanelProps) {
   const availableShips = useMemo(() => getShips(shipSetOptions), [shipSetOptions]);
   const [openTooltipCode, setOpenTooltipCode] = useState<string | null>(null);
@@ -2680,19 +2675,16 @@ function NavyPanel({
           <div>{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
         )}
 
-        {showSettings || headerExtraSlot ? (
+        {showSettings ? (
           <div className="ml-auto flex items-center gap-3">
-            {headerExtraSlot}
-            {showSettings ? (
-              <SettingsMenu
-                shipSetOptions={shipSetOptions}
-                onSinglesToggle={onSinglesToggle}
-                onNewGame={onNewGame}
-                onShowStatistics={onShowStatistics}
-                onShowAboutShips={onShowAboutShips}
-                onShowAboutWeapons={onShowAboutWeapons}
-              />
-            ) : null}
+            <SettingsMenu
+              shipSetOptions={shipSetOptions}
+              onSinglesToggle={onSinglesToggle}
+              onNewGame={onNewGame}
+              onShowStatistics={onShowStatistics}
+              onShowAboutShips={onShowAboutShips}
+              onShowAboutWeapons={onShowAboutWeapons}
+            />
           </div>
         ) : null}
       </div>
