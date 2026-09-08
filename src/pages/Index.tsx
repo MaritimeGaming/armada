@@ -38,6 +38,7 @@ import {
   fireRocket,
   fireTorpedo,
   GAME_STATE_VERSION,
+  getLocalDateString,
   getMoabTargetIndexes,
   getRevealedTargetIndexes,
   getShips,
@@ -657,7 +658,7 @@ const Index = () => {
     const winningSide: NavySide = winner === 'player' ? 'player' : 'enemy';
     setActiveView(losingSide);
 
-    const { next: nextSessionStats, updates } = computeSessionStatsUpdate(sessionStats, state, winner);
+    const { next: nextSessionStats, updates } = computeSessionStatsUpdate(sessionStats, state, winner, getLocalDateString(new Date()));
     window.localStorage.setItem(SESSION_STATS_STORAGE_KEY, JSON.stringify(nextSessionStats));
     setSessionStats(nextSessionStats);
     setGameOverRecordUpdates(updates);
@@ -1937,6 +1938,8 @@ const Index = () => {
     // would repeat the row's own "Wins" label here - strip that prefix so
     // the row just shows the ratio.
     { label: 'Wins', value: winsLabel ? winsLabel.replace(/^Wins:\s*/, '') : 'No games played yet' },
+    { label: 'Current Daily Win Streak', value: String(sessionStats.currentDailyWinStreak) },
+    { label: 'Best Daily Win Streak', value: String(sessionStats.bestDailyWinStreak) },
     { label: 'Quickest Win', value: sessionStats.quickestWin === null ? '—' : pluralizeStat(sessionStats.quickestWin, 'shot') },
     { label: 'Quickest Loss', value: sessionStats.quickestLoss === null ? '—' : pluralizeStat(sessionStats.quickestLoss, 'shot') },
     { label: 'Margin of Victory', value: sessionStats.marginOfVictory === null ? '—' : pluralizeStat(sessionStats.marginOfVictory, 'cell') },

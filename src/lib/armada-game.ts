@@ -1363,6 +1363,20 @@ export type SessionStats = {
   currentWinStreak: number;
   /** The highest currentWinStreak has ever reached. */
   bestWinStreak: number;
+  /**
+   * Consecutive calendar days (local device time) with at least one win -
+   * unlike currentWinStreak, a loss never touches this on its own; only a
+   * win can change it, either extending it (won yesterday and today),
+   * resetting it to 1 (the last win was 2+ days ago, or this is the first
+   * win ever), or leaving it alone (already won today). See
+   * computeSessionStatsUpdate for why this has to be decided lazily, at
+   * the next win, rather than "expiring" the moment a day is missed.
+   */
+  currentDailyWinStreak: number;
+  /** The highest currentDailyWinStreak has ever reached. */
+  bestDailyWinStreak: number;
+  /** The local calendar date (see getLocalDateString) of the most recent win, or null before any win - what currentDailyWinStreak is computed against. */
+  lastWinDate: string | null;
   /** The player's own longest Hit Streak (see ShotOutcome) ever reached in a single game. */
   longestHitStreakPlayer: number;
   /** Mirrors longestHitStreakPlayer for the computer. */
@@ -1382,6 +1396,9 @@ export const DEFAULT_SESSION_STATS: SessionStats = {
   marginOfDefeat: null,
   currentWinStreak: 0,
   bestWinStreak: 0,
+  currentDailyWinStreak: 0,
+  bestDailyWinStreak: 0,
+  lastWinDate: null,
   longestHitStreakPlayer: 0,
   longestHitStreakApp: 0,
   biggestOilDetonationPlayer: 0,
@@ -1394,6 +1411,32 @@ function pluralize(count: number, noun: string): string {
 
 function countUntargetedOccupiedCells(navy: NavyState): number {
   return navy.cells.filter((cell) => cell.occupied && cell.effect === 'untargeted').length;
+}
+
+/**
+ * The local (device-clock) calendar date, as 'YYYY-MM-DD' - what
+ * SessionStats.lastWinDate is stored as, and what a caller passes as
+ * computeSessionStatsUpdate's own "today" so the function itself stays
+ * pure and testable rather than reading the clock internally. Deliberately
+ * local, not UTC: "did I already win today" should match the day the
+ * player's own device says it is, not some other timezone.
+ */
+export function getLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Both sides of this are 'YYYY-MM-DD' calendar dates (see
+// getLocalDateString), which Date.parse reads as UTC midnight regardless of
+// the runtime's own timezone - exactly what's needed here, since the two
+// strings already encode the calendar days being compared and this only
+// ever needs the whole-day difference between them, not a timezone-aware
+// instant.
+function daysBetweenLocalDates(from: string, to: string): number {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((Date.parse(to) - Date.parse(from)) / msPerDay);
 }
 
 /**
@@ -1410,6 +1453,7 @@ export function computeSessionStatsUpdate(
   previous: SessionStats,
   state: GameState,
   winner: Winner,
+  todayLocalDate: string,
 ): { next: SessionStats; updates: string[] } {
   const updates: string[] = [];
   const next: SessionStats = { ...previous, gamesPlayed: previous.gamesPlayed + 1 };
@@ -1423,6 +1467,23 @@ export function computeSessionStatsUpdate(
       updates.push(`New record! Best Win Streak: ${next.bestWinStreak}`);
     } else {
       updates.push(`Win Streak: ${next.currentWinStreak}`);
+    }
+
+    // A loss never touches the daily streak (see SessionStats.
+    // currentDailyWinStreak's own doc comment) - this whole block only
+    // ever runs on a win, and only does anything at all the first time
+    // that happens on a given calendar day.
+    if (previous.lastWinDate !== todayLocalDate) {
+      const wonYesterday = previous.lastWinDate !== null && daysBetweenLocalDates(previous.lastWinDate, todayLocalDate) === 1;
+      next.currentDailyWinStreak = wonYesterday ? previous.currentDailyWinStreak + 1 : 1;
+      next.lastWinDate = todayLocalDate;
+
+      if (next.currentDailyWinStreak > previous.bestDailyWinStreak) {
+        next.bestDailyWinStreak = next.currentDailyWinStreak;
+        updates.push(`New record! Best Daily Win Streak: ${next.bestDailyWinStreak}`);
+      } else {
+        updates.push(`Daily Win Streak: ${next.currentDailyWinStreak}`);
+      }
     }
 
     if (previous.quickestWin === null || state.playerTurnsTaken < previous.quickestWin) {

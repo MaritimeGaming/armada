@@ -8,6 +8,7 @@ import {
   DRONE_SHOT_OUTCOME,
   fireMoab,
   fireTorpedo,
+  getLocalDateString,
   moveMine,
   resolveMineHit,
   resolveMineIndexAfterDrop,
@@ -482,10 +483,29 @@ function makeSessionStats(overrides: Partial<SessionStats> = {}): SessionStats {
   return { ...DEFAULT_SESSION_STATS, ...overrides };
 }
 
+describe('getLocalDateString', () => {
+  it('formats as YYYY-MM-DD, zero-padding single-digit months and days', () => {
+    expect(getLocalDateString(new Date(2026, 0, 5))).toBe('2026-01-05');
+    expect(getLocalDateString(new Date(2026, 10, 21))).toBe('2026-11-21');
+  });
+
+  it('reads the date components a local Date object already carries, not UTC', () => {
+    // new Date(year, monthIndex, day, ...) always constructs in the local
+    // timezone, so this just confirms the function doesn't route through
+    // any UTC getters (getUTCFullYear etc.) that would disagree with it.
+    const date = new Date(2026, 5, 15, 23, 59);
+    expect(getLocalDateString(date)).toBe(`${date.getFullYear()}-06-15`);
+  });
+});
+
 describe('computeSessionStatsUpdate', () => {
+  // Arbitrary fixed "today" for every test that isn't specifically about
+  // the daily win streak - see the dedicated describe block below for that.
+  const TODAY = '2026-01-01';
+
   it('increments gamesPlayed and gamesWon, and extends the win streak, on a win', () => {
     const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
-    const { next } = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 4, gamesWon: 2, currentWinStreak: 1 }), state, 'player');
+    const { next } = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 4, gamesWon: 2, currentWinStreak: 1 }), state, 'player', TODAY);
     expect(next.gamesPlayed).toBe(5);
     expect(next.gamesWon).toBe(3);
     expect(next.currentWinStreak).toBe(2);
@@ -493,38 +513,38 @@ describe('computeSessionStatsUpdate', () => {
 
   it('resets the win streak to 0 on a loss, and reports it as broken', () => {
     const state = makeGameState({ appTurnsTaken: 15, enemy: makeNavy() });
-    const { next, updates } = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 3 }), state, 'app');
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 3 }), state, 'app', TODAY);
     expect(next.currentWinStreak).toBe(0);
     expect(updates.some((update) => update.includes('broken') && update.includes('3'))).toBe(true);
   });
 
   it('does not report a broken streak when there was no streak to break', () => {
     const state = makeGameState({ appTurnsTaken: 15, enemy: makeNavy() });
-    const { updates } = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 0 }), state, 'app');
+    const { updates } = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 0 }), state, 'app', TODAY);
     expect(updates.some((update) => update.includes('broken'))).toBe(false);
   });
 
   it('sets a new Best Win Streak record only once the current streak actually exceeds it', () => {
     const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
 
-    const tying = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 2, bestWinStreak: 3 }), state, 'player');
+    const tying = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 2, bestWinStreak: 3 }), state, 'player', TODAY);
     expect(tying.next.currentWinStreak).toBe(3);
     expect(tying.next.bestWinStreak).toBe(3);
     expect(tying.updates.some((update) => update.includes('New record') && update.includes('Best Win Streak'))).toBe(false);
 
-    const beating = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 3, bestWinStreak: 3 }), state, 'player');
+    const beating = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 3, bestWinStreak: 3 }), state, 'player', TODAY);
     expect(beating.next.bestWinStreak).toBe(4);
     expect(beating.updates.some((update) => update.includes('New record! Best Win Streak: 4'))).toBe(true);
   });
 
   it('sets a new Quickest Win record only when this game took fewer turns', () => {
     const faster = makeGameState({ playerTurnsTaken: 10, player: makeNavy() });
-    const fasterResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), faster, 'player');
+    const fasterResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), faster, 'player', TODAY);
     expect(fasterResult.next.quickestWin).toBe(10);
     expect(fasterResult.updates.some((update) => update.includes('Quickest Win: 10 shots'))).toBe(true);
 
     const slower = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
-    const slowerResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), slower, 'player');
+    const slowerResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), slower, 'player', TODAY);
     expect(slowerResult.next.quickestWin).toBe(15);
     expect(slowerResult.updates.some((update) => update.includes('Quickest Win'))).toBe(false);
   });
@@ -534,7 +554,7 @@ describe('computeSessionStatsUpdate', () => {
     // 6 of the navy's 7 occupied cells are left untargeted.
     const navy = makeNavy({ 80: { occupied: true, shipCode: 'B', effect: 'targeted' } });
     const state = makeGameState({ playerTurnsTaken: 20, player: navy });
-    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'player');
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'player', TODAY);
     expect(next.marginOfVictory).toBe(6);
     expect(updates.some((update) => update.includes('Margin of Victory: 6'))).toBe(true);
   });
@@ -542,7 +562,7 @@ describe('computeSessionStatsUpdate', () => {
   it("sets Margin of Defeat to the computer's own untouched cell count on a loss", () => {
     const navy = makeNavy({ 50: { occupied: true, shipCode: 'O', effect: 'targeted' } });
     const state = makeGameState({ appTurnsTaken: 20, enemy: navy });
-    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'app');
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'app', TODAY);
     expect(next.marginOfDefeat).toBe(6);
     expect(updates.some((update) => update.includes('Margin of Defeat: 6'))).toBe(true);
   });
@@ -564,6 +584,7 @@ describe('computeSessionStatsUpdate', () => {
       makeSessionStats({ longestHitStreakPlayer: 3, longestHitStreakApp: 3, biggestOilDetonationPlayer: 1, biggestOilDetonationApp: 1 }),
       state,
       'app',
+      TODAY,
     );
 
     expect(next.longestHitStreakPlayer).toBe(6);
@@ -580,10 +601,80 @@ describe('computeSessionStatsUpdate', () => {
       makeSessionStats({ longestHitStreakPlayer: 8, longestHitStreakApp: 5 }),
       state,
       'player',
+      TODAY,
     );
     expect(next.longestHitStreakPlayer).toBe(8);
     expect(next.longestHitStreakApp).toBe(5);
     expect(updates.some((update) => update.includes('Longest Hit Streak'))).toBe(false);
+  });
+
+  describe('daily win streak', () => {
+    it('starts a fresh streak at 1 on the first-ever win, and reports it as a new record', () => {
+      const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+      const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'player', '2026-03-10');
+      expect(next.currentDailyWinStreak).toBe(1);
+      expect(next.bestDailyWinStreak).toBe(1);
+      expect(next.lastWinDate).toBe('2026-03-10');
+      expect(updates.some((update) => update.includes('New record! Best Daily Win Streak: 1'))).toBe(true);
+    });
+
+    it('does not change at all for a second win on the same calendar day', () => {
+      const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+      const previous = makeSessionStats({ currentDailyWinStreak: 3, bestDailyWinStreak: 5, lastWinDate: '2026-03-10' });
+      const { next, updates } = computeSessionStatsUpdate(previous, state, 'player', '2026-03-10');
+      expect(next.currentDailyWinStreak).toBe(3);
+      expect(next.bestDailyWinStreak).toBe(5);
+      expect(next.lastWinDate).toBe('2026-03-10');
+      expect(updates.some((update) => update.includes('Daily Win Streak'))).toBe(false);
+    });
+
+    it('extends the streak by 1 on a win the very next calendar day', () => {
+      const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+      const previous = makeSessionStats({ currentDailyWinStreak: 3, bestDailyWinStreak: 5, lastWinDate: '2026-03-10' });
+      const { next, updates } = computeSessionStatsUpdate(previous, state, 'player', '2026-03-11');
+      expect(next.currentDailyWinStreak).toBe(4);
+      expect(next.lastWinDate).toBe('2026-03-11');
+      expect(updates.some((update) => update.includes('Daily Win Streak: 4'))).toBe(true);
+    });
+
+    it('resets the streak to 1 (not 0) when a day was skipped entirely', () => {
+      const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+      const previous = makeSessionStats({ currentDailyWinStreak: 6, bestDailyWinStreak: 6, lastWinDate: '2026-03-10' });
+      const { next, updates } = computeSessionStatsUpdate(previous, state, 'player', '2026-03-12');
+      expect(next.currentDailyWinStreak).toBe(1);
+      expect(next.lastWinDate).toBe('2026-03-12');
+      expect(updates.some((update) => update.includes('Daily Win Streak: 1'))).toBe(true);
+      // The old best survives - resetting the current streak isn't a record.
+      expect(next.bestDailyWinStreak).toBe(6);
+    });
+
+    it('sets a new Best Daily Win Streak record only once the current one actually exceeds it', () => {
+      const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+      // Also pins the (unrelated) per-game win streak at a level a single
+      // win here can't beat, so the only "New record" line left to check
+      // for really is about the daily streak specifically.
+      const previous = makeSessionStats({
+        currentDailyWinStreak: 4,
+        bestDailyWinStreak: 5,
+        lastWinDate: '2026-03-10',
+        currentWinStreak: 10,
+        bestWinStreak: 99,
+      });
+      const { next, updates } = computeSessionStatsUpdate(previous, state, 'player', '2026-03-11');
+      expect(next.currentDailyWinStreak).toBe(5);
+      expect(next.bestDailyWinStreak).toBe(5);
+      expect(updates.some((update) => update.includes('New record') && update.includes('Daily Win Streak'))).toBe(false);
+    });
+
+    it('a loss never touches the daily win streak, even the same day as an earlier win', () => {
+      const state = makeGameState({ appTurnsTaken: 20, enemy: makeNavy() });
+      const previous = makeSessionStats({ currentDailyWinStreak: 4, bestDailyWinStreak: 5, lastWinDate: '2026-03-10' });
+      const { next, updates } = computeSessionStatsUpdate(previous, state, 'app', '2026-03-10');
+      expect(next.currentDailyWinStreak).toBe(4);
+      expect(next.bestDailyWinStreak).toBe(5);
+      expect(next.lastWinDate).toBe('2026-03-10');
+      expect(updates.some((update) => update.includes('Daily Win Streak'))).toBe(false);
+    });
   });
 });
 

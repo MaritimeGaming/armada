@@ -1096,15 +1096,20 @@ A lifetime record, entirely separate from any single game's `GameState`:
 persisted as `SessionStats` (`armada-game.ts`) under the single
 `armada:session-stats` localStorage key, surfaced two places - the full
 list in a scrollable Settings > Statistics dialog, and a "what changed this
-game" callout on the Victory/Defeat dialog (see below). Nine categories,
-eleven tracked values (Hit Streak and Oil Detonation are each tracked once
-per side):
+game" callout on the Victory/Defeat dialog (see below). Ten categories,
+thirteen tracked values (Hit Streak and Oil Detonation are each tracked
+once per side; Win Streak and Daily Win Streak are each a Current/Best
+pair):
 
 - **Wins** - ratio and percentage. The only one that predates this feature
   (previously two standalone `games-played`/`games-won` counters); an
   install that already has those gets them folded into its first
   `SessionStats` blob the first time `loadSessionStats()` runs (`Index.tsx`)
   rather than silently resetting to zero.
+- **Current Daily Win Streak / Best Daily Win Streak** - see "The Daily Win
+  Streak" below. Placed right under Wins in the dialog (and, per the
+  request that shipped it, ahead of the per-game stats below) since it's
+  meant to be the one players actually watch day to day.
 - **Quickest Win / Quickest Loss** - fewest turns (any action - a plain
   shot or any weapon, Drone included) the player has ever needed to win, or
   the computer has ever needed to beat the player. Needed a new counter
@@ -1119,9 +1124,12 @@ per side):
 - **Current Win Streak / Best Win Streak** - consecutive wins right up to
   the most recent game, and the highest that's ever reached. Resets to 0
   the instant a loss happens; the Victory/Defeat dialog calls out either an
-  extension, a new best, or the streak breaking (see below).
-- **Longest Hit Streak (You / Computer)** - see "The Hit Streak" below.
-- **Biggest Oil Detonation (You / Computer)** - the largest single oil-slick
+  extension, a new best, or the streak breaking (see below). Not to be
+  confused with the Daily Win Streak above - this one is per-game, not
+  per-calendar-day, and a loss resets it immediately rather than leaving it
+  alone.
+- **Longest Hit Streak (Me / Enemy)** - see "The Hit Streak" below.
+- **Biggest Oil Detonation (Me / Enemy)** - the largest single oil-slick
   chain reaction (`resolveTargetingSequence`'s own `ignited`/
   `ignitedCellIndexes` - the 1-in-12 chain reaction, not the ordinary
   single-cell oil burn-off every hit on an oiled ship cell already causes
@@ -1129,6 +1137,37 @@ per side):
   direct shot/weapon or their own Mine's passive wander landing on oil.
   Tracked for both sides every game, win or lose - even in a loss, the
   computer setting its own personal best is worth knowing about.
+
+**The Daily Win Streak** exists for a different reason than every other
+stat here - it's a retention mechanic, meant to give players a reason to
+come back and play (and win) again tomorrow, not just a record of skill or
+luck. That different purpose is exactly why it can't just reuse Current
+Win Streak's own reset rule: a per-game streak that reset on every loss
+would punish a player for losing a single game after already winning
+earlier that same day, which defeats the point - so a loss never touches
+it at all, only a win can change it, and only in three ways: no change (a
+second win the same calendar day), +1 (a win on the calendar day right
+after the last one), or reset to 1, not 0 (a win after skipping a whole
+day, or the very first win ever - the win that "breaks" the streak also
+immediately starts the next one).
+
+`SessionStats.lastWinDate` (a `'YYYY-MM-DD'` string from
+`getLocalDateString()`, always the *device's own local* calendar date, not
+UTC - "did I already win today" has to agree with what day the player's
+own clock says it is) is the only state this needs: on a win,
+`computeSessionStatsUpdate()` compares it against the date it's handed for
+"today" and decides which of the three cases above applies before updating
+it. That comparison is deliberately lazy rather than proactive - a
+client-only game with no server or background process has no way to
+notice the moment a day rolls over while the app isn't even open, so
+nothing "expires" the streak at midnight. It simply isn't recalculated
+until the next time the player wins, whenever that turns out to be, and
+resolves correctly regardless of how long that gap was.
+`computeSessionStatsUpdate()` itself never calls `new Date()` - "today" is
+passed in by its caller (`concludeGame()` in `Index.tsx`) precisely so the
+function itself stays pure and testable against arbitrary dates, the same
+reasoning `ShotOutcome` follows for keeping game-rule functions storage-
+and clock-agnostic.
 
 **The Hit Streak** is the one genuinely non-obvious stat, because "did this
 turn count as a hit" isn't as simple as "did a ship take damage" once
