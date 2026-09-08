@@ -2624,7 +2624,7 @@ function NavyPanel({
     <div className="flex h-full flex-col gap-1.5">
       <div className="relative flex min-h-8 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100">
         {reserveArrowSpace ? (
-          <div className="relative w-[60%] min-w-0">
+          <div className="relative w-[75%] min-w-0">
             {onGoLeft ? (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -2645,11 +2645,7 @@ function NavyPanel({
               </Tooltip>
             ) : null}
 
-            {/* Shortened to just "Enemy" here (unlike the desktop header
-                below, and unlike "My Navy" on this same mobile header) -
-                the full "Enemy Navy" was long enough at this width to
-                overlap the left-arrow button beside it. */}
-            <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy'}</div>
+            <div className="w-full text-center">{navy.side === 'player' ? 'My Navy' : 'Enemy Navy'}</div>
 
             {onGoRight ? (
               <Tooltip>
