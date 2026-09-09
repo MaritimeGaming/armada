@@ -1052,7 +1052,9 @@ Intended monetization model: players start with a handful of charges per
 weapon, with refills obtainable via rewarded ads (Google Play style: watch
 a 30-second ad for +3 charges of that type, once connected to a real ad
 SDK). Tapping a weapon icon that's at 0 opens a Yes/No confirmation
-("Out of MOAB - Watch an ad to restock MOAB?") rather than launching the
+("Out of MOAB - Watch an ad to procure 3 more?", the count pulled from
+`WEAPON_REFILL_COUNTS` so the copy can't drift from the actual refill
+amount) rather than launching the
 ad immediately - unlike the New Game token gate below, running dry
 mid-game isn't a break point the player is already expecting, so they get
 an explicit opt-out instead of an unannounced ad. **No** just dismisses the
@@ -1348,7 +1350,7 @@ inevitable "yes." Running out of a weapon mid-game is different: it
 happens in the middle of an otherwise free action (the player was about to
 take a shot), so forcing an ad on them without warning would be a much
 more jarring interruption than the moment justifies. Asking first, and
-naming the ad explicitly ("Watch an ad to restock ___?"), keeps this one
+naming the ad explicitly ("Watch an ad to procure 3 more?"), keeps this one
 squarely opt-in.
 
 **Same exploit-proofing invariant as the New Game gate.** Crediting still

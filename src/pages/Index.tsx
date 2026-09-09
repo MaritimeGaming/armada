@@ -702,14 +702,6 @@ const Index = () => {
       harpoon: HARPOON_COUNT_STORAGE_KEY,
       drone: DRONE_COUNT_STORAGE_KEY,
     };
-    const refillCounts: Record<WeaponType, number> = {
-      moab: MOAB_REFILL_COUNT,
-      mine: MINE_REFILL_COUNT,
-      torpedo: TORPEDO_REFILL_COUNT,
-      rocket: ROCKET_REFILL_COUNT,
-      harpoon: HARPOON_REFILL_COUNT,
-      drone: DRONE_REFILL_COUNT,
-    };
     const setCounts: Record<WeaponType, (value: number) => void> = {
       moab: setMoabCount,
       mine: setMineCount,
@@ -720,7 +712,7 @@ const Index = () => {
     };
 
     const storageKey = storageKeys[weapon];
-    const refillCount = refillCounts[weapon];
+    const refillCount = WEAPON_REFILL_COUNTS[weapon];
     const setCount = setCounts[weapon];
 
     setProcuringWeapon(weapon);
@@ -2396,7 +2388,7 @@ const Index = () => {
           <DialogHeader>
             <DialogTitle>Out of {pendingWeaponProcurement ? WEAPON_DISPLAY[pendingWeaponProcurement].label : 'Ammo'}</DialogTitle>
             <DialogDescription className="text-slate-300">
-              Watch an ad to restock {pendingWeaponProcurement ? WEAPON_DISPLAY[pendingWeaponProcurement].label : 'this weapon'}?
+              Watch an ad to procure {pendingWeaponProcurement ? WEAPON_REFILL_COUNTS[pendingWeaponProcurement] : ''} more?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -2442,6 +2434,19 @@ const WEAPON_DISPLAY: Record<WeaponType, { icon: ReactNode; label: string }> = {
   rocket: { icon: <ArrowUpDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'ROCKET' },
   harpoon: { icon: <MoveDiagonal className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'HARPOON' },
   drone: { icon: <Radar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />, label: 'DRONE' },
+};
+
+// How many charges a "Procuring Weapons" refill grants per weapon type -
+// shared by beginWeaponProcurement (which actually applies it) and the
+// confirmation dialog's copy (which quotes it up front), so the two can
+// never drift out of sync if refill amounts ever vary by weapon.
+const WEAPON_REFILL_COUNTS: Record<WeaponType, number> = {
+  moab: MOAB_REFILL_COUNT,
+  mine: MINE_REFILL_COUNT,
+  torpedo: TORPEDO_REFILL_COUNT,
+  rocket: ROCKET_REFILL_COUNT,
+  harpoon: HARPOON_REFILL_COUNT,
+  drone: DRONE_REFILL_COUNT,
 };
 
 // Reference copy for the "About Ships" dialog - characteristics only, no
