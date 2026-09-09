@@ -654,6 +654,21 @@ with a `NotSupportedError` in testing, apparently a MIME-type mismatch on
 the blob. Worth remembering if this gets revisited: prefer warming the
 browser's own cache over substituting the playback source.)
 
+**The view also lingers longer on a Drone reveal before scrolling away.**
+After the player's turn ends, a `showPlayerDelay` timer (in the
+`currentTurn === 'app'` effect) scrolls the view over to MY NAVY once the
+computer's own move is ready - normally 700ms later (1700ms if that turn's
+outcome itself needs more time to read: a sink, an ignition chain, or the
+passive mine wander landing a hit; see `playerShotExtendedDelayRef`). A
+second, independent ref (`playerDroneRevealExtraDelayRef`) adds a further
+500ms on top of whichever of those applies whenever the turn that just
+ended was a Drone reveal specifically - reset unconditionally at the top
+of the player's turn-resolution logic (only the Drone branch ever sets it
+true) rather than in every other branch, since nothing else needs to touch
+it. The reveal itself resolves instantly (a synchronous state update), so
+without this the view could start scrolling away to MY NAVY before the
+player has had a moment to actually look at what the Drone just found.
+
 A real weapon the player (or computer) actually fired - MOAB, a direct Mine
 drop, or a Torpedo/Rocket/Harpoon's launch or a cell it merely passes
 through mid-flight - getting deflected by immunity now plays its own

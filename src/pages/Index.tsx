@@ -292,6 +292,14 @@ const Index = () => {
   const appWeaponInFlightRef = useRef(false);
   const userPreviewIndexRef = useRef<number | null>(null);
   const playerShotExtendedDelayRef = useRef(false);
+  // Set (and read/reset) exactly like playerShotExtendedDelayRef above, but
+  // additive rather than a replacement - a Drone reveal gets its own fixed
+  // extra pause on top of whatever the base delay already is, since the
+  // reveal is easy to miss if the view starts scrolling away to MY NAVY the
+  // instant it lands, distinct from that flag's "this turn's outcome needs
+  // more time to read" reasoning (a sink, an ignition chain, or the passive
+  // mine wander landing a hit).
+  const playerDroneRevealExtraDelayRef = useRef(false);
   const [explosionCells, setExplosionCells] = useState<Record<NavySide, number[]>>({
     player: [],
     enemy: [],
@@ -885,6 +893,12 @@ const Index = () => {
 
       if (targetCell?.targeting) {
         userPreviewIndexRef.current = null;
+        // Reset here, unconditionally, rather than in every branch below
+        // (unlike playerShotExtendedDelayRef) - only the Drone branch ever
+        // sets this true, so a single reset per turn at the top is enough
+        // to keep a previous turn's Drone reveal from leaking an extra
+        // 500ms onto some later, unrelated shot.
+        playerDroneRevealExtraDelayRef.current = false;
 
         // An active mine (placed on a prior turn) moves automatically the
         // moment the player takes any turn, regardless of what that turn's
@@ -1326,6 +1340,7 @@ const Index = () => {
           });
 
           playerShotExtendedDelayRef.current = mineCausedExtendedDelay;
+          playerDroneRevealExtraDelayRef.current = true;
 
           const nextState: GameState = finalizeShotState(
             {
@@ -1504,9 +1519,12 @@ const Index = () => {
     const playerShotExtendedDelay = playerShotExtendedDelayRef.current;
     playerShotExtendedDelayRef.current = false;
 
+    const playerDroneRevealExtraDelay = playerDroneRevealExtraDelayRef.current;
+    playerDroneRevealExtraDelayRef.current = false;
+
     const showPlayerDelay = window.setTimeout(() => {
       setActiveView('player');
-    }, playerShotExtendedDelay ? 1700 : 700);
+    }, (playerShotExtendedDelay ? 1700 : 700) + (playerDroneRevealExtraDelay ? 500 : 0));
 
     const previewDelay = window.setTimeout(() => {
       setGameState((currentState) => {
