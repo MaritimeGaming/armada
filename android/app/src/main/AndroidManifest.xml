@@ -8,13 +8,13 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <!-- Google Mobile Ads SDK requires this even before any ad unit is
-             shown - the app crashes on startup without it. This is
-             Google's official test App ID (safe to ship in development);
-             swap for the app's real AdMob App ID before the Play Store
-             release build, alongside the ad unit ID in src/lib/ads.ts. -->
+             shown - the app crashes on startup without it. This is the
+             app's real AdMob App ID (the ad unit IDs in src/lib/ads.ts
+             belong to it); every request is still forced to serve a test
+             ad regardless, via FORCE_TEST_ADS there - see its comment. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-1765694427918098~8079521716" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"

@@ -1126,10 +1126,12 @@ event fires; a decline, an early close, or a failed show leaves the weapon
 untouched. Outside a native build (the desktop dev server, GitHub Pages,
 the test suite - none of which can run a real AdMob ad at all) it falls
 back to a short simulated delay that always "succeeds", preserving the
-same experience local development always had. Still using Google's public
-test ad unit ID pending registering the app in the AdMob console and
-swapping in the real one before the Play Store release build - see
-`showRewardedAd`'s own doc comment. Arming, not firing: the player
+same experience local development always had. This is its own real,
+registered AdMob ad unit - separate from the New Game gate's below, so
+each shows up as its own line in the AdMob console's reporting - still
+forced to serve a test ad regardless (see `FORCE_TEST_ADS` in
+`src/lib/ads.ts`) until that's flipped off for the Play Store release
+build. Arming, not firing: the player
 still has to target a cell to take the shot, and can still tap the weapon
 again first to disarm it and do something else instead, exactly as if it
 had never run out. This fits the "no progression" philosophy above because
@@ -1397,12 +1399,16 @@ others are torn down. Outside a native build - the desktop dev server,
 the GitHub Pages web build, the vitest suite, none of which can run a real
 AdMob ad at all - it instead resolves `true` after a short simulated
 delay, which is what both this gate and the weapon-refill gate below ran
-on exclusively before the real integration existed. Still wired to
-Google's public *test* ad unit ID and AdMob App ID (also in
-`AndroidManifest.xml`'s `com.google.android.gms.ads.APPLICATION_ID`
-meta-data, required by the SDK at startup even before any ad shows) -
-swapping both for the real ones from the AdMob console, once the app is
-registered there, is the one remaining step before a release build.
+on exclusively before the real integration existed. Uses this placement's
+own real, registered ad unit ID, distinct from the weapon-refill gate's
+(`REWARDED_AD_UNIT_IDS` in `src/lib/ads.ts`), under the app's real AdMob
+App ID (also in `AndroidManifest.xml`'s
+`com.google.android.gms.ads.APPLICATION_ID` meta-data, required by the SDK
+at startup even before any ad shows) - two separate ad units so the AdMob
+console's own reporting can tell the two placements apart instead of
+blending them into one line. Every request is still forced to serve a
+test ad regardless of the real ID (`FORCE_TEST_ADS` in `src/lib/ads.ts`) -
+flipping that off is the one remaining step before a release build.
 
 **Exiting mid-ad can't be used to skip paying for it.** Tokens are only
 ever credited from `showRewardedAd`'s genuine reward-earned outcome -

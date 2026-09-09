@@ -64,23 +64,23 @@ describe('showRewardedAd', () => {
     isNativePlatform.mockReturnValue(false);
     vi.useFakeTimers();
 
-    const promise = showRewardedAd();
+    const promise = showRewardedAd('gameTokens');
     await vi.advanceTimersByTimeAsync(2000);
 
     await expect(promise).resolves.toBe(true);
     expect(initialize).not.toHaveBeenCalled();
   });
 
-  it('initializes the SDK, requests the test ad unit, and resolves true on a genuine reward', async () => {
+  it('initializes the SDK, requests that placement\'s real ad unit forced to test mode, and resolves true on a genuine reward', async () => {
     isNativePlatform.mockReturnValue(true);
 
-    const promise = showRewardedAd();
+    const promise = showRewardedAd('gameTokens');
     await flushMicrotasks();
 
     expect(initialize).toHaveBeenCalledTimes(1);
     expect(initialize).toHaveBeenCalledWith({ initializeForTesting: true });
     expect(prepareRewardVideoAd).toHaveBeenCalledWith({
-      adId: 'ca-app-pub-3940256099942544/5224354917',
+      adId: 'ca-app-pub-1765694427918098/5770042821',
       isTesting: true,
     });
 
@@ -90,17 +90,32 @@ describe('showRewardedAd', () => {
     // A second call reuses the already-initialized SDK rather than
     // re-initializing it.
     fireEvent('onRewardedVideoAdReward', { type: 'coins', amount: 1 });
-    const second = showRewardedAd();
+    const second = showRewardedAd('gameTokens');
     await flushMicrotasks();
     fireEvent('onRewardedVideoAdReward', { type: 'coins', amount: 1 });
     await expect(second).resolves.toBe(true);
     expect(initialize).toHaveBeenCalledTimes(1);
   });
 
+  it('requests the weaponRefill placement\'s own, distinct ad unit ID', async () => {
+    isNativePlatform.mockReturnValue(true);
+
+    const promise = showRewardedAd('weaponRefill');
+    await flushMicrotasks();
+
+    expect(prepareRewardVideoAd).toHaveBeenCalledWith({
+      adId: 'ca-app-pub-1765694427918098/9897472590',
+      isTesting: true,
+    });
+
+    fireEvent('onRewardedVideoAdReward', { type: 'coins', amount: 1 });
+    await expect(promise).resolves.toBe(true);
+  });
+
   it('resolves false when the user dismisses the ad without earning the reward', async () => {
     isNativePlatform.mockReturnValue(true);
 
-    const promise = showRewardedAd();
+    const promise = showRewardedAd('gameTokens');
     await flushMicrotasks();
     fireEvent('onRewardedVideoAdDismissed');
 
@@ -115,7 +130,7 @@ describe('showRewardedAd', () => {
   it('resolves false when a loaded ad fails to show', async () => {
     isNativePlatform.mockReturnValue(true);
 
-    const promise = showRewardedAd();
+    const promise = showRewardedAd('gameTokens');
     await flushMicrotasks();
     fireEvent('onRewardedVideoAdFailedToShow', { code: 0, message: 'boom' });
 
@@ -126,6 +141,6 @@ describe('showRewardedAd', () => {
     isNativePlatform.mockReturnValue(true);
     prepareRewardVideoAd.mockRejectedValue(new Error('no fill'));
 
-    await expect(showRewardedAd()).resolves.toBe(false);
+    await expect(showRewardedAd('gameTokens')).resolves.toBe(false);
   });
 });

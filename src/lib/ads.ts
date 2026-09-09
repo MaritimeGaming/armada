@@ -1,15 +1,25 @@
 import { Capacitor } from '@capacitor/core';
 import { AdMob, RewardAdPluginEvents } from '@capacitor-community/admob';
 
-// Google's official sample rewarded ad unit ID - always serves a real,
-// harmless test ad and is safe to ship in a development build:
-// https://developers.google.com/admob/android/test-ads
-//
-// TODO(publish): swap this for the app's real rewarded ad unit ID from the
-// AdMob console (and drop `isTesting`/`initializeForTesting` below) before
-// the Play Store release build - see the "AdMob integration" step of the
-// publishing guide in GAME_DESIGN.md.
-const REWARDED_AD_UNIT_ID = 'ca-app-pub-3940256099942544/5224354917';
+// The app's real rewarded ad unit IDs, registered under its real AdMob App
+// ID (see AndroidManifest.xml's com.google.android.gms.ads.APPLICATION_ID
+// meta-data) - one per placement, so each shows up as its own line in the
+// AdMob console's reporting (impressions, fill rate, eCPM) instead of
+// being blended into one. See the "Ad integration" sections of
+// GAME_DESIGN.md for what each placement is.
+const REWARDED_AD_UNIT_IDS = {
+  gameTokens: 'ca-app-pub-1765694427918098/5770042821',
+  weaponRefill: 'ca-app-pub-1765694427918098/9897472590',
+} as const;
+
+export type RewardedAdPlacement = keyof typeof REWARDED_AD_UNIT_IDS;
+
+// TODO(publish): flip this to false for the actual Play Store release
+// build. Until then, every request against the real ad unit IDs above is
+// forced to serve a harmless test ad instead of a real one - the
+// supported way to exercise real ad units during development without
+// generating invalid traffic: https://developers.google.com/admob/android/test-ads
+const FORCE_TEST_ADS = true;
 
 // AdMob.initialize() only needs to run once per app session; every call
 // site awaits this same promise instead of re-initializing.
@@ -17,7 +27,7 @@ let initializePromise: Promise<void> | null = null;
 
 function ensureInitialized(): Promise<void> {
   if (!initializePromise) {
-    initializePromise = AdMob.initialize({ initializeForTesting: true }).then(() => undefined);
+    initializePromise = AdMob.initialize({ initializeForTesting: FORCE_TEST_ADS }).then(() => undefined);
   }
   return initializePromise;
 }
@@ -31,11 +41,11 @@ function ensureInitialized(): Promise<void> {
 const WEB_FALLBACK_DELAY_MS = 2000;
 
 /**
- * Shows a rewarded ad and resolves once the outcome is actually known:
- * `true` only if the user genuinely earned the reward (watched to
- * completion), `false` if they closed it early or it failed to load/show,
- * and (outside a native build, where no real ad can run at all) `true`
- * after a short simulated delay.
+ * Shows a rewarded ad for the given placement and resolves once the
+ * outcome is actually known: `true` only if the user genuinely earned the
+ * reward (watched to completion), `false` if they closed it early or it
+ * failed to load/show, and (outside a native build, where no real ad can
+ * run at all) `true` after a short simulated delay.
  *
  * Never resolves optimistically on a timeout or a bare "closed" signal -
  * both call sites (`requestNewGame`'s game-token gate,
@@ -44,7 +54,7 @@ const WEB_FALLBACK_DELAY_MS = 2000;
  * backgrounding or force-quitting mid-ad be used to farm free tokens/ammo.
  * See the "Ad integration" sections of GAME_DESIGN.md.
  */
-export async function showRewardedAd(): Promise<boolean> {
+export async function showRewardedAd(placement: RewardedAdPlacement): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) {
     return new Promise((resolve) => {
       window.setTimeout(() => resolve(true), WEB_FALLBACK_DELAY_MS);
@@ -79,7 +89,7 @@ export async function showRewardedAd(): Promise<boolean> {
     const dismissedHandle = AdMob.addListener(RewardAdPluginEvents.Dismissed, () => settle(false));
     const failedToShowHandle = AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => settle(false));
 
-    AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_UNIT_ID, isTesting: true })
+    AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_UNIT_IDS[placement], isTesting: FORCE_TEST_ADS })
       .then(() => AdMob.showRewardVideoAd())
       .catch(() => settle(false));
   });

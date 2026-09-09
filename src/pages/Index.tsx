@@ -672,7 +672,7 @@ const Index = () => {
     // comment and GAME_DESIGN.md. A player who backs out of the ad (closes
     // it, backgrounds the app, force-quits) just lands back here with the
     // gate still standing and nothing gained.
-    showRewardedAd().then((earnedReward) => {
+    showRewardedAd('gameTokens').then((earnedReward) => {
       setIsWatchingAdForNewGame(false);
 
       if (!earnedReward) {
@@ -800,7 +800,7 @@ const Index = () => {
     // ever applies on showRewardedAd's genuine reward-earned outcome. A
     // decline, an early close, or a failed show leaves the weapon exactly
     // as it was - no charge, no refill, no weapon armed.
-    showRewardedAd().then((earnedReward) => {
+    showRewardedAd('weaponRefill').then((earnedReward) => {
       setProcuringWeapon(null);
 
       if (!earnedReward) {
