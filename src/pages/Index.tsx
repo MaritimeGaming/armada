@@ -204,6 +204,25 @@ function weaponHasStaggeredOutcome(steps: WeaponTravelStep[]): boolean {
   return steps.some((step) => Boolean(step.ignited) || step.audioSequence.includes('sink'));
 }
 
+// Module-level, not component state: Index unmounts when the player
+// navigates away to another route (currently only /privacy, via the
+// Settings menu) and remounts when they come back, which would reset a
+// plain useState back to its initial `true` - re-showing the title screen
+// after a completely unrelated trip to the Privacy Policy page, breaking
+// the "once per app launch" promise below. This survives that remount
+// while still resetting on an actual fresh app launch (a real JS reload),
+// which is what "session" is supposed to mean here.
+let hasShownTitleScreenThisSession = false;
+
+// Test-only: each `it()` calling `render(<App />)` simulates an independent
+// fresh app launch, but this module (and its module-level state above)
+// stays loaded across every render() call within one test file - without a
+// way to reset it, dismissing the title screen in one test would leave it
+// permanently dismissed for every test after it in the same file.
+export function __resetTitleScreenSessionFlagForTests() {
+  hasShownTitleScreenThisSession = false;
+}
+
 const Index = () => {
   useSeoMeta({
     title: 'Armada',
@@ -213,10 +232,15 @@ const Index = () => {
 
   // Shown once per app launch (cold start), never again for the rest of the
   // session -- New Game, the win/lose dialog, etc. all skip straight back to
-  // the board. Game-state loading below isn't gated on this, so the board is
-  // already ready the moment the player taps past the title screen instead
-  // of flashing "Preparing fleets" right after.
-  const [showTitleScreen, setShowTitleScreen] = useState(true);
+  // the board, and so does remounting after a trip to another route (see
+  // hasShownTitleScreenThisSession above). Game-state loading below isn't
+  // gated on this, so the board is already ready the moment the player taps
+  // past the title screen instead of flashing "Preparing fleets" right after.
+  const [showTitleScreen, setShowTitleScreenState] = useState(!hasShownTitleScreenThisSession);
+  const setShowTitleScreen = (value: boolean) => {
+    hasShownTitleScreenThisSession = true;
+    setShowTitleScreenState(value);
+  };
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [activeView, setActiveView] = useState<NavySide>('player');
   // Starts true so the very first render never animates into place. Every

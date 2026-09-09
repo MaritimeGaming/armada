@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
+import { __resetTitleScreenSessionFlagForTests } from '@/pages/Index';
 
 // Regression coverage for a reported bug: on mobile, clicking New Game could
 // leave the swipe carousel between "My Navy" and "Enemy Navy" showing a
@@ -34,6 +35,7 @@ describe('mobile swipe carousel view switching', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    __resetTitleScreenSessionFlagForTests();
     randomSpy = vi.spyOn(Math, 'random');
   });
 
@@ -111,6 +113,7 @@ describe('mobile swipe carousel view switching', () => {
 describe('Privacy Policy navigation', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    __resetTitleScreenSessionFlagForTests();
   });
 
   afterEach(() => {
@@ -138,6 +141,15 @@ describe('Privacy Policy navigation', () => {
     // to - the Back link should be there, and should actually work.
     fireEvent.click(screen.getByText('← Back to Armada'));
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Privacy Policy' })).not.toBeInTheDocument());
+
+    // Regression coverage: navigating to /privacy and back unmounts and
+    // remounts Index (a route change, not just a state toggle), which used
+    // to reset showTitleScreen's plain useState back to its initial `true`
+    // - re-showing the splash after a completely unrelated trip to the
+    // Settings menu, discovered by actually playing the app on a real
+    // device. hasShownTitleScreenThisSession (Index.tsx) fixes this; the
+    // title screen's own Play button must NOT be back on screen here.
+    expect(screen.queryByRole('button', { name: 'Play' })).not.toBeInTheDocument();
   });
 
   // Regression coverage: this page is also linked directly from the Play
