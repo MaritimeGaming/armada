@@ -2,7 +2,7 @@ import { useSeoMeta } from '@unhead/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const EFFECTIVE_DATE = 'September 9, 2026';
-const CONTACT_EMAIL = 'contact@armadagames.tech';
+const CONTACT_EMAIL = 'contact@maritimegaming.com';
 
 // A plain, standalone route (not gated behind showTitleScreen or any other
 // game state) so it's reachable both from a link inside the app's own
@@ -53,7 +53,7 @@ function Privacy() {
         <div className="mt-8 space-y-8 leading-relaxed">
           <section>
             <p>
-              Armada is a naval combat game published by Armada Games ("we", "us"). This policy explains what
+              Armada is a naval combat game published by Maritime Gaming ("we", "us"). This policy explains what
               information the app collects, how it's used, and the choices you have - for both the Android app on
               Google Play and this web version.
             </p>

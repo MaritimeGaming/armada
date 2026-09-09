@@ -132,7 +132,7 @@ describe('Privacy Policy navigation', () => {
     fireEvent.click(await screen.findByText('Privacy Policy'));
 
     expect(await screen.findByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument();
-    expect(screen.getByText('contact@armadagames.tech')).toBeInTheDocument();
+    expect(screen.getByText('contact@maritimegaming.com')).toBeInTheDocument();
 
     // Reached via in-app navigation, so there's somewhere real to go back
     // to - the Back link should be there, and should actually work.
