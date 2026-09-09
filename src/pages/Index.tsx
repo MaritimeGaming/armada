@@ -2242,7 +2242,7 @@ const Index = () => {
     // the row just shows the ratio.
     { label: 'Wins', value: winsLabel ? winsLabel.replace(/^Wins:\s*/, '') : 'No games played yet' },
     {
-      label: 'Current Daily Win Streak',
+      label: 'Daily Win Streak',
       // "(pending today)" only decorates the state that actually needs the
       // player's attention - today's win hasn't landed yet, so this number
       // is still yesterday's. Once it has, the plain number is the whole
@@ -2257,7 +2257,7 @@ const Index = () => {
     { label: 'Quickest Loss', value: sessionStats.quickestLoss === null ? '—' : pluralizeStat(sessionStats.quickestLoss, 'shot') },
     { label: 'Margin of Victory', value: sessionStats.marginOfVictory === null ? '—' : pluralizeStat(sessionStats.marginOfVictory, 'cell') },
     { label: 'Margin of Defeat', value: sessionStats.marginOfDefeat === null ? '—' : pluralizeStat(sessionStats.marginOfDefeat, 'cell') },
-    { label: 'Current Win Streak', value: String(sessionStats.currentWinStreak) },
+    { label: 'Win Streak', value: String(sessionStats.currentWinStreak) },
     { label: 'Best Win Streak', value: String(sessionStats.bestWinStreak) },
     { label: 'Longest Hit Streak (Me)', value: String(sessionStats.longestHitStreakPlayer) },
     { label: 'Longest Hit Streak (Enemy)', value: String(sessionStats.longestHitStreakApp) },

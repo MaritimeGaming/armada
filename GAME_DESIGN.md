@@ -1186,10 +1186,15 @@ pair):
   install that already has those gets them folded into its first
   `SessionStats` blob the first time `loadSessionStats()` runs (`Index.tsx`)
   rather than silently resetting to zero.
-- **Current Daily Win Streak / Best Daily Win Streak** - see "The Daily Win
+- **Daily Win Streak / Best Daily Win Streak** - see "The Daily Win
   Streak" below. Placed right under Wins in the dialog (and, per the
   request that shipped it, ahead of the per-game stats below) since it's
-  meant to be the one players actually watch day to day.
+  meant to be the one players actually watch day to day. The current-value
+  row's label deliberately doesn't say "Current" - "Best" on the row below
+  it already supplies the contrast, and the Victory/Defeat dialog's own
+  callout text (`Daily Win Streak: 4`, `New record! Best Daily Win Streak:
+  5`) never said "Current" either, so the Statistics dialog dropping it
+  too just makes the two consistent with each other.
 - **Quickest Win / Quickest Loss** - fewest turns (any action - a plain
   shot or any weapon, Drone included) the player has ever needed to win, or
   the computer has ever needed to beat the player. Needed a new counter
@@ -1201,7 +1206,7 @@ pair):
   much of the winner's fleet never even took a hit. Margin of Victory reads
   the player's own navy on a win; Margin of Defeat reads the computer's on
   a loss - the same number either way, just whichever side actually won.
-- **Current Win Streak / Best Win Streak** - consecutive wins right up to
+- **Win Streak / Best Win Streak** - consecutive wins right up to
   the most recent game, and the highest that's ever reached. Resets to 0
   the instant a loss happens; the Victory/Defeat dialog calls out either an
   extension, a new best, or the streak breaking (see below). Not to be
