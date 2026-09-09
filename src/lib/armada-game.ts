@@ -112,7 +112,7 @@ export type GameState = {
   appOilDetonationPeak: number;
 };
 
-export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'deflect';
+export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'deflect' | 'camera';
 export type AudioSequence = AudioCue[];
 export type ShipSetOptions = {
   includeSingles: boolean;
@@ -336,6 +336,13 @@ export const AUDIO_FILES: Record<AudioCue, string> = {
   // same suppression would silently swallow a MOAB's immune-ship exposure
   // too if it used the same cue name.
   deflect: `${import.meta.env.BASE_URL}audio/Splash.wav`,
+  // Plays whenever a Drone fires, either side - a shutter click for what a
+  // Drone recon pass actually is (taking a photo of the target cell), not
+  // an impact/deflect cue. See "Silence is reserved for cost-free
+  // background events" under Variable D in GAME_DESIGN.md for why this
+  // doesn't undo that section's reasoning despite the Drone no longer
+  // being literally silent.
+  camera: `${import.meta.env.BASE_URL}audio/Camera.wav`,
 };
 
 export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {

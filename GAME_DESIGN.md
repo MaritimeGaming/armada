@@ -611,6 +611,25 @@ broken?" rather than "the game blocked this on purpose." A Drone reveal
 earns its silence (it's a free look, nothing was actually fired), and so
 does a Mine's own passive per-turn wander (see Turn economy below) landing
 on an immune ship - both are background events, not a turn's chosen action.
+
+**Update: the Drone itself is no longer literally silent, but this doesn't
+undo the reasoning above.** A dedicated `'camera'` audio cue
+(`Camera.wav`, a shutter click) now plays whenever a Drone fires, on
+either side - `playAudioCue('camera')` is called directly from the two
+Drone-fire branches in `Index.tsx` (player and computer), not threaded
+through `AudioSequence`/`resolveTargetingSequence`, since `fireDrone()`
+never touches that pipeline in the first place. What this section
+actually cares about is impact feedback versus cost-free background
+noise, not literal silence versus sound: the shutter click doesn't read as
+"something was hit" the way `'deflect'`/`'explosion'`/`'splash'` do - it's
+diegetic flavor for what a Drone pass *is* (photographing the target
+cell), and the Drone still triggers none of those impact cues, still does
+zero damage, and still costs nothing but the shot itself. A free action
+earning its own sound doesn't contradict "silence is reserved for
+cost-free background events" - it just means that principle was never
+about literal audio output, only about not implying an impact that didn't
+happen.
+
 A real weapon the player (or computer) actually fired - MOAB, a direct Mine
 drop, or a Torpedo/Rocket/Harpoon's launch or a cell it merely passes
 through mid-flight - getting deflected by immunity now plays its own

@@ -305,6 +305,7 @@ const Index = () => {
     explosion: [],
     wingame: [],
     deflect: [],
+    camera: [],
   });
   const [panelWidth, setPanelWidth] = useState(0);
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -1298,6 +1299,7 @@ const Index = () => {
 
           setArmedWeapon(null);
           flashWeaponFiring(setFiringWeaponType, 'drone');
+          playAudioCue('camera');
           setDroneCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(DRONE_COUNT_STORAGE_KEY, String(nextCount));
@@ -1936,6 +1938,7 @@ const Index = () => {
         if (weaponChoice === 'drone') {
           const { navy: updatedPlayer } = fireDrone(currentPlayer, previewIndex);
           window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'drone' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
+          playAudioCue('camera');
 
           const nextState: GameState = finalizeShotState(
             {
