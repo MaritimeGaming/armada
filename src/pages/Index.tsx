@@ -350,6 +350,21 @@ const Index = () => {
     swipeResizeObserverRef.current = observer;
   }, []);
 
+  // Warms the browser's own HTTP cache for every audio cue's file on
+  // mount, well before any of them are ever needed - each of these Audio
+  // elements is discarded immediately after kicking off its own load; it's
+  // never touched again, and playAudioCue (below) always constructs its
+  // own fresh element from AUDIO_FILES[cue] to actually play, unaffected
+  // by whatever this does. This can't fix format/decode latency, only
+  // whether the bytes still need to come over the network at play time.
+  useEffect(() => {
+    Object.values(AUDIO_FILES).forEach((src) => {
+      const warmupAudio = new Audio(src);
+      warmupAudio.preload = 'auto';
+      warmupAudio.load();
+    });
+  }, []);
+
   useEffect(() => {
     const storedState = window.localStorage.getItem(STORAGE_KEY);
 
@@ -1295,11 +1310,15 @@ const Index = () => {
         }
 
         if (armedWeapon === 'drone') {
+          // Fired before anything else in this branch, including fireDrone()
+          // itself - see the audio-prewarming effect near audioRef's
+          // declaration for why this alone doesn't fully close the gap
+          // between this call and audible sound.
+          playAudioCue('camera');
           const { navy: updatedEnemy } = fireDrone(currentEnemy, releaseIndex);
 
           setArmedWeapon(null);
           flashWeaponFiring(setFiringWeaponType, 'drone');
-          playAudioCue('camera');
           setDroneCount((current) => {
             const nextCount = current - 1;
             window.localStorage.setItem(DRONE_COUNT_STORAGE_KEY, String(nextCount));
@@ -1936,9 +1955,9 @@ const Index = () => {
         }
 
         if (weaponChoice === 'drone') {
+          playAudioCue('camera');
           const { navy: updatedPlayer } = fireDrone(currentPlayer, previewIndex);
           window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'drone' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
-          playAudioCue('camera');
 
           const nextState: GameState = finalizeShotState(
             {

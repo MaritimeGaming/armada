@@ -630,6 +630,30 @@ cost-free background events" - it just means that principle was never
 about literal audio output, only about not implying an impact that didn't
 happen.
 
+**Getting the timing right took two passes beyond the cue itself.** The
+first version of `Camera.wav` had roughly 150ms of near-total silence
+before its actual click transient, plus another ~280ms of dead air after -
+trimmed down to the real sound (a 1ms-resolution amplitude scan, cutting a
+small pre-roll/tail around the first/last above-threshold sample) once
+that became the obvious explanation for "the sound feels like it's
+trailing the action." That closed most of the gap but not all of it: a
+fresh `new Audio(url)` still has to fetch the file over the network before
+`.play()` can produce anything, and the very first time any cue's file is
+requested, that fetch is real, measurable latency stacked on top of
+whatever the file itself contains. A `useEffect` on mount now warms every
+`AUDIO_FILES` entry into the browser's own HTTP cache ahead of time (each
+warmup `Audio` element is discarded right after starting its own load -
+`playAudioCue` always constructs its own fresh element to actually play,
+untouched by this), and `playAudioCue('camera')` in both Drone-fire
+branches was moved to the very first statement in each - before even
+`fireDrone()` itself - so the call happens as early as the surrounding
+turn logic allows. (An earlier attempt at the caching half of this fetched
+each file into a blob: URL and played from that instead of
+`AUDIO_FILES[cue]` directly - reverted after it broke playback outright
+with a `NotSupportedError` in testing, apparently a MIME-type mismatch on
+the blob. Worth remembering if this gets revisited: prefer warming the
+browser's own cache over substituting the playback source.)
+
 A real weapon the player (or computer) actually fired - MOAB, a direct Mine
 drop, or a Torpedo/Rocket/Harpoon's launch or a cell it merely passes
 through mid-flight - getting deflected by immunity now plays its own
