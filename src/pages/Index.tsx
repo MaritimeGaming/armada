@@ -90,23 +90,26 @@ const MOAB_COUNT_STORAGE_KEY = 'armada:moab-count';
 // refill amount below - see the "no progression" philosophy in
 // GAME_DESIGN.md, weapon charges are a standing inventory, not a per-round
 // resource, so this only ever applies once, before anything is persisted.
-const MOAB_STARTING_COUNT = 2;
+// 5 (not the refill amount's 3) so a brand-new player gets roughly 3 games
+// of room before ever needing an ad, matching the New Game token gate's
+// own GAME_TOKENS_STARTING_COUNT reasoning below.
+const MOAB_STARTING_COUNT = 5;
 // How many charges a "Procuring Weapons" refill grants once the player runs out.
 const MOAB_REFILL_COUNT = 3;
 const MINE_COUNT_STORAGE_KEY = 'armada:mine-count';
-const MINE_STARTING_COUNT = 2;
+const MINE_STARTING_COUNT = 5;
 const MINE_REFILL_COUNT = 3;
 const TORPEDO_COUNT_STORAGE_KEY = 'armada:torpedo-count';
-const TORPEDO_STARTING_COUNT = 2;
+const TORPEDO_STARTING_COUNT = 5;
 const TORPEDO_REFILL_COUNT = 3;
 const ROCKET_COUNT_STORAGE_KEY = 'armada:rocket-count';
-const ROCKET_STARTING_COUNT = 2;
+const ROCKET_STARTING_COUNT = 5;
 const ROCKET_REFILL_COUNT = 3;
 const HARPOON_COUNT_STORAGE_KEY = 'armada:harpoon-count';
-const HARPOON_STARTING_COUNT = 2;
+const HARPOON_STARTING_COUNT = 5;
 const HARPOON_REFILL_COUNT = 3;
 const DRONE_COUNT_STORAGE_KEY = 'armada:drone-count';
-const DRONE_STARTING_COUNT = 2;
+const DRONE_STARTING_COUNT = 5;
 const DRONE_REFILL_COUNT = 3;
 // How long each traveled cell (beyond the launch cell) stays lit with the
 // targeting highlight before it resolves and the weapon moves on. Shared by

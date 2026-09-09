@@ -246,8 +246,9 @@ tuning either mechanic, since they're designed to interact.
   reprocessed. Replaces the player's regular shot for the turn (see Turn
   economy below). Weapon charges are a standing inventory, not part of a
   round: `moabCount` lives in its own `localStorage` key (`Index.tsx`),
-  separate from `GameState`, starting at `MOAB_STARTING_COUNT` (2) the very
-  first time someone plays. Firing decrements it by one, and it is
+  separate from `GameState`, starting at `MOAB_STARTING_COUNT` (5 - see the
+  New Game token gate below for the matching "~3 games of room" reasoning)
+  the very first time someone plays. Firing decrements it by one, and it is
   deliberately untouched by New Game or the ship-set toggle — the only way
   it goes up is the refill flow below. Sound is always a double
   "explosion" cue with a brief pause between them (distinct from the oil
