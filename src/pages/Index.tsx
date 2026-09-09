@@ -2765,7 +2765,10 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
       </span>
       {icon}
       {label}
-      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950 px-1 text-[9px] font-bold leading-none ring-1 ring-white/10">
+      {/* -ml-1 pulls this in past the button's own gap-1.5 so it sits
+          right against the label's last letter; -top-1.5 lifts it above
+          the text baseline, superscript-style. */}
+      <span className="relative -top-1.5 -ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950 px-1 text-[9px] font-bold leading-none ring-1 ring-white/10">
         {count}
       </span>
     </Button>
