@@ -286,3 +286,66 @@ describe('Sound Effects setting', () => {
     expect(FakeAudio.instances.length).toBe(0);
   });
 });
+
+// Regression coverage for a reported bug: toggling Singles while at 0 game
+// tokens correctly opened the New Game ad-confirmation dialog, but
+// shipSetOptions itself was already persisted and applied (handleSinglesToggle
+// used to do this directly, before requestNewGame even ran) by the time that
+// dialog appeared. Declining left the setting - and the Ship Legend, which
+// reads shipSetOptions - saying the new value while the game still on screen
+// (the previous game, built with the old value) never adopted it: the grids
+// would show no E/H/L after enabling Singles and declining, but the legend
+// would list them anyway, and the game could never finish since it kept
+// waiting for ships that were never placed. handleNewGame (Index.tsx) now
+// commits shipSetOptions itself, only once a game genuinely starts.
+describe('Singles toggle vs. the New Game ad gate', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    __resetTitleScreenSessionFlagForTests();
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  function openSettingsMenu() {
+    const settingsButton = screen.getAllByLabelText('Open settings')[0];
+    // Radix's DropdownMenuTrigger opens on pointerdown, gated on
+    // `event.button === 0 && event.ctrlKey === false` - fireEvent's default
+    // PointerEvent leaves ctrlKey undefined, which fails that check unless
+    // it's set explicitly.
+    fireEvent.pointerDown(settingsButton, { button: 0, ctrlKey: false });
+  }
+
+  it('leaves the persisted Singles setting unchanged if a required ad is declined', async () => {
+    // Forces the very first game (created on mount) to immediately need an
+    // ad for the *next* one, same as a returning player who already spent
+    // their tokens in an earlier session.
+    window.localStorage.setItem('armada:game-tokens', '0');
+    render(<App />);
+    dismissTitleScreen();
+
+    const baselineOptions = window.localStorage.getItem('armada:ship-set-options');
+    expect(JSON.parse(baselineOptions ?? '{}').includeSingles).toBe(true);
+
+    openSettingsMenu();
+    const singlesItem = await screen.findByRole('menuitemcheckbox', { name: 'Singles (E H L)' });
+    expect(singlesItem).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(singlesItem);
+
+    // Toggling with no tokens left opens the ad-confirmation dialog instead
+    // of starting the new game outright.
+    const noButton = await screen.findByRole('button', { name: 'No' });
+    fireEvent.click(noButton);
+
+    // Declining must leave the persisted setting exactly as it was - not
+    // flipped to includeSingles: false while the old game stays on screen.
+    expect(window.localStorage.getItem('armada:ship-set-options')).toBe(baselineOptions);
+
+    openSettingsMenu();
+    expect(await screen.findByRole('menuitemcheckbox', { name: 'Singles (E H L)' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+});

@@ -1388,6 +1388,24 @@ if there's no existing `gameState` at all to fall back to (see below),
 `requestNewGame()` skips the dialog entirely and starts for free, since
 declining there would have nothing to decline back to.
 
+**"Whatever was on screen before" has to include `shipSetOptions`
+itself, not just `gameState`.** A real bug this shipped with initially:
+`handleSinglesToggle` used to persist and apply the new `shipSetOptions`
+immediately, before `requestNewGame` even ran - so declining the ad left
+the setting (and the Ship Legend, which reads `shipSetOptions` directly)
+saying the new value while the game still on screen was built with the
+old one. Concretely: disable Singles, then re-enable it and decline a
+required ad, and the grids would show no E/H/L while the legend listed
+them anyway - a game that could never finish, since it kept waiting for
+ships that were never actually placed. `handleNewGame` now commits
+`shipSetOptions` itself (persists it, then calls `setShipSetOptions`),
+only at the moment a game is actually created with it; every call site
+(`handleSinglesToggle` included) just passes its desired `nextOptions`
+through and lets that one place decide when it's real. Since every other
+call site already passes its *current* `shipSetOptions` as `nextOptions`
+anyway, this is a no-op change for all of them - only the Singles-toggle
+path (the only one that ever proposes a *different* value) was affected.
+
 **`showRewardedAd` (`src/lib/ads.ts`).** On a native build this is a real
 AdMob rewarded ad via `@capacitor-community/admob`: it initializes the SDK
 once per app session, loads the ad, shows it, and resolves `true`/`false`

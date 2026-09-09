@@ -652,6 +652,15 @@ const Index = () => {
   };
 
   const handleNewGame = (nextOptions: ShipSetOptions = shipSetOptions) => {
+      // Committing shipSetOptions here, rather than wherever a caller first
+      // decided on nextOptions (see handleSinglesToggle), is what keeps a
+      // declined New Game ad from leaving the setting changed under a game
+      // that never actually adopted it - the Ship Legend (and everything
+      // else reading shipSetOptions) only ever moves in lockstep with the
+      // game actually on screen, never ahead of it.
+      window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
+      setShipSetOptions(nextOptions);
+
       const nextState = createGameState(nextOptions);
       appPreviewIndexRef.current = null;
       userPreviewIndexRef.current = null;
@@ -759,15 +768,25 @@ const Index = () => {
   // dismiss it. No charge, no ad, no new game - whatever was on screen
   // before (the just-concluded game behind Victory/Defeat's dialog, or the
   // current game if this came from Settings > New Game or the Singles
-  // toggle) is still exactly there.
+  // toggle) is still exactly there. Critically, shipSetOptions itself is
+  // still exactly what that on-screen game was actually built with too -
+  // pendingNewGameOptions holds the requested change until handleNewGame
+  // actually commits it, so declining here can never leave the Singles
+  // setting saying one thing (and the Ship Legend agreeing with it) while
+  // the grids on screen still show the other - a real bug this exists to
+  // prevent, not just a hypothetical one.
   const cancelNewGameAdFlow = () => {
     setPendingNewGameOptions(null);
   };
 
   const handleSinglesToggle = (includeSingles: boolean) => {
+    // Deliberately doesn't touch shipSetOptions/localStorage itself - see
+    // handleNewGame's own comment. Passing nextOptions through
+    // requestNewGame means the setting only actually takes effect (and the
+    // Settings menu's own checkbox only actually flips) once a game with
+    // it genuinely starts; declining a required ad leaves both the
+    // current game and the setting exactly as they were.
     const nextOptions: ShipSetOptions = { includeSingles };
-    window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
-    setShipSetOptions(nextOptions);
     requestNewGame(nextOptions);
   };
 
