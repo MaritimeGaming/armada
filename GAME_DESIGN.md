@@ -1051,11 +1051,21 @@ from anywhere on the board, so none of them ever restricts
 Intended monetization model: players start with a handful of charges per
 weapon, with refills obtainable via rewarded ads (Google Play style: watch
 a 30-second ad for +3 charges of that type, once connected to a real ad
-SDK). Tapping a weapon icon that's at 0 offers that flow directly, rather
-than routing through a separate inventory screen — for the MOAB this is
-currently stubbed as a 2-second "Procuring Weapons" overlay that then
-refills to `MOAB_REFILL_COUNT` (3) and arms the weapon, with no real ad or
-network call yet. This fits the "no progression" philosophy above because
+SDK). Tapping a weapon icon that's at 0 opens a Yes/No confirmation
+("Out of MOAB - Watch an ad to restock MOAB?") rather than launching the
+ad immediately - unlike the New Game token gate below, running dry
+mid-game isn't a break point the player is already expecting, so they get
+an explicit opt-out instead of an unannounced ad. **No** just dismisses the
+dialog with no charge, no ad, and no weapon armed - the player is back
+exactly where they were and can pick something else. **Watch Ad**
+(`pendingWeaponProcurement` / `confirmWeaponProcurement` /
+`beginWeaponProcurement` in `Index.tsx`) hands off to the same kind of
+stub the New Game gate uses - currently a 2-second "Procuring Weapons"
+overlay that then refills to that weapon's `*_REFILL_COUNT` (3) and *arms*
+it, with no real ad or network call yet. Arming, not firing: the player
+still has to target a cell to take the shot, and can still tap the weapon
+again first to disarm it and do something else instead, exactly as if it
+had never run out. This fits the "no progression" philosophy above because
 weapons are consumable tools that add variety to a round, not permanent
 unlocks that change the game's baseline difficulty.
 
@@ -1310,3 +1320,45 @@ the player watches tick toward zero. This is also why the Victory/Defeat
 dialog's copy ("Click OK to play again") never changes based on token
 state: branching the copy would itself be a tell, undermining the same
 goal.
+
+## Ad integration: the weapon-refill confirmation gate
+
+The other of the two Google-Play-style ad integration points (see
+Variable D above for the mechanics of the refill itself) - this one gates
+arming a *weapon*, not starting a *game*, and unlike that flow it always
+asks first. Tapping a weapon icon at 0 sets `pendingWeaponProcurement` to
+that weapon type, which opens a plain confirmation `Dialog` (`Index.tsx`)
+with Yes/No rather than launching the ad-stub outright:
+
+- **No** (`cancelWeaponProcurement`, also the dialog's own X/Escape/outside
+  click via `onOpenChange`) just clears `pendingWeaponProcurement`. No
+  charge, no ad, no weapon armed - identical to the state before the
+  weapon was tapped.
+- **Watch Ad** (`confirmWeaponProcurement`) hands off to
+  `beginWeaponProcurement`, which is the pre-existing "Procuring Weapons"
+  stub unchanged: a timed overlay standing in for the real ad SDK call,
+  which on completion refills that weapon's standing inventory to its
+  `*_REFILL_COUNT` (3) and arms it.
+
+**Why a confirmation here but not on the New Game gate.** The New Game
+gate (above) deliberately launches its ad with no prompt, because a
+game-over screen is already a natural break point the player expects to
+tap through - asking first there would just be an extra tap in front of an
+inevitable "yes." Running out of a weapon mid-game is different: it
+happens in the middle of an otherwise free action (the player was about to
+take a shot), so forcing an ad on them without warning would be a much
+more jarring interruption than the moment justifies. Asking first, and
+naming the ad explicitly ("Watch an ad to restock ___?"), keeps this one
+squarely opt-in.
+
+**Same exploit-proofing invariant as the New Game gate.** Crediting still
+only ever happens from the stub's own completion callback, never a
+timeout or a "closed" signal - see the mid-ad exit discussion above, which
+applies here unchanged. Declining (No) never starts the stub at all, so
+there's nothing to exit out of in that path either.
+
+**Arming, not firing.** Confirming the ad refills and arms the weapon; it
+does not take the shot. The player still targets a cell to fire, and can
+still tap the weapon again to disarm it and choose a different action
+instead - the post-refill state is indistinguishable from a weapon that
+simply had charges to begin with.

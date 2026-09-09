@@ -320,6 +320,14 @@ const Index = () => {
   const [appArmedWeapon, setAppArmedWeapon] = useState<WeaponType | null>(null);
   const [appFiringWeaponType, setAppFiringWeaponType] = useState<WeaponType | null>(null);
   const [procuringWeapon, setProcuringWeapon] = useState<WeaponType | null>(null);
+  // The weapon awaiting the player's Yes/No confirmation before
+  // beginWeaponProcurement launches the ad-stub below. Unlike the New Game
+  // gate (requestNewGame), running dry on a weapon mid-game isn't a natural
+  // break point the player is already expecting, so here we ask first
+  // instead of launching the ad immediately - see GAME_DESIGN.md. Declining
+  // just closes this dialog: no charge, no ad, and the weapon stays
+  // unarmed, same as before the click.
+  const [pendingWeaponProcurement, setPendingWeaponProcurement] = useState<WeaponType | null>(null);
   const [infoDialog, setInfoDialog] = useState<'ships' | 'weapons' | 'statistics' | null>(null);
 
   // A callback ref, not an effect: the swipe viewport only exists once
@@ -675,6 +683,17 @@ const Index = () => {
       return;
     }
 
+    // Ask before spending an ad on this - see pendingWeaponProcurement.
+    setPendingWeaponProcurement(weapon);
+  };
+
+  // Actually launches the ad-stub, once the player has said Yes to
+  // pendingWeaponProcurement's confirmation dialog. On completion, this
+  // refills and arms the weapon - it does NOT fire it. The player still has
+  // to target a cell to actually take the shot, and can still click the
+  // weapon again first to disarm it and choose something else instead,
+  // exactly as with a weapon that was never out of stock.
+  const beginWeaponProcurement = (weapon: WeaponType) => {
     const storageKeys: Record<WeaponType, string> = {
       moab: MOAB_COUNT_STORAGE_KEY,
       mine: MINE_COUNT_STORAGE_KEY,
@@ -712,6 +731,27 @@ const Index = () => {
       setCount(refillCount);
       setArmedWeapon(weapon);
     }, 2000);
+  };
+
+  // Yes on the confirmation dialog: dismiss it and hand off to the ad-stub
+  // above. Reward crediting still only ever happens from that stub's own
+  // completion callback (never a timeout/close signal), so backgrounding
+  // or exiting mid-"ad" can't be used to farm a free refill here either -
+  // same invariant as requestNewGame's game-token gate.
+  const confirmWeaponProcurement = () => {
+    const weapon = pendingWeaponProcurement;
+    if (!weapon) {
+      return;
+    }
+    setPendingWeaponProcurement(null);
+    beginWeaponProcurement(weapon);
+  };
+
+  // No (or the dialog's own close button/Escape/outside click): just
+  // dismiss it. No charge, no ad, no weapon armed - the player is back
+  // exactly where they were before clicking the empty weapon.
+  const cancelWeaponProcurement = () => {
+    setPendingWeaponProcurement(null);
   };
 
   const concludeGame = (winner: Winner, state: GameState) => {
@@ -2341,6 +2381,32 @@ const Index = () => {
               </li>
             ))}
           </ul>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingWeaponProcurement !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            cancelWeaponProcurement();
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>Out of {pendingWeaponProcurement ? WEAPON_DISPLAY[pendingWeaponProcurement].label : 'Ammo'}</DialogTitle>
+            <DialogDescription className="text-slate-300">
+              Watch an ad to restock {pendingWeaponProcurement ? WEAPON_DISPLAY[pendingWeaponProcurement].label : 'this weapon'}?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={cancelWeaponProcurement} className="w-full sm:w-auto">
+              No
+            </Button>
+            <Button type="button" onClick={confirmWeaponProcurement} className="w-full sm:w-auto">
+              Watch Ad
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
