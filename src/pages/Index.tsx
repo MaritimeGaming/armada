@@ -58,6 +58,7 @@ import {
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
 import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, SessionStats, ShipDefinition, ShipSetOptions, ShotOutcome, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
+import { showRewardedAd } from '@/lib/ads';
 import { TitleScreen } from '@/components/TitleScreen';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -128,10 +129,6 @@ const GAME_TOKENS_STARTING_COUNT = 3;
 // How many tokens one rewarded-ad view grants - enough for roughly one ad
 // every other game once the standing balance runs dry.
 const GAME_TOKENS_AD_REWARD = 2;
-// How long the stubbed rewarded-ad flow "plays" before crediting - see
-// requestNewGame's own doc comment for the real integration point this
-// stands in for.
-const NEW_GAME_AD_DELAY_MS = 2000;
 // Lifetime records, not part of GameState: survive New Game and browser
 // restarts. Superseded by SESSION_STATS_STORAGE_KEY below, kept only as a
 // one-time migration source (see loadSessionStats) for anyone who already
@@ -613,8 +610,8 @@ const Index = () => {
    * New Game, toggling Singles, and the very first game a fresh install
    * ever creates (see the game-state-loading effect below). Charges one
    * game token and starts immediately if any are available; otherwise
-   * shows a rewarded ad first (currently stubbed - see below) and only
-   * starts once that's done.
+   * shows a rewarded ad first (see showRewardedAd) and only starts once
+   * that's done.
    *
    * Deliberately spends the token on every single one of those, with no
    * exception for the first-ever game: a free unlimited first game (or a
@@ -632,25 +629,25 @@ const Index = () => {
 
     setIsWatchingAdForNewGame(true);
 
-    // Stub for the real rewarded-ad SDK call. The one rule that has to
-    // survive that swap: tokens are only ever credited from the ad's own
-    // genuine reward-earned callback, never optimistically (a timeout, the
-    // ad view merely closing, a promise that resolves regardless of
-    // outcome) - otherwise a player could back out of a real ad mid-flight
-    // (close the app, kill it, background it past whatever timeout) and
-    // still walk away credited. Backgrounding or killing the app during a
-    // real rewarded ad never fires that callback, so nothing is credited
-    // and the gate is still standing the next time they try - see
-    // GAME_DESIGN.md.
-    window.setTimeout(() => {
+    // Tokens are only ever credited from showRewardedAd's genuine
+    // reward-earned outcome, never optimistically - see its own doc
+    // comment and GAME_DESIGN.md. A player who backs out of the ad (closes
+    // it, backgrounds the app, force-quits) just lands back here with the
+    // gate still standing and nothing gained.
+    showRewardedAd().then((earnedReward) => {
       setIsWatchingAdForNewGame(false);
+
+      if (!earnedReward) {
+        return;
+      }
+
       setGameTokens((current) => {
         const nextTokenCount = current + GAME_TOKENS_AD_REWARD - 1;
         window.localStorage.setItem(GAME_TOKENS_STORAGE_KEY, String(nextTokenCount));
         return nextTokenCount;
       });
       handleNewGame(nextOptions);
-    }, NEW_GAME_AD_DELAY_MS);
+    });
   };
 
   const handleSinglesToggle = (includeSingles: boolean) => {
@@ -741,19 +738,25 @@ const Index = () => {
 
     setProcuringWeapon(weapon);
 
-    window.setTimeout(() => {
+    // Same invariant as requestNewGame's game-token gate: the refill only
+    // ever applies on showRewardedAd's genuine reward-earned outcome. A
+    // decline, an early close, or a failed show leaves the weapon exactly
+    // as it was - no charge, no refill, no weapon armed.
+    showRewardedAd().then((earnedReward) => {
       setProcuringWeapon(null);
+
+      if (!earnedReward) {
+        return;
+      }
+
       window.localStorage.setItem(storageKey, String(refillCount));
       setCount(refillCount);
       setArmedWeapon(weapon);
-    }, 2000);
+    });
   };
 
-  // Yes on the confirmation dialog: dismiss it and hand off to the ad-stub
-  // above. Reward crediting still only ever happens from that stub's own
-  // completion callback (never a timeout/close signal), so backgrounding
-  // or exiting mid-"ad" can't be used to farm a free refill here either -
-  // same invariant as requestNewGame's game-token gate.
+  // Yes on the confirmation dialog: dismiss it and hand off to
+  // beginWeaponProcurement above.
   const confirmWeaponProcurement = () => {
     const weapon = pendingWeaponProcurement;
     if (!weapon) {

@@ -1106,23 +1106,30 @@ Torpedo, Rocket, or Harpoon needed this in the end: all three can launch
 from anywhere on the board, so none of them ever restricts
 `isCellTargetable`.
 
-Intended monetization model: players start with a handful of charges per
-weapon, with refills obtainable via rewarded ads (Google Play style: watch
-a 30-second ad for +3 charges of that type, once connected to a real ad
-SDK). Tapping a weapon icon that's at 0 opens a Yes/No confirmation
-("Out of MOAB - Watch an ad to procure 3 more?", the count pulled from
-`WEAPON_REFILL_COUNTS` so the copy can't drift from the actual refill
-amount) rather than launching the
-ad immediately - unlike the New Game token gate below, running dry
-mid-game isn't a break point the player is already expecting, so they get
-an explicit opt-out instead of an unannounced ad. **No** just dismisses the
+Monetization model: players start with a handful of charges per weapon,
+with refills obtainable via rewarded ads (Google Play style: watch a
+30-second ad for +3 charges of that type). Tapping a weapon icon that's at
+0 opens a Yes/No confirmation ("Out of MOAB - Watch an ad to procure 3
+more?", the count pulled from `WEAPON_REFILL_COUNTS` so the copy can't
+drift from the actual refill amount) rather than launching the ad
+immediately - unlike the New Game token gate below, running dry mid-game
+isn't a break point the player is already expecting, so they get an
+explicit opt-out instead of an unannounced ad. **No** just dismisses the
 dialog with no charge, no ad, and no weapon armed - the player is back
 exactly where they were and can pick something else. **Watch Ad**
 (`pendingWeaponProcurement` / `confirmWeaponProcurement` /
-`beginWeaponProcurement` in `Index.tsx`) hands off to the same kind of
-stub the New Game gate uses - currently a 2-second "Procuring Weapons"
-overlay that then refills to that weapon's `*_REFILL_COUNT` (3) and *arms*
-it, with no real ad or network call yet. Arming, not firing: the player
+`beginWeaponProcurement` in `Index.tsx`) hands off to `showRewardedAd`
+(`src/lib/ads.ts`) - a real AdMob rewarded ad via
+`@capacitor-community/admob` on a native build, refilling to that weapon's
+`*_REFILL_COUNT` (3) and *arming* it only once the ad's own reward-earned
+event fires; a decline, an early close, or a failed show leaves the weapon
+untouched. Outside a native build (the desktop dev server, GitHub Pages,
+the test suite - none of which can run a real AdMob ad at all) it falls
+back to a short simulated delay that always "succeeds", preserving the
+same experience local development always had. Still using Google's public
+test ad unit ID pending registering the app in the AdMob console and
+swapping in the real one before the Play Store release build - see
+`showRewardedAd`'s own doc comment. Arming, not firing: the player
 still has to target a cell to take the shot, and can still tap the weapon
 again first to disarm it and do something else instead, exactly as if it
 had never run out. This fits the "no progression" philosophy above because
@@ -1328,31 +1335,49 @@ game** a fresh install creates, or for switching the Singles setting
 (which silently starts a new game under the hood) - a free unlimited
 first game, or a free replay by toggling Singles back and forth, would
 just be a hole in the same economy this exists to enforce. Once the
-balance hits 0, the next new-game request shows a rewarded ad (currently
-stubbed the same way the weapon refill is - a timed overlay standing in
-for the real SDK call) before proceeding; a successful view credits
-`GAME_TOKENS_AD_REWARD` (2), then the usual one is spent immediately,
-netting +1 - enough for one more free game before the gate comes up again.
-`requestNewGame()` in `Index.tsx` is the single function every one of
-these moments (Victory/Defeat's OK, its X, Settings -> New Game, the
-Singles toggle, and the game-state-loading effect's own fallback when
-there's no save to restore) calls through, rather than duplicating the
-charge-or-gate logic at each site.
+balance hits 0, the next new-game request shows a rewarded ad via
+`showRewardedAd` (`src/lib/ads.ts`, see below) before proceeding; a
+successful view credits `GAME_TOKENS_AD_REWARD` (2), then the usual one is
+spent immediately, netting +1 - enough for one more free game before the
+gate comes up again. `requestNewGame()` in `Index.tsx` is the single
+function every one of these moments (Victory/Defeat's OK, its X, Settings
+-> New Game, the Singles toggle, and the game-state-loading effect's own
+fallback when there's no save to restore) calls through, rather than
+duplicating the charge-or-gate logic at each site.
+
+**`showRewardedAd` (`src/lib/ads.ts`).** On a native build this is a real
+AdMob rewarded ad via `@capacitor-community/admob`: it initializes the SDK
+once per app session, loads the ad, shows it, and resolves `true`/`false`
+by listening for the ad's own `Rewarded`, `Dismissed`, and `FailedToShow`
+events directly (rather than trusting `showRewardVideoAd()`'s own returned
+promise, whose resolve/reject behavior on a plain dismiss-without-reward
+isn't documented) - whichever of those three fires first wins, and the
+others are torn down. Outside a native build - the desktop dev server,
+the GitHub Pages web build, the vitest suite, none of which can run a real
+AdMob ad at all - it instead resolves `true` after a short simulated
+delay, which is what both this gate and the weapon-refill gate below ran
+on exclusively before the real integration existed. Still wired to
+Google's public *test* ad unit ID and AdMob App ID (also in
+`AndroidManifest.xml`'s `com.google.android.gms.ads.APPLICATION_ID`
+meta-data, required by the SDK at startup even before any ad shows) -
+swapping both for the real ones from the AdMob console, once the app is
+registered there, is the one remaining step before a release build.
 
 **Exiting mid-ad can't be used to skip paying for it.** Tokens are only
-ever credited from the stub's completion callback - never optimistically,
-never on a timer that fires regardless of outcome. The real SDK integration
-has to preserve that specifically: a rewarded ad's own "user earned reward"
-callback only fires on genuine completion, and it's tied to the ad's own
-native activity - backgrounding the app pauses it, force-quitting kills it,
-and neither ever fires that callback. A player who exits mid-ad comes back
-to exactly where they left off: 0 tokens, the gate still standing, nothing
-gained and nothing lost. (A related, pre-existing rough edge worth naming
-here rather than a hole this feature introduces: `gameOver` itself isn't
-persisted, only `gameState` is, so exiting after a win but before tapping
-OK loses the Victory dialog on relaunch too - harmless, since the win and
-its stats were already recorded the instant it happened, well before any
-token check runs, but worth fixing separately someday.)
+ever credited from `showRewardedAd`'s genuine reward-earned outcome -
+never optimistically, never on a timer that fires regardless of outcome.
+A rewarded ad's own "user earned reward" event only fires on genuine
+completion, and it's tied to the ad's own native activity - backgrounding
+the app pauses it, force-quitting kills it, and neither ever fires that
+event, so `showRewardedAd`'s promise simply never resolves true. A player
+who exits mid-ad comes back to exactly where they left off: 0 tokens, the
+gate still standing, nothing gained and nothing lost. (A related,
+pre-existing rough edge worth naming here rather than a hole this feature
+introduces: `gameOver` itself isn't persisted, only `gameState` is, so
+exiting after a win but before tapping OK loses the Victory dialog on
+relaunch too - harmless, since the win and its stats were already recorded
+the instant it happened, well before any token check runs, but worth
+fixing separately someday.)
 
 **Why the ad overlay can never collide with the title screen.** The
 game-state-loading effect's own fallback (no valid save to restore) also
@@ -1364,9 +1389,12 @@ already spent their tokens in a previous session. The ad overlay is plain
 JSX in the component's main return, and `showTitleScreen` short-circuits
 that whole return before ever reaching it - so the overlay simply cannot
 render while the splash is up, regardless of which of these six call sites
-triggered it. The stubbed ad's own timer keeps running in the background
-regardless of what's on screen, so in practice it usually finishes while
-the player is still looking at the splash, and tapping PLAY drops straight
+triggered it. On the native build the real ad's own full-screen activity
+takes over the display the moment it's ready regardless of what's
+rendered underneath, so this overlay is really only ever seen for the
+brief moment the ad is loading (or, on the non-native fallback, for its
+whole simulated duration) - in practice this usually finishes while the
+player is still looking at the splash, and tapping PLAY drops straight
 into the game with no wait at all - the same "board's already ready"
 optimization the loading effect already used for the restore path,
 extended for free to the rarer ad-gated fallback case.
@@ -1388,16 +1416,16 @@ Variable D above for the mechanics of the refill itself) - this one gates
 arming a *weapon*, not starting a *game*, and unlike that flow it always
 asks first. Tapping a weapon icon at 0 sets `pendingWeaponProcurement` to
 that weapon type, which opens a plain confirmation `Dialog` (`Index.tsx`)
-with Yes/No rather than launching the ad-stub outright:
+with Yes/No rather than launching the ad outright:
 
 - **No** (`cancelWeaponProcurement`, also the dialog's own X/Escape/outside
   click via `onOpenChange`) just clears `pendingWeaponProcurement`. No
   charge, no ad, no weapon armed - identical to the state before the
   weapon was tapped.
 - **Watch Ad** (`confirmWeaponProcurement`) hands off to
-  `beginWeaponProcurement`, which is the pre-existing "Procuring Weapons"
-  stub unchanged: a timed overlay standing in for the real ad SDK call,
-  which on completion refills that weapon's standing inventory to its
+  `beginWeaponProcurement`, which calls the same `showRewardedAd` (see the
+  New Game token gate above) the other ad integration point uses, and on a
+  genuine reward refills that weapon's standing inventory to its
   `*_REFILL_COUNT` (3) and arms it.
 
 **Why a confirmation here but not on the New Game gate.** The New Game
@@ -1412,10 +1440,10 @@ naming the ad explicitly ("Watch an ad to procure 3 more?"), keeps this one
 squarely opt-in.
 
 **Same exploit-proofing invariant as the New Game gate.** Crediting still
-only ever happens from the stub's own completion callback, never a
-timeout or a "closed" signal - see the mid-ad exit discussion above, which
-applies here unchanged. Declining (No) never starts the stub at all, so
-there's nothing to exit out of in that path either.
+only ever happens from `showRewardedAd`'s own reward-earned outcome, never
+a timeout or a "closed" signal - see the mid-ad exit discussion above,
+which applies here unchanged. Declining (No) never calls `showRewardedAd`
+at all, so there's nothing to exit out of in that path either.
 
 **Arming, not firing.** Confirming the ad refills and arms the weapon; it
 does not take the shot. The player still targets a cell to fire, and can

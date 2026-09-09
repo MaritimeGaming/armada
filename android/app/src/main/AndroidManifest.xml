@@ -7,6 +7,15 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <!-- Google Mobile Ads SDK requires this even before any ad unit is
+             shown - the app crashes on startup without it. This is
+             Google's official test App ID (safe to ship in development);
+             swap for the app's real AdMob App ID before the Play Store
+             release build, alongside the ad unit ID in src/lib/ads.ts. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
