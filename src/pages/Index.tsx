@@ -267,6 +267,17 @@ const Index = () => {
   // Mirrors procuringWeapon below, for the same stubbed-ad reason - see
   // requestNewGame.
   const [isWatchingAdForNewGame, setIsWatchingAdForNewGame] = useState(false);
+  // The ShipSetOptions to start once the player says Yes to the New Game
+  // ad-confirmation dialog (null when that dialog is closed) - mirrors
+  // pendingWeaponProcurement below. Google Play's Better Ads policy only
+  // exempts a rewarded ad from its full-screen-interstitial rules (timing,
+  // closeability) when the user has *explicitly opted in* to that specific
+  // ad - "it happens at a natural break point" (game over, a menu action)
+  // is a separate, narrower exemption that only ever covers the
+  // 15-second-closeable rule for an ordinary interstitial, not a rewarded
+  // one, and it doesn't require consent at all. See requestNewGame and the
+  // "Ad integration" sections of GAME_DESIGN.md.
+  const [pendingNewGameOptions, setPendingNewGameOptions] = useState<ShipSetOptions | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(loadSessionStats);
   // The Victory/Defeat dialog's own "what changed this game" callout (see
   // concludeGame) - a plain-English line per record set or streak
@@ -609,9 +620,12 @@ const Index = () => {
    * through - finishing a game (Victory/Defeat's OK or its X), Settings ->
    * New Game, toggling Singles, and the very first game a fresh install
    * ever creates (see the game-state-loading effect below). Charges one
-   * game token and starts immediately if any are available; otherwise
-   * shows a rewarded ad first (see showRewardedAd) and only starts once
-   * that's done.
+   * game token and starts immediately if any are available; otherwise asks
+   * before spending an ad on it (see pendingNewGameOptions) - a rewarded ad
+   * is only exempt from Google Play's Better Ads timing/closeability rules
+   * when the player has explicitly opted in to that specific ad, and none
+   * of these call sites are themselves that opt-in ("start a new game" and
+   * "watch an ad" are different asks).
    *
    * Deliberately spends the token on every single one of those, with no
    * exception for the first-ever game: a free unlimited first game (or a
@@ -627,6 +641,30 @@ const Index = () => {
       return;
     }
 
+    // Bootstrapping with no existing game to fall back to can't be gated
+    // behind a dialog the player might decline - declining would leave
+    // nothing on screen to fall back to (see the "Preparing fleets" empty
+    // state below), since there was never a previous game here to begin
+    // with. A fresh install always starts stocked with tokens, so the only
+    // way to actually reach this is a returning player whose save didn't
+    // survive a GAME_STATE_VERSION bump while they happened to be at 0
+    // tokens already (see the game-state-loading effect below) - rare
+    // enough, and unblockable enough, that this one case starts for free
+    // rather than asking.
+    if (!gameState) {
+      handleNewGame(nextOptions);
+      return;
+    }
+
+    // Ask before spending an ad on it - see pendingNewGameOptions.
+    setPendingNewGameOptions(nextOptions);
+  };
+
+  // Actually launches the ad-stub, once the player has said Yes to
+  // pendingNewGameOptions' confirmation dialog. Mirrors
+  // beginWeaponProcurement's own structure and invariants exactly - see its
+  // doc comment.
+  const beginNewGameAdFlow = (nextOptions: ShipSetOptions) => {
     setIsWatchingAdForNewGame(true);
 
     // Tokens are only ever credited from showRewardedAd's genuine
@@ -648,6 +686,26 @@ const Index = () => {
       });
       handleNewGame(nextOptions);
     });
+  };
+
+  // Yes on the confirmation dialog: dismiss it and hand off to the ad-stub
+  // above.
+  const confirmNewGameAdFlow = () => {
+    const nextOptions = pendingNewGameOptions;
+    if (!nextOptions) {
+      return;
+    }
+    setPendingNewGameOptions(null);
+    beginNewGameAdFlow(nextOptions);
+  };
+
+  // No (or the dialog's own close button/Escape/outside click): just
+  // dismiss it. No charge, no ad, no new game - whatever was on screen
+  // before (the just-concluded game behind Victory/Defeat's dialog, or the
+  // current game if this came from Settings > New Game or the Singles
+  // toggle) is still exactly there.
+  const cancelNewGameAdFlow = () => {
+    setPendingNewGameOptions(null);
   };
 
   const handleSinglesToggle = (includeSingles: boolean) => {
@@ -2455,8 +2513,33 @@ const Index = () => {
 
       {/* Can never render while showTitleScreen is true - that branch
           returns above before reaching this JSX at all - so this never
-          collides with the splash even when requestNewGame's own ad-gate
-          fires from the very first game a fresh install creates. */}
+          collides with the splash, and (per requestNewGame's own
+          !gameState bypass) can never be the very first thing a fresh
+          install or an invalidated-save reload ever shows either. */}
+      <Dialog
+        open={pendingNewGameOptions !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            cancelNewGameAdFlow();
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>New Game</DialogTitle>
+            <DialogDescription className="text-slate-300">Watch an ad to start a new game?</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={cancelNewGameAdFlow} className="w-full sm:w-auto">
+              No
+            </Button>
+            <Button type="button" onClick={confirmNewGameAdFlow} className="w-full sm:w-auto">
+              Watch Ad
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {isWatchingAdForNewGame ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">

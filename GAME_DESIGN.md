@@ -1335,15 +1335,56 @@ game** a fresh install creates, or for switching the Singles setting
 (which silently starts a new game under the hood) - a free unlimited
 first game, or a free replay by toggling Singles back and forth, would
 just be a hole in the same economy this exists to enforce. Once the
-balance hits 0, the next new-game request shows a rewarded ad via
-`showRewardedAd` (`src/lib/ads.ts`, see below) before proceeding; a
-successful view credits `GAME_TOKENS_AD_REWARD` (2), then the usual one is
-spent immediately, netting +1 - enough for one more free game before the
-gate comes up again. `requestNewGame()` in `Index.tsx` is the single
-function every one of these moments (Victory/Defeat's OK, its X, Settings
--> New Game, the Singles toggle, and the game-state-loading effect's own
-fallback when there's no save to restore) calls through, rather than
-duplicating the charge-or-gate logic at each site.
+balance hits 0, the next new-game request opens a Yes/No confirmation
+dialog ("Watch an ad to start a new game?") rather than launching the ad
+outright - see "Explicit opt-in is required, not just good timing" below
+for why. Saying yes shows a rewarded ad via `showRewardedAd`
+(`src/lib/ads.ts`, see below); a successful view credits
+`GAME_TOKENS_AD_REWARD` (2), then the usual one is spent immediately,
+netting +1 - enough for one more free game before the gate comes up
+again. `requestNewGame()` in `Index.tsx` is the single function every one
+of these moments (Victory/Defeat's OK, its X, Settings -> New Game, the
+Singles toggle, and the game-state-loading effect's own fallback when
+there's no save to restore) calls through, rather than duplicating the
+charge-or-gate logic at each site; `pendingNewGameOptions` /
+`confirmNewGameAdFlow` / `cancelNewGameAdFlow` / `beginNewGameAdFlow`
+mirror the weapon-refill gate's own
+`pendingWeaponProcurement`/`confirmWeaponProcurement`/`cancelWeaponProcurement`/`beginWeaponProcurement`
+structure exactly (see the next section).
+
+**Explicit opt-in is required, not just good timing.** Google Play's
+Better Ads Experiences policy exempts a rewarded ad from its full-screen-
+interstitial rules (no showing up unexpectedly, none at the start of a
+content segment, none before a splash screen, all closeable within 15
+seconds) entirely - but *only* when the user has explicitly opted in to
+that specific ad. An earlier version of this feature launched the ad
+straight from `requestNewGame()` with no confirmation step at all,
+reasoning that a game-over screen is already a natural transition point.
+That reasoning doesn't actually hold: the policy has a *second*, much
+narrower allowance - "full screen interstitials that do not interrupt
+users in their actions (for example, after the score screen in a game
+app) may persist more than 15 seconds" - and it only waives the
+15-second-closeable requirement for an *ordinary* interstitial, not the
+opt-in requirement, and it doesn't apply to a *rewarded* ad format at all
+(which `showRewardedAd` always uses, and which is structurally never
+closeable early - that's the whole mechanism). Tapping "New Game," OK, or
+the Singles toggle means "start a game," not "I agree to watch an ad,"
+so none of those taps were ever a valid opt-in on their own - only an
+explicit dialog naming the ad is. This is exactly why the weapon-refill
+gate (next section) was compliant from the start and this one wasn't:
+it already asked.
+
+**Declining costs nothing except staying put.** Saying no
+(`cancelNewGameAdFlow`) just closes the dialog - no charge, no ad, and
+whatever was on screen before is still exactly there: the just-concluded
+game behind Victory/Defeat's still-open dialog (it only closes once
+`handleNewGame` actually runs, so a decline there just leaves the player
+looking at Victory/Defeat again, free to tap OK and reconsider), or the
+current in-progress game for the Settings menu and Singles-toggle call
+sites. The one exception is the game-state-loading effect's own fallback:
+if there's no existing `gameState` at all to fall back to (see below),
+`requestNewGame()` skips the dialog entirely and starts for free, since
+declining there would have nothing to decline back to.
 
 **`showRewardedAd` (`src/lib/ads.ts`).** On a native build this is a real
 AdMob rewarded ad via `@capacitor-community/admob`: it initializes the SDK
@@ -1379,44 +1420,53 @@ relaunch too - harmless, since the win and its stats were already recorded
 the instant it happened, well before any token check runs, but worth
 fixing separately someday.)
 
-**Why the ad overlay can never collide with the title screen.** The
-game-state-loading effect's own fallback (no valid save to restore) also
-routes through `requestNewGame()` now, so a returning player whose save
-didn't survive a `GAME_STATE_VERSION` bump - a real, fairly common
-occurrence in a project that's changed `GameState`'s shape several times
-already - pays the same toll as everyone else, ad included if they'd
-already spent their tokens in a previous session. The ad overlay is plain
-JSX in the component's main return, and `showTitleScreen` short-circuits
-that whole return before ever reaching it - so the overlay simply cannot
-render while the splash is up, regardless of which of these six call sites
-triggered it. On the native build the real ad's own full-screen activity
-takes over the display the moment it's ready regardless of what's
-rendered underneath, so this overlay is really only ever seen for the
-brief moment the ad is loading (or, on the non-native fallback, for its
-whole simulated duration) - in practice this usually finishes while the
-player is still looking at the splash, and tapping PLAY drops straight
-into the game with no wait at all - the same "board's already ready"
-optimization the loading effect already used for the restore path,
-extended for free to the rarer ad-gated fallback case.
+**Why the ad (and its confirmation dialog) can never collide with the
+title screen.** The game-state-loading effect's own fallback (no valid
+save to restore) also routes through `requestNewGame()`, so a returning
+player whose save didn't survive a `GAME_STATE_VERSION` bump - a real,
+fairly common occurrence in a project that's changed `GameState`'s shape
+several times already - pays the same toll as everyone else, confirmation
+dialog and all, if they'd already spent their tokens in a previous
+session (unless there's no existing game to fall back to at all - see
+"Declining costs nothing" above). Both the confirmation dialog and the
+"Loading Ad" overlay are plain JSX in the component's main return, and
+`showTitleScreen` short-circuits that whole return before ever reaching
+either - so neither can render while the splash is up, and critically,
+since nothing on the native build ever calls `AdMob.showRewardVideoAd()`
+until the player has actually tapped "Watch Ad" inside that dialog, the
+real ad's own full-screen native activity can't appear before the splash
+either. That ordering is the actual fix for what was, before the
+confirmation dialog existed, a genuine Better Ads violation: the old,
+un-gated `requestNewGame()` call in this same fallback could launch a
+real rewarded ad the instant the app mounted, with zero user interaction,
+which is about as direct a match as possible for "full screen video
+interstitial ads that appear before an app's loading screen (splash
+screen) are not allowed."
 
-**No visible token counter, anywhere - deliberate.** Unlike weapon
-charges (which show a count on their own button), the number of game
-tokens left is never surfaced to the player. The ad that eventually shows
-up is meant to read as an unannounced, natural transition - the same way
-freemium games generally handle interstitials - rather than a countdown
-the player watches tick toward zero. This is also why the Victory/Defeat
-dialog's copy ("Click OK to play again") never changes based on token
-state: branching the copy would itself be a tell, undermining the same
-goal.
+**No visible token counter - the confirmation dialog is announcement
+enough.** Unlike weapon charges (which show a count on their own
+button), the number of game tokens left is never surfaced to the player,
+and the Victory/Defeat dialog's copy ("Click OK to play again") never
+branches on token state - both would be a running tally of "ads left
+before the next one," which the confirmation dialog itself doesn't need
+to compete with: it only ever appears at the actual moment an ad would
+run, names the trade plainly ("Watch an ad to start a new game?"), and
+says nothing before or after that moment. The natural-cadence goal this
+was originally written to protect was about avoiding a *countdown*, not
+about avoiding *any* mention of ads at all - which turned out not to be
+optional anyway (see "Explicit opt-in is required" above).
 
 ## Ad integration: the weapon-refill confirmation gate
 
 The other of the two Google-Play-style ad integration points (see
 Variable D above for the mechanics of the refill itself) - this one gates
-arming a *weapon*, not starting a *game*, and unlike that flow it always
-asks first. Tapping a weapon icon at 0 sets `pendingWeaponProcurement` to
-that weapon type, which opens a plain confirmation `Dialog` (`Index.tsx`)
-with Yes/No rather than launching the ad outright:
+arming a *weapon*, not starting a *game*, and it was the first of the two
+to ask before launching an ad - the New Game gate initially didn't (see
+"Explicit opt-in is required" above), which is exactly the gap that made
+this gate the model to copy rather than a genuine design difference
+between the two. Tapping a weapon icon at 0 sets `pendingWeaponProcurement`
+to that weapon type, which opens a plain confirmation `Dialog`
+(`Index.tsx`) with Yes/No rather than launching the ad outright:
 
 - **No** (`cancelWeaponProcurement`, also the dialog's own X/Escape/outside
   click via `onOpenChange`) just clears `pendingWeaponProcurement`. No
@@ -1428,16 +1478,15 @@ with Yes/No rather than launching the ad outright:
   genuine reward refills that weapon's standing inventory to its
   `*_REFILL_COUNT` (3) and arms it.
 
-**Why a confirmation here but not on the New Game gate.** The New Game
-gate (above) deliberately launches its ad with no prompt, because a
-game-over screen is already a natural break point the player expects to
-tap through - asking first there would just be an extra tap in front of an
-inevitable "yes." Running out of a weapon mid-game is different: it
-happens in the middle of an otherwise free action (the player was about to
-take a shot), so forcing an ad on them without warning would be a much
-more jarring interruption than the moment justifies. Asking first, and
-naming the ad explicitly ("Watch an ad to procure 3 more?"), keeps this one
-squarely opt-in.
+**Both gates ask now, for the same underlying reason, worded to fit each
+moment.** Here, running out of a weapon mid-game interrupts an otherwise
+free action (the player was about to take a shot), so the dialog names
+the specific thing being traded ("Watch an ad to procure 3 more?"). The
+New Game gate's dialog is worded more generically ("Watch an ad to start
+a new game?") since there's no per-weapon specificity to name - but both
+exist for the identical reason: Google Play's rewarded-ad exemption
+requires an explicit opt-in to that specific ad, and neither "tap a weapon
+icon" nor "tap New Game" was ever that opt-in on its own.
 
 **Same exploit-proofing invariant as the New Game gate.** Crediting still
 only ever happens from `showRewardedAd`'s own reward-earned outcome, never
