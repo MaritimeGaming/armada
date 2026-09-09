@@ -2241,7 +2241,17 @@ const Index = () => {
     // would repeat the row's own "Wins" label here - strip that prefix so
     // the row just shows the ratio.
     { label: 'Wins', value: winsLabel ? winsLabel.replace(/^Wins:\s*/, '') : 'No games played yet' },
-    { label: 'Current Daily Win Streak', value: String(sessionStats.currentDailyWinStreak) },
+    {
+      label: 'Current Daily Win Streak',
+      // "(pending today)" only decorates the state that actually needs the
+      // player's attention - today's win hasn't landed yet, so this number
+      // is still yesterday's. Once it has, the plain number is the whole
+      // story - no need to mark that state too.
+      value:
+        sessionStats.lastWinDate === getLocalDateString(new Date())
+          ? String(sessionStats.currentDailyWinStreak)
+          : `${sessionStats.currentDailyWinStreak} (pending today)`,
+    },
     { label: 'Best Daily Win Streak', value: String(sessionStats.bestDailyWinStreak) },
     { label: 'Quickest Win', value: sessionStats.quickestWin === null ? '—' : pluralizeStat(sessionStats.quickestWin, 'shot') },
     { label: 'Quickest Loss', value: sessionStats.quickestLoss === null ? '—' : pluralizeStat(sessionStats.quickestLoss, 'shot') },

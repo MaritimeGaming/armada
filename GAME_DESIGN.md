@@ -1249,6 +1249,18 @@ function itself stays pure and testable against arbitrary dates, the same
 reasoning `ShotOutcome` follows for keeping game-rule functions storage-
 and clock-agnostic.
 
+**"(pending today)" in the Statistics dialog.** A bare "Current Daily Win
+Streak: 4" doesn't say whether today's win already landed in that number
+or still needs to happen - a real ambiguity, since the streak only
+updates lazily on a win (see above), not at midnight. The Statistics
+row (`statisticsRows` in `Index.tsx`) resolves this itself, comparing
+`sessionStats.lastWinDate` against `getLocalDateString(new Date())`: if
+they don't match, the value reads `4 (pending today)` instead of the
+bare number. Deliberately asymmetric rather than marking both states -
+once today's win has landed, the plain number is the whole story, so
+only the state that actually calls for the player to do something (win
+today to keep the streak alive) gets decorated.
+
 **The Hit Streak** is the one genuinely non-obvious stat, because "did this
 turn count as a hit" isn't as simple as "did a ship take damage" once
 Drone and Mine are in the mix. `ShotOutcome` (`armada-game.ts`) is the
