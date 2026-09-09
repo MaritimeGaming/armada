@@ -1239,5 +1239,74 @@ records a single game manages to break. The dialog's close button needed
 its own fix alongside this: `Dialog` here is fully externally controlled
 via `gameOver.isOpen` with no `onOpenChange`, so the built-in X (from
 `DialogContent`'s own `DialogPrimitive.Close`) had nothing wired to call
-and did nothing when clicked - it's now wired to `handleNewGame()`, same as
-OK, since there's no sensible "cancel" once a game has already concluded.
+and did nothing when clicked - it's now wired to the same handler OK uses
+(`requestNewGame()` as of the ad-gate below; originally `handleNewGame()`
+directly, before that existed), since there's no sensible "cancel" once a
+game has already concluded.
+
+## Ad integration: the New Game token gate
+
+The second of two Google-Play-style ad integration points (the first
+being the per-weapon "Procuring Weapons" refill under Variable D above) -
+this one gates starting a *game*, not arming a *weapon*. A standing
+`gameTokens` inventory (`armada:game-tokens`, alongside the weapon counts -
+same survives-New-Game-and-Reset-Statistics treatment) starts a fresh
+install at `GAME_TOKENS_STARTING_COUNT` (3 - deliberately more than one, so
+a new player gets a little room to get hooked before ever seeing an ad).
+Every new game spends exactly one, with **no exception for the first
+game** a fresh install creates, or for switching the Singles setting
+(which silently starts a new game under the hood) - a free unlimited
+first game, or a free replay by toggling Singles back and forth, would
+just be a hole in the same economy this exists to enforce. Once the
+balance hits 0, the next new-game request shows a rewarded ad (currently
+stubbed the same way the weapon refill is - a timed overlay standing in
+for the real SDK call) before proceeding; a successful view credits
+`GAME_TOKENS_AD_REWARD` (2), then the usual one is spent immediately,
+netting +1 - enough for one more free game before the gate comes up again.
+`requestNewGame()` in `Index.tsx` is the single function every one of
+these moments (Victory/Defeat's OK, its X, Settings -> New Game, the
+Singles toggle, and the game-state-loading effect's own fallback when
+there's no save to restore) calls through, rather than duplicating the
+charge-or-gate logic at each site.
+
+**Exiting mid-ad can't be used to skip paying for it.** Tokens are only
+ever credited from the stub's completion callback - never optimistically,
+never on a timer that fires regardless of outcome. The real SDK integration
+has to preserve that specifically: a rewarded ad's own "user earned reward"
+callback only fires on genuine completion, and it's tied to the ad's own
+native activity - backgrounding the app pauses it, force-quitting kills it,
+and neither ever fires that callback. A player who exits mid-ad comes back
+to exactly where they left off: 0 tokens, the gate still standing, nothing
+gained and nothing lost. (A related, pre-existing rough edge worth naming
+here rather than a hole this feature introduces: `gameOver` itself isn't
+persisted, only `gameState` is, so exiting after a win but before tapping
+OK loses the Victory dialog on relaunch too - harmless, since the win and
+its stats were already recorded the instant it happened, well before any
+token check runs, but worth fixing separately someday.)
+
+**Why the ad overlay can never collide with the title screen.** The
+game-state-loading effect's own fallback (no valid save to restore) also
+routes through `requestNewGame()` now, so a returning player whose save
+didn't survive a `GAME_STATE_VERSION` bump - a real, fairly common
+occurrence in a project that's changed `GameState`'s shape several times
+already - pays the same toll as everyone else, ad included if they'd
+already spent their tokens in a previous session. The ad overlay is plain
+JSX in the component's main return, and `showTitleScreen` short-circuits
+that whole return before ever reaching it - so the overlay simply cannot
+render while the splash is up, regardless of which of these six call sites
+triggered it. The stubbed ad's own timer keeps running in the background
+regardless of what's on screen, so in practice it usually finishes while
+the player is still looking at the splash, and tapping PLAY drops straight
+into the game with no wait at all - the same "board's already ready"
+optimization the loading effect already used for the restore path,
+extended for free to the rarer ad-gated fallback case.
+
+**No visible token counter, anywhere - deliberate.** Unlike weapon
+charges (which show a count on their own button), the number of game
+tokens left is never surfaced to the player. The ad that eventually shows
+up is meant to read as an unannounced, natural transition - the same way
+freemium games generally handle interstitials - rather than a countdown
+the player watches tick toward zero. This is also why the Victory/Defeat
+dialog's copy ("Click OK to play again") never changes based on token
+state: branching the copy would itself be a tell, undermining the same
+goal.

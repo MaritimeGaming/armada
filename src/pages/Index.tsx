@@ -114,6 +114,24 @@ const WEAPON_TRAVEL_STEP_DELAY_MS = 500;
 // with no further animation) how long its use-count dot keeps flashing
 // after firing before settling to solid red.
 const WEAPON_FIRE_ANIMATION_MS = 380;
+// A standing inventory, not part of GameState - survives New Game and
+// browser restarts, same as the weapon counts above, and likewise
+// untouched by Reset Statistics (that only resets SessionStats). Spent one
+// at a time on every new game (see requestNewGame) - the very first game a
+// brand-new install ever creates included, no special-casing - and
+// refilled by watching a rewarded ad once the balance reaches 0.
+const GAME_TOKENS_STORAGE_KEY = 'armada:game-tokens';
+// Deliberately more than one "free" game before a new install can hit the
+// ad gate at all, so a first-time player gets a little room to get hooked
+// before that ever comes up.
+const GAME_TOKENS_STARTING_COUNT = 3;
+// How many tokens one rewarded-ad view grants - enough for roughly one ad
+// every other game once the standing balance runs dry.
+const GAME_TOKENS_AD_REWARD = 2;
+// How long the stubbed rewarded-ad flow "plays" before crediting - see
+// requestNewGame's own doc comment for the real integration point this
+// stands in for.
+const NEW_GAME_AD_DELAY_MS = 2000;
 // Lifetime records, not part of GameState: survive New Game and browser
 // restarts. Superseded by SESSION_STATS_STORAGE_KEY below, kept only as a
 // one-time migration source (see loadSessionStats) for anyone who already
@@ -246,6 +264,12 @@ const Index = () => {
   const [rocketCount, setRocketCount] = useState<number>(() => readStoredCount(ROCKET_COUNT_STORAGE_KEY, ROCKET_STARTING_COUNT));
   const [harpoonCount, setHarpoonCount] = useState<number>(() => readStoredCount(HARPOON_COUNT_STORAGE_KEY, HARPOON_STARTING_COUNT));
   const [droneCount, setDroneCount] = useState<number>(() => readStoredCount(DRONE_COUNT_STORAGE_KEY, DRONE_STARTING_COUNT));
+  // Mirrors the weapon counts above - a standing inventory of its own, not
+  // part of GameState, not reset by Reset Statistics. See requestNewGame.
+  const [gameTokens, setGameTokens] = useState<number>(() => readStoredCount(GAME_TOKENS_STORAGE_KEY, GAME_TOKENS_STARTING_COUNT));
+  // Mirrors procuringWeapon below, for the same stubbed-ad reason - see
+  // requestNewGame.
+  const [isWatchingAdForNewGame, setIsWatchingAdForNewGame] = useState(false);
   const [sessionStats, setSessionStats] = useState<SessionStats>(loadSessionStats);
   // The Victory/Defeat dialog's own "what changed this game" callout (see
   // concludeGame) - a plain-English line per record set or streak
@@ -350,11 +374,22 @@ const Index = () => {
       }
     }
 
-    const nextState = createGameState(shipSetOptions);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-    setGameState(nextState);
-    setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
-    setInstantViewSwitch(true);
+    // No valid save to restore - a genuinely fresh install, or one whose
+    // save didn't survive a GAME_STATE_VERSION bump - so this is a new
+    // game start like any other and goes through the same token gate
+    // (see requestNewGame). If that means a rewarded ad has to play (only
+    // possible for a *returning* player who already spent their standing
+    // tokens before this happened - a fresh install always starts well
+    // stocked), its own overlay only ever renders once the title screen
+    // is dismissed (see the early `if (showTitleScreen)` return below), so
+    // it can't collide with the splash - it simply finishes in the
+    // background, often before the player has even tapped past it.
+    requestNewGame();
+    // requestNewGame is deliberately omitted below - it's recreated every
+    // render (it closes over gameTokens/shipSetOptions), so depending on
+    // it would re-run this effect on every render instead of only when
+    // shipSetOptions actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipSetOptions]);
 
   const activeIndex = navyViewOrder.indexOf(activeView);
@@ -540,11 +575,57 @@ const Index = () => {
     setGameOverRecordUpdates([]);
   };
 
+  /**
+   * The single gate every "start a new game" moment in the app routes
+   * through - finishing a game (Victory/Defeat's OK or its X), Settings ->
+   * New Game, toggling Singles, and the very first game a fresh install
+   * ever creates (see the game-state-loading effect below). Charges one
+   * game token and starts immediately if any are available; otherwise
+   * shows a rewarded ad first (currently stubbed - see below) and only
+   * starts once that's done.
+   *
+   * Deliberately spends the token on every single one of those, with no
+   * exception for the first-ever game: a free unlimited first game (or a
+   * free replay via toggling Singles back and forth) would just be a hole
+   * in the same economy this exists to enforce.
+   */
+  const requestNewGame = (nextOptions: ShipSetOptions = shipSetOptions) => {
+    if (gameTokens > 0) {
+      const nextTokenCount = gameTokens - 1;
+      window.localStorage.setItem(GAME_TOKENS_STORAGE_KEY, String(nextTokenCount));
+      setGameTokens(nextTokenCount);
+      handleNewGame(nextOptions);
+      return;
+    }
+
+    setIsWatchingAdForNewGame(true);
+
+    // Stub for the real rewarded-ad SDK call. The one rule that has to
+    // survive that swap: tokens are only ever credited from the ad's own
+    // genuine reward-earned callback, never optimistically (a timeout, the
+    // ad view merely closing, a promise that resolves regardless of
+    // outcome) - otherwise a player could back out of a real ad mid-flight
+    // (close the app, kill it, background it past whatever timeout) and
+    // still walk away credited. Backgrounding or killing the app during a
+    // real rewarded ad never fires that callback, so nothing is credited
+    // and the gate is still standing the next time they try - see
+    // GAME_DESIGN.md.
+    window.setTimeout(() => {
+      setIsWatchingAdForNewGame(false);
+      setGameTokens((current) => {
+        const nextTokenCount = current + GAME_TOKENS_AD_REWARD - 1;
+        window.localStorage.setItem(GAME_TOKENS_STORAGE_KEY, String(nextTokenCount));
+        return nextTokenCount;
+      });
+      handleNewGame(nextOptions);
+    }, NEW_GAME_AD_DELAY_MS);
+  };
+
   const handleSinglesToggle = (includeSingles: boolean) => {
     const nextOptions: ShipSetOptions = { includeSingles };
     window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
     setShipSetOptions(nextOptions);
-    handleNewGame(nextOptions);
+    requestNewGame(nextOptions);
   };
 
   const handleResetStatistics = () => {
@@ -1962,7 +2043,7 @@ const Index = () => {
       navy={navy}
       shipSetOptions={shipSetOptions}
       onSinglesToggle={handleSinglesToggle}
-      onNewGame={() => handleNewGame()}
+      onNewGame={() => requestNewGame()}
       onShowStatistics={() => setInfoDialog('statistics')}
       onShowAboutShips={() => setInfoDialog('ships')}
       onShowAboutWeapons={() => setInfoDialog('weapons')}
@@ -2147,7 +2228,7 @@ const Index = () => {
         // close button had nothing wired to actually call).
         onOpenChange={(open) => {
           if (!open) {
-            handleNewGame();
+            requestNewGame();
           }
         }}
       >
@@ -2186,7 +2267,7 @@ const Index = () => {
             </div>
           ) : null}
           <DialogFooter>
-            <Button type="button" onClick={() => handleNewGame()} className="w-full sm:w-auto">
+            <Button type="button" onClick={() => requestNewGame()} className="w-full sm:w-auto">
               OK
             </Button>
           </DialogFooter>
@@ -2267,6 +2348,18 @@ const Index = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
             Procuring Weapons
+          </div>
+        </div>
+      ) : null}
+
+      {/* Can never render while showTitleScreen is true - that branch
+          returns above before reaching this JSX at all - so this never
+          collides with the splash even when requestNewGame's own ad-gate
+          fires from the very first game a fresh install creates. */}
+      {isWatchingAdForNewGame ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
+            Loading Ad
           </div>
         </div>
       ) : null}
