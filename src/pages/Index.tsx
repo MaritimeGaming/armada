@@ -2763,14 +2763,14 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
           );
         })}
       </span>
-      {/* Icon stacked directly above its count (nudged up a touch to
-          balance against the label beside it) instead of inline with the
-          label and count in one row - a single row was tight enough on a
-          narrow phone that the count could bleed into the next button's
-          icon. */}
-      <span className="flex flex-col items-center">
-        <span className="-translate-y-0.5">{icon}</span>
-        <span className="mt-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
+      {/* The count rides as a badge on the icon's own top-right corner
+          instead of taking a row (or a whole extra line) of its own - icon
+          and label share one baseline, and the badge stays inside the
+          icon's own footprint rather than competing with the neighboring
+          button for width. */}
+      <span className="relative inline-flex shrink-0">
+        {icon}
+        <span className="absolute -top-1.5 -right-1.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-slate-950 px-1 text-[8px] font-bold leading-none ring-1 ring-white/10">
           {count}
         </span>
       </span>
