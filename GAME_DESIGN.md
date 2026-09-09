@@ -1303,9 +1303,9 @@ new values are persisted. Nothing is shown for a value that didn't move
 (an ordinary win that doesn't beat any personal best just shows the Wins
 line and, if applicable, the plain win-streak count).
 
-This list has no upper bound - a single game can set all nine records at
-once (a first-ever win sets nearly all of them simultaneously, having
-nothing yet on the books to compare against) - which fixed a real bug on
+This list has no upper bound - a single game can set several records at
+once (see "The first game reports no records" below for the one case that
+used to mean *nearly all of them, every time*) - which fixed a real bug on
 mobile: the dialog used to be vertically centered on a fixed point
 (`top-[75%]`/`translate-y-[-50%]`), so a long enough list grew the dialog
 downward past the bottom of the screen with no way to reach it - `position:
@@ -1323,6 +1323,46 @@ and did nothing when clicked - it's now wired to the same handler OK uses
 (`requestNewGame()` as of the ad-gate below; originally `handleNewGame()`
 directly, before that existed), since there's no sensible "cancel" once a
 game has already concluded.
+
+**The first game reports no records, other than Daily Win Streak.**
+`DEFAULT_SESSION_STATS` starts every best-so-far field at `null`/0, so a
+brand-new player's very first game trivially "beat" every single one of
+them - a first win used to set 5-6 records simultaneously (win streak,
+daily win streak, quickest win, margin of victory, both hit-streak
+fields, sometimes both oil-detonation fields too), and a first loss
+almost as many. That's not really information: a "record" only means
+something set against a real prior attempt, and celebrating one that
+just means "this is the first number we've ever seen" on literally every
+fresh install cheapens what `New record!` means for every genuine one
+after it. `computeSessionStatsUpdate` (`armada-game.ts`) still computes
+and persists the game's real numbers as that player's actual baseline -
+game two's comparisons are against real history, not some separately
+invented starting value - it just doesn't add anything to `updates` (the
+callout list) when `previous.gamesPlayed` is 0.
+
+Daily Win Streak is the deliberate exception: unlike the others, it's a
+retention hook ("come back tomorrow"), not a personal-best brag, so
+staying silent about it until day two would mean a brand-new player gets
+no signal on day one that the mechanic even exists - exactly the wrong
+game to skip announcing it in. It still reports its real value on a
+first-game win, just without the `New record!` framing (for the same
+reason nothing else gets that framing yet): `Daily Win Streak: 1`, not
+`New record! Best Daily Win Streak: 1`. Plain Win Streak (wins in a row,
+regardless of day) doesn't get the same exception - it's a personal-best
+stat like Margin of Victory, not a retention one, so it stays silent on
+a first-game win same as the rest.
+
+Nothing about the Victory/Defeat dialog itself needed to change for this
+- the callout box only renders when `winsLabel || gameOverRecordUpdates.
+length > 0`, and `winsLabel` (the running "Wins: 1/1 (100%)" tally) is
+already true the instant `gamesPlayed > 0`, so the dialog still shows
+that even with an empty records list; it just won't be buried under a
+wall of trivial "records" on a brand-new install's first game. A curious
+first-time player can still see every tracked category (with its real,
+just-set value) any time by opening Settings > Statistics - that's
+arguably a better home for "here's everything we track" than forcing it
+into the one moment the player is least equipped to judge whether a
+number is actually good.
 
 ## Ad integration: the New Game token gate
 

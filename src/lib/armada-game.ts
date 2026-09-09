@@ -1455,6 +1455,18 @@ function daysBetweenLocalDates(from: string, to: string): number {
  * records set by this finished game, or any streak that was extended or
  * broken"). Pure and storage-agnostic - Index.tsx owns reading/writing
  * localStorage around this call.
+ *
+ * The very first game a player ever finishes trivially "beats" every
+ * best-so-far field (they all start at `null`/0), so `next` still records
+ * its real numbers as the actual baseline future games compare against,
+ * but `updates` stays empty for it - a "record" set against nothing isn't
+ * really information, and celebrating one on every install's very first
+ * game would cheapen what the "New record!" callout means for every real
+ * one after it. Daily Win Streak is the one deliberate exception: unlike
+ * the others, it's a retention hook ("come back tomorrow"), not a
+ * personal-best brag, so it still reports its actual value on a first-game
+ * win (just without "New record!" framing, for the same reason nothing
+ * else gets that framing yet) rather than staying silent until day two.
  */
 export function computeSessionStatsUpdate(
   previous: SessionStats,
@@ -1462,6 +1474,7 @@ export function computeSessionStatsUpdate(
   winner: Winner,
   todayLocalDate: string,
 ): { next: SessionStats; updates: string[] } {
+  const isFirstGame = previous.gamesPlayed === 0;
   const updates: string[] = [];
   const next: SessionStats = { ...previous, gamesPlayed: previous.gamesPlayed + 1 };
 
@@ -1471,7 +1484,9 @@ export function computeSessionStatsUpdate(
 
     if (next.currentWinStreak > previous.bestWinStreak) {
       next.bestWinStreak = next.currentWinStreak;
-      updates.push(`New record! Best Win Streak: ${next.bestWinStreak}`);
+      if (!isFirstGame) {
+        updates.push(`New record! Best Win Streak: ${next.bestWinStreak}`);
+      }
     } else {
       updates.push(`Win Streak: ${next.currentWinStreak}`);
     }
@@ -1487,7 +1502,13 @@ export function computeSessionStatsUpdate(
 
       if (next.currentDailyWinStreak > previous.bestDailyWinStreak) {
         next.bestDailyWinStreak = next.currentDailyWinStreak;
-        updates.push(`New record! Best Daily Win Streak: ${next.bestDailyWinStreak}`);
+        // The one stat that still reports on a first game - see this
+        // function's own doc comment for why.
+        updates.push(
+          isFirstGame
+            ? `Daily Win Streak: ${next.currentDailyWinStreak}`
+            : `New record! Best Daily Win Streak: ${next.bestDailyWinStreak}`,
+        );
       } else {
         updates.push(`Daily Win Streak: ${next.currentDailyWinStreak}`);
       }
@@ -1495,13 +1516,17 @@ export function computeSessionStatsUpdate(
 
     if (previous.quickestWin === null || state.playerTurnsTaken < previous.quickestWin) {
       next.quickestWin = state.playerTurnsTaken;
-      updates.push(`New record! Quickest Win: ${pluralize(state.playerTurnsTaken, 'shot')}`);
+      if (!isFirstGame) {
+        updates.push(`New record! Quickest Win: ${pluralize(state.playerTurnsTaken, 'shot')}`);
+      }
     }
 
     const marginOfVictory = countUntargetedOccupiedCells(state.player);
     if (previous.marginOfVictory === null || marginOfVictory > previous.marginOfVictory) {
       next.marginOfVictory = marginOfVictory;
-      updates.push(`New record! Margin of Victory: ${marginOfVictory}`);
+      if (!isFirstGame) {
+        updates.push(`New record! Margin of Victory: ${marginOfVictory}`);
+      }
     }
   } else {
     if (previous.currentWinStreak > 0) {
@@ -1511,37 +1536,50 @@ export function computeSessionStatsUpdate(
 
     if (previous.quickestLoss === null || state.appTurnsTaken < previous.quickestLoss) {
       next.quickestLoss = state.appTurnsTaken;
-      updates.push(`New record! Quickest Loss: ${pluralize(state.appTurnsTaken, 'shot')}`);
+      if (!isFirstGame) {
+        updates.push(`New record! Quickest Loss: ${pluralize(state.appTurnsTaken, 'shot')}`);
+      }
     }
 
     const marginOfDefeat = countUntargetedOccupiedCells(state.enemy);
     if (previous.marginOfDefeat === null || marginOfDefeat > previous.marginOfDefeat) {
       next.marginOfDefeat = marginOfDefeat;
-      updates.push(`New record! Margin of Defeat: ${marginOfDefeat}`);
+      if (!isFirstGame) {
+        updates.push(`New record! Margin of Defeat: ${marginOfDefeat}`);
+      }
     }
   }
 
   // Hit Streak and Oil Detonation are tracked for both sides every game,
   // regardless of who won - even in a loss, the computer setting its own
-  // personal best is worth knowing about.
+  // personal best is worth knowing about (once there's a real baseline to
+  // have beaten - see isFirstGame above).
   if (state.playerHitStreakPeak > previous.longestHitStreakPlayer) {
     next.longestHitStreakPlayer = state.playerHitStreakPeak;
-    updates.push(`New record! Your Longest Hit Streak: ${state.playerHitStreakPeak}`);
+    if (!isFirstGame) {
+      updates.push(`New record! Your Longest Hit Streak: ${state.playerHitStreakPeak}`);
+    }
   }
 
   if (state.appHitStreakPeak > previous.longestHitStreakApp) {
     next.longestHitStreakApp = state.appHitStreakPeak;
-    updates.push(`New record! Computer's Longest Hit Streak: ${state.appHitStreakPeak}`);
+    if (!isFirstGame) {
+      updates.push(`New record! Computer's Longest Hit Streak: ${state.appHitStreakPeak}`);
+    }
   }
 
   if (state.playerOilDetonationPeak > previous.biggestOilDetonationPlayer) {
     next.biggestOilDetonationPlayer = state.playerOilDetonationPeak;
-    updates.push(`New record! Your Biggest Oil Detonation: ${pluralize(state.playerOilDetonationPeak, 'cell')}`);
+    if (!isFirstGame) {
+      updates.push(`New record! Your Biggest Oil Detonation: ${pluralize(state.playerOilDetonationPeak, 'cell')}`);
+    }
   }
 
   if (state.appOilDetonationPeak > previous.biggestOilDetonationApp) {
     next.biggestOilDetonationApp = state.appOilDetonationPeak;
-    updates.push(`New record! Computer's Biggest Oil Detonation: ${pluralize(state.appOilDetonationPeak, 'cell')}`);
+    if (!isFirstGame) {
+      updates.push(`New record! Computer's Biggest Oil Detonation: ${pluralize(state.appOilDetonationPeak, 'cell')}`);
+    }
   }
 
   return { next, updates };

@@ -527,24 +527,24 @@ describe('computeSessionStatsUpdate', () => {
   it('sets a new Best Win Streak record only once the current streak actually exceeds it', () => {
     const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
 
-    const tying = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 2, bestWinStreak: 3 }), state, 'player', TODAY);
+    const tying = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 5, currentWinStreak: 2, bestWinStreak: 3 }), state, 'player', TODAY);
     expect(tying.next.currentWinStreak).toBe(3);
     expect(tying.next.bestWinStreak).toBe(3);
     expect(tying.updates.some((update) => update.includes('New record') && update.includes('Best Win Streak'))).toBe(false);
 
-    const beating = computeSessionStatsUpdate(makeSessionStats({ currentWinStreak: 3, bestWinStreak: 3 }), state, 'player', TODAY);
+    const beating = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 5, currentWinStreak: 3, bestWinStreak: 3 }), state, 'player', TODAY);
     expect(beating.next.bestWinStreak).toBe(4);
     expect(beating.updates.some((update) => update.includes('New record! Best Win Streak: 4'))).toBe(true);
   });
 
   it('sets a new Quickest Win record only when this game took fewer turns', () => {
     const faster = makeGameState({ playerTurnsTaken: 10, player: makeNavy() });
-    const fasterResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), faster, 'player', TODAY);
+    const fasterResult = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 5, quickestWin: 15 }), faster, 'player', TODAY);
     expect(fasterResult.next.quickestWin).toBe(10);
     expect(fasterResult.updates.some((update) => update.includes('Quickest Win: 10 shots'))).toBe(true);
 
     const slower = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
-    const slowerResult = computeSessionStatsUpdate(makeSessionStats({ quickestWin: 15 }), slower, 'player', TODAY);
+    const slowerResult = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 5, quickestWin: 15 }), slower, 'player', TODAY);
     expect(slowerResult.next.quickestWin).toBe(15);
     expect(slowerResult.updates.some((update) => update.includes('Quickest Win'))).toBe(false);
   });
@@ -554,7 +554,7 @@ describe('computeSessionStatsUpdate', () => {
     // 6 of the navy's 7 occupied cells are left untargeted.
     const navy = makeNavy({ 80: { occupied: true, shipCode: 'B', effect: 'targeted' } });
     const state = makeGameState({ playerTurnsTaken: 20, player: navy });
-    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'player', TODAY);
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 5 }), state, 'player', TODAY);
     expect(next.marginOfVictory).toBe(6);
     expect(updates.some((update) => update.includes('Margin of Victory: 6'))).toBe(true);
   });
@@ -562,7 +562,7 @@ describe('computeSessionStatsUpdate', () => {
   it("sets Margin of Defeat to the computer's own untouched cell count on a loss", () => {
     const navy = makeNavy({ 50: { occupied: true, shipCode: 'O', effect: 'targeted' } });
     const state = makeGameState({ appTurnsTaken: 20, enemy: navy });
-    const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'app', TODAY);
+    const { next, updates } = computeSessionStatsUpdate(makeSessionStats({ gamesPlayed: 5 }), state, 'app', TODAY);
     expect(next.marginOfDefeat).toBe(6);
     expect(updates.some((update) => update.includes('Margin of Defeat: 6'))).toBe(true);
   });
@@ -581,7 +581,7 @@ describe('computeSessionStatsUpdate', () => {
       appOilDetonationPeak: 11,
     });
     const { next, updates } = computeSessionStatsUpdate(
-      makeSessionStats({ longestHitStreakPlayer: 3, longestHitStreakApp: 3, biggestOilDetonationPlayer: 1, biggestOilDetonationApp: 1 }),
+      makeSessionStats({ gamesPlayed: 5, longestHitStreakPlayer: 3, longestHitStreakApp: 3, biggestOilDetonationPlayer: 1, biggestOilDetonationApp: 1 }),
       state,
       'app',
       TODAY,
@@ -609,13 +609,19 @@ describe('computeSessionStatsUpdate', () => {
   });
 
   describe('daily win streak', () => {
-    it('starts a fresh streak at 1 on the first-ever win, and reports it as a new record', () => {
+    // Daily Win Streak is the one stat that still reports on a brand-new
+    // player's very first game (see the "first game" describe block below,
+    // and computeSessionStatsUpdate's own doc comment, for why every other
+    // stat stays silent there) - but even this one drops the "New record!"
+    // framing for it, same as everything else does on a first game.
+    it('starts a fresh streak at 1 on the first-ever win, reported plainly rather than as a new record', () => {
       const state = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
       const { next, updates } = computeSessionStatsUpdate(makeSessionStats(), state, 'player', '2026-03-10');
       expect(next.currentDailyWinStreak).toBe(1);
       expect(next.bestDailyWinStreak).toBe(1);
       expect(next.lastWinDate).toBe('2026-03-10');
-      expect(updates.some((update) => update.includes('New record! Best Daily Win Streak: 1'))).toBe(true);
+      expect(updates.some((update) => update.includes('Daily Win Streak: 1'))).toBe(true);
+      expect(updates.some((update) => update.includes('New record'))).toBe(false);
     });
 
     it('does not change at all for a second win on the same calendar day', () => {
@@ -674,6 +680,74 @@ describe('computeSessionStatsUpdate', () => {
       expect(next.bestDailyWinStreak).toBe(5);
       expect(next.lastWinDate).toBe('2026-03-10');
       expect(updates.some((update) => update.includes('Daily Win Streak'))).toBe(false);
+    });
+  });
+
+  // A brand-new player's very first game trivially "beats" every best-so-far
+  // field (they all start at null/0 - see DEFAULT_SESSION_STATS), which used
+  // to mean almost every tracked stat showed up as "New record!" after the
+  // very first game ever played - noise dressed up as achievement, since
+  // there was nothing real to have beaten yet. `next` still gets the game's
+  // real numbers (so game two has an actual baseline to compare against),
+  // but `updates` stays empty except for Daily Win Streak - see
+  // computeSessionStatsUpdate's own doc comment for why that one's
+  // different.
+  describe('first game', () => {
+    it('reports no records at all for a first-game win, other than the plain Daily Win Streak line', () => {
+      const state = makeGameState({
+        playerTurnsTaken: 6,
+        player: makeNavy(),
+        playerHitStreakPeak: 4,
+        appHitStreakPeak: 2,
+        playerOilDetonationPeak: 3,
+      });
+      const { next, updates } = computeSessionStatsUpdate(DEFAULT_SESSION_STATS, state, 'player', '2026-04-01');
+
+      // The real numbers are still recorded as this player's actual
+      // baseline - only the callout is suppressed.
+      expect(next.quickestWin).toBe(6);
+      expect(next.marginOfVictory).toBeGreaterThan(0);
+      expect(next.bestWinStreak).toBe(1);
+      expect(next.longestHitStreakPlayer).toBe(4);
+      expect(next.longestHitStreakApp).toBe(2);
+      expect(next.biggestOilDetonationPlayer).toBe(3);
+
+      expect(updates).toEqual(['Daily Win Streak: 1']);
+    });
+
+    it('reports no records at all for a first-game loss', () => {
+      const state = makeGameState({
+        appTurnsTaken: 8,
+        enemy: makeNavy(),
+        playerHitStreakPeak: 2,
+        appHitStreakPeak: 5,
+        appOilDetonationPeak: 4,
+      });
+      const { next, updates } = computeSessionStatsUpdate(DEFAULT_SESSION_STATS, state, 'app', '2026-04-01');
+
+      expect(next.quickestLoss).toBe(8);
+      expect(next.marginOfDefeat).toBeGreaterThan(0);
+      expect(next.longestHitStreakApp).toBe(5);
+      expect(next.biggestOilDetonationApp).toBe(4);
+
+      // No Daily Win Streak line here either - that only ever fires on a
+      // win (see its own describe block above).
+      expect(updates).toEqual([]);
+    });
+
+    it('lets the second game report real records against the first game\'s actual baseline', () => {
+      const firstGameState = makeGameState({ playerTurnsTaken: 20, player: makeNavy() });
+      const { next: afterFirstGame } = computeSessionStatsUpdate(DEFAULT_SESSION_STATS, firstGameState, 'player', '2026-04-01');
+      expect(afterFirstGame.quickestWin).toBe(20);
+
+      // A faster win the next day should genuinely beat that real baseline,
+      // "New record!" framing included this time.
+      const secondGameState = makeGameState({ playerTurnsTaken: 12, player: makeNavy() });
+      const { next: afterSecondGame, updates } = computeSessionStatsUpdate(afterFirstGame, secondGameState, 'player', '2026-04-02');
+
+      expect(afterSecondGame.quickestWin).toBe(12);
+      expect(updates.some((update) => update.includes('New record! Quickest Win: 12 shots'))).toBe(true);
+      expect(updates.some((update) => update.includes('New record! Best Daily Win Streak: 2'))).toBe(true);
     });
   });
 });
