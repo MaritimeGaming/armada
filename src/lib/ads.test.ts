@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { showRewardedAd } from './ads';
+import { __resetPreparedAdsForTests, preloadRewardedAd, showRewardedAd } from './ads';
 
 const isNativePlatform = vi.fn();
 vi.mock('@capacitor/core', () => ({
@@ -46,6 +46,7 @@ async function flushMicrotasks() {
 describe('showRewardedAd', () => {
   beforeEach(() => {
     listeners = {};
+    __resetPreparedAdsForTests();
     isNativePlatform.mockReset();
     initialize.mockReset().mockResolvedValue(undefined);
     prepareRewardVideoAd.mockReset().mockResolvedValue({ adUnitId: 'test' });
@@ -142,5 +143,85 @@ describe('showRewardedAd', () => {
     prepareRewardVideoAd.mockRejectedValue(new Error('no fill'));
 
     await expect(showRewardedAd('gameTokens')).resolves.toBe(false);
+  });
+});
+
+describe('preloadRewardedAd', () => {
+  beforeEach(() => {
+    listeners = {};
+    __resetPreparedAdsForTests();
+    isNativePlatform.mockReset();
+    initialize.mockReset().mockResolvedValue(undefined);
+    prepareRewardVideoAd.mockReset().mockResolvedValue({ adUnitId: 'test' });
+    showRewardVideoAd.mockReset().mockResolvedValue({ type: 'coins', amount: 1 });
+    addListener.mockReset().mockImplementation((event: string, listener: Listener) => {
+      (listeners[event] ??= []).push(listener);
+      return Promise.resolve({ remove: vi.fn() });
+    });
+  });
+
+  it('is a no-op on a non-native platform', () => {
+    isNativePlatform.mockReturnValue(false);
+
+    preloadRewardedAd('gameTokens');
+
+    expect(initialize).not.toHaveBeenCalled();
+    expect(prepareRewardVideoAd).not.toHaveBeenCalled();
+  });
+
+  it('starts fetching the ad immediately, before showRewardedAd is ever called', async () => {
+    isNativePlatform.mockReturnValue(true);
+
+    preloadRewardedAd('gameTokens');
+    await flushMicrotasks();
+
+    expect(prepareRewardVideoAd).toHaveBeenCalledTimes(1);
+    expect(prepareRewardVideoAd).toHaveBeenCalledWith({
+      adId: 'ca-app-pub-1765694427918098/5770042821',
+      isTesting: true,
+    });
+  });
+
+  it('lets showRewardedAd reuse the preload instead of preparing again', async () => {
+    isNativePlatform.mockReturnValue(true);
+
+    preloadRewardedAd('gameTokens');
+    await flushMicrotasks();
+    expect(prepareRewardVideoAd).toHaveBeenCalledTimes(1);
+
+    const promise = showRewardedAd('gameTokens');
+    await flushMicrotasks();
+
+    // Still just the one prepare call from the preload - showRewardedAd
+    // didn't start a second one.
+    expect(prepareRewardVideoAd).toHaveBeenCalledTimes(1);
+    expect(showRewardVideoAd).toHaveBeenCalledWith({ adId: 'ca-app-pub-1765694427918098/5770042821' });
+
+    fireEvent('onRewardedVideoAdReward', { type: 'coins', amount: 1 });
+    await expect(promise).resolves.toBe(true);
+
+    // The preloaded ad was consumed by that show - a later request for the
+    // same placement needs a fresh prepare, not the same (spent) one.
+    preloadRewardedAd('gameTokens');
+    await flushMicrotasks();
+    expect(prepareRewardVideoAd).toHaveBeenCalledTimes(2);
+  });
+
+  it('preloads each placement independently, under its own ad unit ID', async () => {
+    isNativePlatform.mockReturnValue(true);
+
+    preloadRewardedAd('gameTokens');
+    preloadRewardedAd('weaponRefill');
+    await flushMicrotasks();
+
+    expect(prepareRewardVideoAd).toHaveBeenCalledWith({
+      adId: 'ca-app-pub-1765694427918098/5770042821',
+      isTesting: true,
+    });
+    expect(prepareRewardVideoAd).toHaveBeenCalledWith({
+      adId: 'ca-app-pub-1765694427918098/9897472590',
+      isTesting: true,
+    });
+    expect(prepareRewardVideoAd).toHaveBeenCalledTimes(2);
   });
 });

@@ -84,6 +84,7 @@ type GameOverState = {
 const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
+const SOUND_EFFECTS_STORAGE_KEY = 'armada:sound-effects-enabled';
 const MOAB_COUNT_STORAGE_KEY = 'armada:moab-count';
 // Starting inventory the first time someone plays; not the same as the
 // refill amount below - see the "no progression" philosophy in
@@ -166,6 +167,16 @@ function readStoredCount(storageKey: string, fallback: number): number {
 
   const parsedCount = Number(storedCount);
   return Number.isFinite(parsedCount) ? parsedCount : fallback;
+}
+
+function readStoredBoolean(storageKey: string, fallback: boolean): boolean {
+  const storedValue = window.localStorage.getItem(storageKey);
+
+  if (storedValue === null) {
+    return fallback;
+  }
+
+  return storedValue === 'true';
 }
 
 // Reads the persisted SessionStats blob, migrating a pre-Statistics-panel
@@ -278,6 +289,17 @@ const Index = () => {
       return DEFAULT_SHIP_SET_OPTIONS;
     }
   });
+  // A standing preference, not part of GameState - survives New Game and
+  // Reset Statistics like the weapon/token inventories below, but unlike
+  // those it's never spent or refilled, just toggled. Gates playAudioCue
+  // itself (see below) so every cue - splash, sink, and especially the
+  // Helicopter/Ensign/Lifeboat "surprise" sounds that make immunity land -
+  // is covered by a single check, without threading a mute flag through
+  // every individual playAudioSequence/playIgnitionSequence/playMoabSequence
+  // call site.
+  const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(() =>
+    readStoredBoolean(SOUND_EFFECTS_STORAGE_KEY, true),
+  );
   // Standing inventories, not part of GameState: they must survive a New
   // Game (and browser restarts) untouched. The only way to increase either
   // is through its "Procuring Weapons" refill flow.
@@ -496,6 +518,10 @@ const Index = () => {
   }, [activeView, gameState]);
 
   const playAudioCue = (cue: AudioCue) => {
+    if (!soundEffectsEnabled) {
+      return;
+    }
+
     const audio = new Audio(AUDIO_FILES[cue]);
     audio.preload = 'auto';
     audioRef.current[cue].push(audio);
@@ -743,6 +769,14 @@ const Index = () => {
     window.localStorage.setItem(SHIP_SET_STORAGE_KEY, JSON.stringify(nextOptions));
     setShipSetOptions(nextOptions);
     requestNewGame(nextOptions);
+  };
+
+  // Unlike Singles, toggling this never starts a new game - it only ever
+  // gates playAudioCue (see its own doc comment), so there's nothing about
+  // the current game that needs to change.
+  const handleSoundEffectsToggle = (enabled: boolean) => {
+    window.localStorage.setItem(SOUND_EFFECTS_STORAGE_KEY, String(enabled));
+    setSoundEffectsEnabled(enabled);
   };
 
   const handleResetStatistics = () => {
@@ -2209,6 +2243,8 @@ const Index = () => {
       navy={navy}
       shipSetOptions={shipSetOptions}
       onSinglesToggle={handleSinglesToggle}
+      soundEffectsEnabled={soundEffectsEnabled}
+      onSoundEffectsToggle={handleSoundEffectsToggle}
       onNewGame={() => requestNewGame()}
       onShowStatistics={() => setInfoDialog('statistics')}
       onShowAboutShips={() => setInfoDialog('ships')}
@@ -2769,6 +2805,8 @@ type NavyPanelProps = {
   navy: NavyState;
   shipSetOptions: ShipSetOptions;
   onSinglesToggle: (includeSingles: boolean) => void;
+  soundEffectsEnabled: boolean;
+  onSoundEffectsToggle: (enabled: boolean) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
   onShowAboutShips: () => void;
@@ -2795,6 +2833,8 @@ type NavyPanelProps = {
 type SettingsMenuProps = {
   shipSetOptions: ShipSetOptions;
   onSinglesToggle: (includeSingles: boolean) => void;
+  soundEffectsEnabled: boolean;
+  onSoundEffectsToggle: (enabled: boolean) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
   onShowAboutShips: () => void;
@@ -2805,6 +2845,8 @@ type SettingsMenuProps = {
 function SettingsMenu({
   shipSetOptions,
   onSinglesToggle,
+  soundEffectsEnabled,
+  onSoundEffectsToggle,
   onNewGame,
   onShowStatistics,
   onShowAboutShips,
@@ -2833,6 +2875,13 @@ function SettingsMenu({
         >
           Singles (E H L)
         </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={soundEffectsEnabled}
+          onSelect={() => onSoundEffectsToggle(!soundEffectsEnabled)}
+          indicatorAlign="right"
+        >
+          Sound Effects
+        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowStatistics}>Statistics</DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -2849,6 +2898,8 @@ function NavyPanel({
   navy,
   shipSetOptions,
   onSinglesToggle,
+  soundEffectsEnabled,
+  onSoundEffectsToggle,
   onNewGame,
   onShowStatistics,
   onShowAboutShips,
@@ -3016,6 +3067,8 @@ function NavyPanel({
             <SettingsMenu
               shipSetOptions={shipSetOptions}
               onSinglesToggle={onSinglesToggle}
+              soundEffectsEnabled={soundEffectsEnabled}
+              onSoundEffectsToggle={onSoundEffectsToggle}
               onNewGame={onNewGame}
               onShowStatistics={onShowStatistics}
               onShowAboutShips={onShowAboutShips}

@@ -1395,7 +1395,20 @@ by listening for the ad's own `Rewarded`, `Dismissed`, and `FailedToShow`
 events directly (rather than trusting `showRewardVideoAd()`'s own returned
 promise, whose resolve/reject behavior on a plain dismiss-without-reward
 isn't documented) - whichever of those three fires first wins, and the
-others are torn down. Outside a native build - the desktop dev server,
+others are torn down. Loading the ad creative is a real network request
+with real, variable latency, which is what the "Loading Ad" overlay is
+actually waiting on (not a fixed delay) - `preloadRewardedAd` starts that
+fetch the moment a confirmation dialog opens (both
+`setPendingNewGameOptions` and `setPendingWeaponProcurement` call it
+immediately beforehand), rather than waiting until the player actually
+taps "Watch Ad", so by the time they've read the dialog and decided, the
+ad has often already finished loading and `showRewardedAd` can show it
+immediately - `ensurePrepared` in `ads.ts` is what lets `showRewardedAd`
+reuse that preload instead of starting its own prepare step from scratch.
+This shortens the overlay's typical visible duration; it can't eliminate
+it outright, since a player who taps through the dialog instantly, or a
+slow connection, can still catch it mid-load. Outside a native build -
+the desktop dev server,
 the GitHub Pages web build, the vitest suite, none of which can run a real
 AdMob ad at all - it instead resolves `true` after a short simulated
 delay, which is what both this gate and the weapon-refill gate below ran
@@ -1505,3 +1518,27 @@ does not take the shot. The player still targets a cell to fire, and can
 still tap the weapon again to disarm it and choose a different action
 instead - the post-refill state is indistinguishable from a weapon that
 simply had charges to begin with.
+
+## Sound Effects setting
+
+A single Settings > Sound Effects checkbox (`soundEffectsEnabled` /
+`armada:sound-effects-enabled` in `Index.tsx`), enabled by default, mutes
+every audio cue in the game with one gate rather than threading a mute
+check through each of splash/sink/explosion/wingame/deflect/camera's own
+call sites: `playAudioCue` itself - the single low-level function every
+one of those cues, and every higher-level helper built on it
+(`playAudioSequence`, `playIgnitionSequence`, `playMoabSequence`), always
+funnels through - returns immediately, before constructing an `Audio` at
+all, whenever this is off. This includes the Helicopter/Ensign/Lifeboat
+immunity "surprise" cues (see Variable D's `'deflect'` discussion above),
+which are as much a part of those moments landing as the visual is, so
+disabling sound was worth a dedicated setting rather than leaving it
+implicit in, say, a device's silent switch.
+
+Deliberately a standing preference like the weapon/token inventories
+above (survives New Game and Reset Statistics), but unlike those it's
+never spent or refilled - just toggled, with no gameplay consequence
+either way. The mount-time audio-prewarming effect (see the Drone's own
+camera-cue timing work) still runs regardless of this setting, so
+re-enabling mid-session plays instantly rather than paying a fresh fetch
+cost on the next cue.

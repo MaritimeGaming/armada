@@ -168,3 +168,121 @@ describe('Privacy Policy navigation', () => {
     expect(screen.queryByText('← Back to Armada')).not.toBeInTheDocument();
   });
 });
+
+// A fake `window.Audio` for the Sound Effects toggle tests below - jsdom
+// itself throws "Not implemented" for real HTMLMediaElement playback, and
+// even if it didn't, these tests care whether playAudioCue (Index.tsx)
+// constructs an Audio at all, not whether one actually produces sound.
+class FakeAudio {
+  static instances: FakeAudio[] = [];
+  src: string;
+  preload = '';
+  currentTime = 0;
+
+  constructor(src: string) {
+    this.src = src;
+    FakeAudio.instances.push(this);
+  }
+
+  addEventListener() {
+    // No-op: nothing in these tests needs 'ended'/'error' to actually fire.
+  }
+
+  load() {
+    // No-op: satisfies the audio-prewarming effect's own call to this.
+  }
+
+  play() {
+    return Promise.resolve();
+  }
+}
+
+describe('Sound Effects setting', () => {
+  let randomSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    __resetTitleScreenSessionFlagForTests();
+    randomSpy = vi.spyOn(Math, 'random');
+    FakeAudio.instances = [];
+    vi.stubGlobal('Audio', FakeAudio);
+  });
+
+  afterEach(() => {
+    randomSpy.mockRestore();
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  // createGameState's currentTurn coin flip (armada-game.ts) picks 'player'
+  // below 0.5 - unlike the swipe-carousel tests above (which force 'app' so
+  // the *player's* board shows first), these tests need the *enemy* board
+  // showing so there's a cell to click and fire a shot at.
+  function forceEnemyViewNextGame() {
+    randomSpy.mockReturnValueOnce(0.1);
+  }
+
+  function openSettingsMenu() {
+    const settingsButton = screen.getAllByLabelText('Open settings')[0];
+    // Radix's DropdownMenuTrigger opens on pointerdown, gated on
+    // `event.button === 0 && event.ctrlKey === false` - fireEvent's default
+    // PointerEvent leaves ctrlKey undefined, which fails that check unless
+    // it's set explicitly.
+    fireEvent.pointerDown(settingsButton, { button: 0, ctrlKey: false });
+  }
+
+  function fireAShot() {
+    const [cell] = screen.getAllByLabelText('Unknown cell, untargeted');
+    fireEvent.mouseDown(cell);
+    fireEvent.mouseUp(cell);
+  }
+
+  it('is checked by default, with no stored preference', async () => {
+    render(<App />);
+    dismissTitleScreen();
+    openSettingsMenu();
+
+    const item = await screen.findByRole('menuitemcheckbox', { name: 'Sound Effects' });
+    expect(item).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('persists to localStorage and unchecks the menu item when turned off', async () => {
+    render(<App />);
+    dismissTitleScreen();
+    openSettingsMenu();
+
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Sound Effects' }));
+    expect(window.localStorage.getItem('armada:sound-effects-enabled')).toBe('false');
+
+    openSettingsMenu();
+    expect(await screen.findByRole('menuitemcheckbox', { name: 'Sound Effects' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+  });
+
+  it('still plays a cue for a shot while enabled (sanity check for the test below)', async () => {
+    forceEnemyViewNextGame();
+    render(<App />);
+    dismissTitleScreen();
+
+    // The audio-prewarming effect (Index.tsx) constructs one Audio per
+    // AUDIO_FILES entry on mount regardless of this setting, by design -
+    // reset the count here so only the shot's own cue is being measured.
+    FakeAudio.instances = [];
+    fireAShot();
+    expect(FakeAudio.instances.length).toBeGreaterThan(0);
+  });
+
+  it('stops a shot from constructing any Audio once turned off', async () => {
+    forceEnemyViewNextGame();
+    render(<App />);
+    dismissTitleScreen();
+    openSettingsMenu();
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Sound Effects' }));
+
+    FakeAudio.instances = [];
+    fireAShot();
+    expect(FakeAudio.instances.length).toBe(0);
+  });
+});
