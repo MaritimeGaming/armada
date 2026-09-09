@@ -115,9 +115,15 @@ describe('Privacy Policy navigation', () => {
 
   afterEach(() => {
     window.localStorage.clear();
+    // Restore a clean starting URL for any tests that run after this block.
+    // import.meta.env.BASE_URL is "/" under vitest regardless of the "/armada/"
+    // base the real GitHub Pages build uses - Vite only applies that to an
+    // actual build/dev-server, not to Vitest's env injection - so BrowserRouter's
+    // basename here is "/" and paths in this describe block are bare, unprefixed.
+    window.history.pushState(null, '', '/');
   });
 
-  it('opens the Privacy Policy page from the Settings menu', async () => {
+  it('opens the Privacy Policy page from the Settings menu, with a working Back link', async () => {
     render(<App />);
     dismissTitleScreen();
 
@@ -127,5 +133,26 @@ describe('Privacy Policy navigation', () => {
 
     expect(await screen.findByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument();
     expect(screen.getByText('contact@armadagames.tech')).toBeInTheDocument();
+
+    // Reached via in-app navigation, so there's somewhere real to go back
+    // to - the Back link should be there, and should actually work.
+    fireEvent.click(screen.getByText('← Back to Armada'));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Privacy Policy' })).not.toBeInTheDocument());
+  });
+
+  // Regression coverage: this page is also linked directly from the Play
+  // Store listing / AdMob console, reached with no prior in-app history at
+  // all. The Back link used to be a hardcoded link to "/" regardless, which
+  // meant a browser visitor following that link and clicking it landed on
+  // the GitHub Pages web build of the game instead of back wherever they
+  // actually came from (the Play Store listing, most likely) - see
+  // Privacy.tsx's own comment. It's hidden entirely in this case now,
+  // rather than offering a destination that's wrong for this visitor.
+  it('hides the Back link on a direct visit with no in-app history to return to', () => {
+    window.history.pushState(null, '', '/privacy');
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument();
+    expect(screen.queryByText('← Back to Armada')).not.toBeInTheDocument();
   });
 });

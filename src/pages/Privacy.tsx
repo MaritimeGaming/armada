@@ -1,5 +1,5 @@
 import { useSeoMeta } from '@unhead/react';
-import { Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const EFFECTIVE_DATE = 'September 9, 2026';
 const CONTACT_EMAIL = 'contact@armadagames.tech';
@@ -15,13 +15,37 @@ function Privacy() {
     title: 'Armada Privacy Policy',
     description: "How the Armada naval combat game collects, uses, and doesn't collect your data.",
   });
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // location.key is only 'default' for the very first entry in this tab's
+  // history - a fresh/direct visit to this page (e.g. someone opening the
+  // privacy policy link from the Play Store listing, who was never "in"
+  // the app to begin with). There's nothing in-app to go back to in that
+  // case, so the link is hidden entirely rather than showing a "Back"
+  // control that visibly does nothing when clicked - the browser's own
+  // back button already does the right thing for that visitor. Reached
+  // via in-app navigation (the Settings menu), location.key is always a
+  // real pushed entry, and navigate(-1) correctly returns to the game
+  // rather than hardcoding a destination that would be wrong for the
+  // direct-visit case (it used to always link to "/", which meant a
+  // browser visitor following the Play Store's privacy policy link and
+  // clicking this ended up on the GitHub Pages web build of the game
+  // instead of back wherever they actually came from).
+  const canGoBack = location.key !== 'default';
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-12 text-slate-300">
       <div className="mx-auto max-w-2xl">
-        <Link to="/" className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-400 hover:text-cyan-300">
-          &larr; Back to Armada
-        </Link>
+        {canGoBack ? (
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-400 hover:text-cyan-300"
+          >
+            &larr; Back to Armada
+          </button>
+        ) : null}
 
         <h1 className="mt-6 text-3xl font-bold text-white">Privacy Policy</h1>
         <p className="mt-2 text-sm text-slate-400">Effective {EFFECTIVE_DATE}</p>
@@ -29,7 +53,7 @@ function Privacy() {
         <div className="mt-8 space-y-8 leading-relaxed">
           <section>
             <p>
-              Armada is a naval combat game published by Chip Whitmer ("we", "us"). This policy explains what
+              Armada is a naval combat game published by Armada Games ("we", "us"). This policy explains what
               information the app collects, how it's used, and the choices you have - for both the Android app on
               Google Play and this web version.
             </p>
