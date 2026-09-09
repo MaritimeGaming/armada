@@ -2741,7 +2741,7 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
       )}
     >
       <span
-        className="absolute -top-1 -right-1 flex items-center gap-0.5"
+        className="absolute -bottom-1 -right-1 flex items-center gap-0.5"
         role="img"
         aria-label={`${WEAPON_TYPE_USE_CAP - useCount} of ${WEAPON_TYPE_USE_CAP} uses remaining this game`}
       >
@@ -2763,18 +2763,11 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
           );
         })}
       </span>
-      {/* The count rides as a badge on the icon's own top-right corner
-          instead of taking a row (or a whole extra line) of its own - icon
-          and label share one baseline, and the badge stays inside the
-          icon's own footprint rather than competing with the neighboring
-          button for width. */}
-      <span className="relative inline-flex shrink-0">
-        {icon}
-        <span className="absolute -top-1.5 -right-1.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-slate-950 px-1 text-[8px] font-bold leading-none ring-1 ring-white/10">
-          {count}
-        </span>
-      </span>
+      {icon}
       {label}
+      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950 px-1 text-[9px] font-bold leading-none ring-1 ring-white/10">
+        {count}
+      </span>
     </Button>
   );
 }
