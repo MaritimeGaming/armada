@@ -59,7 +59,7 @@ import {
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
 import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, SessionStats, ShipDefinition, ShipSetOptions, ShotOutcome, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
-import { showRewardedAd } from '@/lib/ads';
+import { preloadRewardedAd, showRewardedAd } from '@/lib/ads';
 import { TitleScreen } from '@/components/TitleScreen';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -682,7 +682,11 @@ const Index = () => {
       return;
     }
 
-    // Ask before spending an ad on it - see pendingNewGameOptions.
+    // Ask before spending an ad on it - see pendingNewGameOptions. Starts
+    // fetching the ad now, not when they actually tap "Watch Ad" below, so
+    // it's often already loaded by the time they decide - see
+    // preloadRewardedAd's own doc comment.
+    preloadRewardedAd('gameTokens');
     setPendingNewGameOptions(nextOptions);
   };
 
@@ -789,6 +793,9 @@ const Index = () => {
     }
 
     // Ask before spending an ad on this - see pendingWeaponProcurement.
+    // Starts fetching the ad now, not when they actually tap "Watch Ad" -
+    // see preloadRewardedAd's own doc comment.
+    preloadRewardedAd('weaponRefill');
     setPendingWeaponProcurement(weapon);
   };
 
@@ -2672,7 +2679,7 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
       disabled={disabled}
       aria-pressed={isArmed}
       className={cn(
-        'relative h-auto w-full gap-1 rounded-full border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white',
+        'relative h-auto w-full gap-1.5 rounded-full border px-1.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white',
         isArmed
           ? 'border-cyan-300 bg-cyan-400/20 text-cyan-100 shadow-[0_0_0_2px_rgba(103,232,249,0.4)] hover:bg-cyan-400/30'
           : 'border-white/10 bg-white/10 hover:bg-white/20',
@@ -2701,20 +2708,27 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
           );
         })}
       </span>
-      {icon}
-      {label}
-      <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
-        {count}
+      {/* Icon stacked directly above its count (nudged up a touch to
+          balance against the label beside it) instead of inline with the
+          label and count in one row - a single row was tight enough on a
+          narrow phone that the count could bleed into the next button's
+          icon. */}
+      <span className="flex flex-col items-center">
+        <span className="-translate-y-0.5">{icon}</span>
+        <span className="mt-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-slate-950/60 px-1 text-[9px] font-bold">
+          {count}
+        </span>
       </span>
+      {label}
     </Button>
   );
 }
 
 function WeaponsBar({ label, weaponsUsed, weapons }: WeaponsBarProps) {
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-md">
-      <div className="relative flex min-h-6 items-center">
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">
+    <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-2.5 py-3 backdrop-blur-md">
+      <div className="flex min-h-6 items-center">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">
           {label}
         </div>
 
@@ -2732,7 +2746,7 @@ function WeaponsBar({ label, weaponsUsed, weapons }: WeaponsBarProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-3">
         {weapons.map((weapon) => (
           <WeaponButton
             key={weapon.type}
