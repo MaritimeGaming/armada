@@ -8,7 +8,14 @@ import htmlParser from "@html-eslint/parser";
 import customRules from "./eslint-rules/index.js";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  // "android" covers the whole native project directory - generated Gradle
+  // build output (android/build, android/app/build) and copied web assets
+  // (android/app/src/main/assets/public) alike, none of which is source
+  // this linter should ever see. Previously unnoticed since nothing had
+  // actually built there before - a real `./gradlew bundleRelease` run
+  // produces an HTML report under android/build/reports that the **/*.html
+  // rule below was happily (and wrongly) linting as if it were app markup.
+  { ignores: ["dist", "android"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

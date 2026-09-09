@@ -31,3 +31,11 @@ yarn.lock
 .env
 .env.*
 !.env.example
+
+# Android app-signing keystore and its passwords - never commit these.
+# Keeping the keystore file itself outside the repo entirely is the real
+# fix (see android/app/build.gradle's signingConfig comment); this pattern
+# is a backstop in case one ever ends up inside the tree anyway.
+*.jks
+*.keystore
+keystore.properties

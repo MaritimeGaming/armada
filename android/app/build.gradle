@@ -1,5 +1,17 @@
 apply plugin: 'com.android.application'
 
+// Release-signing credentials, loaded from a git-ignored properties file
+// (see .gitignore) rather than hardcoded here - this build.gradle is
+// committed, keystore.properties and the keystore file itself never are.
+// Falls back to signing nothing (a debug-signed release build) when the
+// properties file isn't present, so a checkout without it still builds -
+// only an actual Play Store upload needs it.
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.chipwhitmer.armada"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +28,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                // storeFile is whatever path is in keystore.properties -
+                // an absolute path is recommended there specifically so it
+                // doesn't matter where this build.gradle resolves relative
+                // paths from.
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
