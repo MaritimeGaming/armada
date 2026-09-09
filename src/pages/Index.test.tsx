@@ -104,3 +104,28 @@ describe('mobile swipe carousel view switching', () => {
     await waitFor(() => expect(wrapper.className).toContain('transition-transform'));
   });
 });
+
+// Google Play requires the privacy policy to be linked from within the app
+// itself, not just the store listing - this covers that link actually
+// reaching the standalone /privacy route (see AppRouter.tsx, Privacy.tsx).
+describe('Privacy Policy navigation', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('opens the Privacy Policy page from the Settings menu', async () => {
+    render(<App />);
+    dismissTitleScreen();
+
+    const settingsButton = screen.getAllByLabelText('Open settings')[0];
+    fireEvent.pointerDown(settingsButton, { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByText('Privacy Policy'));
+
+    expect(await screen.findByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument();
+    expect(screen.getByText('contact@armadagames.tech')).toBeInTheDocument();
+  });
+});

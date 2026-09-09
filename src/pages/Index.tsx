@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
 import {
   ArrowDown,
@@ -208,6 +209,7 @@ const Index = () => {
     title: 'Armada',
     description: 'A mobile-first Armada board showing randomized navy setup for both fleets.',
   });
+  const navigate = useNavigate();
 
   // Shown once per app launch (cold start), never again for the rest of the
   // session -- New Game, the win/lose dialog, etc. all skip straight back to
@@ -2180,6 +2182,7 @@ const Index = () => {
       onShowStatistics={() => setInfoDialog('statistics')}
       onShowAboutShips={() => setInfoDialog('ships')}
       onShowAboutWeapons={() => setInfoDialog('weapons')}
+      onShowPrivacyPolicy={() => navigate('/privacy')}
       onGoLeft={showArrows && canGoLeft && side === activeView ? () => setActiveView('player') : undefined}
       onGoRight={showArrows && canGoRight && side === activeView ? () => setActiveView('enemy') : undefined}
       onTargetCell={side === 'enemy' ? (cellIndex) => handleTargetEnemyCell(cellIndex) : undefined}
@@ -2732,6 +2735,7 @@ type NavyPanelProps = {
   onShowStatistics: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
+  onShowPrivacyPolicy: () => void;
   onGoLeft?: () => void;
   onGoRight?: () => void;
   onTargetCell?: (cellIndex: number) => void;
@@ -2757,6 +2761,7 @@ type SettingsMenuProps = {
   onShowStatistics: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
+  onShowPrivacyPolicy: () => void;
 };
 
 function SettingsMenu({
@@ -2766,6 +2771,7 @@ function SettingsMenu({
   onShowStatistics,
   onShowAboutShips,
   onShowAboutWeapons,
+  onShowPrivacyPolicy,
 }: SettingsMenuProps) {
   return (
     <DropdownMenu>
@@ -2794,6 +2800,8 @@ function SettingsMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowAboutShips}>About Ships</DropdownMenuItem>
         <DropdownMenuItem onSelect={onShowAboutWeapons}>About Weapons</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onShowPrivacyPolicy}>Privacy Policy</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -2807,6 +2815,7 @@ function NavyPanel({
   onShowStatistics,
   onShowAboutShips,
   onShowAboutWeapons,
+  onShowPrivacyPolicy,
   onGoLeft,
   onGoRight,
   onTargetCell,
@@ -2973,6 +2982,7 @@ function NavyPanel({
               onShowStatistics={onShowStatistics}
               onShowAboutShips={onShowAboutShips}
               onShowAboutWeapons={onShowAboutWeapons}
+              onShowPrivacyPolicy={onShowPrivacyPolicy}
             />
           </div>
         ) : null}
