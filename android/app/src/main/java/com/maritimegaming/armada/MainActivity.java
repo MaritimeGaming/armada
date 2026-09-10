@@ -1,4 +1,4 @@
-package com.chipwhitmer.armada;
+package com.maritimegaming.armada;
 
 import com.getcapacitor.BridgeActivity;
 
