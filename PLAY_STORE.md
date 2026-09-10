@@ -17,8 +17,8 @@ entry has **not** been created yet.
 | Package / applicationId | `com.maritimegaming.armada` |
 | Developer / publisher name | Maritime Gaming |
 | Support email | `contact@maritimegaming.com` |
-| Privacy policy URL | `https://chipwhitmer.github.io/armada/privacy` |
-| Website (optional) | `https://chipwhitmer.github.io/armada/` |
+| Privacy policy URL | `https://armada.maritimegaming.com/privacy` |
+| Website (optional) | `https://armada.maritimegaming.com/` |
 | Default language | en-US |
 | App or game | Game |
 | Category | Board (alt: Strategy) |
@@ -394,7 +394,7 @@ policy agree.
   (look for: Battleship, Board, Turn-based, Single player, Offline,
   Casual, Strategy)
 - Store listing contact: `contact@maritimegaming.com`, website
-  `https://chipwhitmer.github.io/armada/`
+  `https://armada.maritimegaming.com/`
 - External marketing: leave "show this app in ads outside Google Play" as
   you prefer (default on is fine).
 
