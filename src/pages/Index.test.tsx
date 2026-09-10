@@ -119,10 +119,10 @@ describe('Privacy Policy navigation', () => {
   afterEach(() => {
     window.localStorage.clear();
     // Restore a clean starting URL for any tests that run after this block.
-    // import.meta.env.BASE_URL is "/" under vitest regardless of the "/armada/"
-    // base the real GitHub Pages build uses - Vite only applies that to an
-    // actual build/dev-server, not to Vitest's env injection - so BrowserRouter's
-    // basename here is "/" and paths in this describe block are bare, unprefixed.
+    // import.meta.env.BASE_URL is "/" under vitest - and the real build now
+    // serves from "/" too (custom domain, see vite.config.ts) - so
+    // BrowserRouter's basename here is "/" and paths in this describe block
+    // are bare, unprefixed.
     window.history.pushState(null, '', '/');
   });
 
