@@ -17,32 +17,28 @@ Play Console walkthrough with pre-filled answers for every policy form.
 - [x] Category decided: Board
 - [x] Account type confirmed: individual → closed testing required
 
-**Remaining — code / build**
-- [ ] `FORCE_TEST_ADS` → `false` in `src/lib/ads.ts` (blocker)
-- [ ] AdMob UMP/GDPR consent flow: `requestConsentInfo()` / `showConsentForm()` at startup (blocker)
-- [ ] Publish `app-ads.txt` at the site root (AdMob authorized-sellers file)
-- [ ] Build the release AAB (§7.4) — after the two blockers
-
-**Remaining — assets**
-- [ ] 4–6 phone screenshots captured on a device → `store-assets/` (§4)
-
-**Remaining — AdMob console**
-- [ ] Update the app entry's package name to `com.maritimegaming.armada` (before it links to the Play listing)
-- [ ] Create the GDPR consent message, privacy URL `https://armada.maritimegaming.com/privacy`
-- [ ] Switch ads from test to live (pairs with `FORCE_TEST_ADS`)
-
-**Remaining — Play Console**
+**Blocking the closed test (do these first — nothing below matters until the 12/14 clock is running)**
+- [ ] 4–6 phone screenshots captured on a device → `store-assets/` (§4) — the one real content gap; at least 2 are required to save a usable store listing
 - [ ] Create the app entry (§5)
-- [ ] "Set up your app" forms: app access, ads, content rating, target audience, data safety, advertising ID, etc. (§6)
+- [ ] "Set up your app" forms: app access, ads, content rating, target audience, data safety, advertising ID, etc. (§6) — Play Console gates rollout on *every* track, including closed testing, behind these
 - [ ] Main store listing: descriptions, graphics, category, tags (§7.1)
 - [ ] Store settings + contact details (§7.2)
-- [ ] Enroll in Play App Signing (§7.3)
-
-**Remaining — release (critical path, ~3+ weeks)**
-- [ ] Recruit 12+ testers with Android devices
-- [ ] Closed testing track: upload AAB, send opt-in link (§7.5)
+- [ ] Build *any* signed AAB (§7.4) — enrolls Play App Signing automatically on first upload; test ads are fine for this build, see below
+- [ ] Recruit 12+ testers with Android devices (start immediately, in parallel with the above)
+- [ ] Closed testing track: upload the AAB, send the opt-in link (§7.5)
 - [ ] 14 continuous days at ≥12 opted-in testers
+
+**NOT required before the closed test — do before promoting to production instead**
+- [ ] `FORCE_TEST_ADS` → `false` in `src/lib/ads.ts` — fine, arguably better, to leave `true` through testing (no real ad traffic against the account while 12 people poke at it)
+- [ ] AdMob UMP/GDPR consent flow: `requestConsentInfo()` / `showConsentForm()` at startup — Google's consent requirement is about serving real personalized ads; AdMob test mode doesn't trigger it
+- [ ] AdMob console: update the app entry's package name to `com.maritimegaming.armada` (before it links to the Play listing)
+- [ ] AdMob console: create the GDPR consent message, privacy URL `https://armada.maritimegaming.com/privacy`
+- [ ] AdMob console: switch ads from test to live (pairs with `FORCE_TEST_ADS`)
+- [ ] Publish `app-ads.txt` at the site root (AdMob authorized-sellers file) — good hygiene, not a gate either way
+
+**After the 14 days**
 - [ ] Apply for production access → Google review (~7 days)
+- [ ] Do the "NOT required" items above, then rebuild the AAB with real ads on
 - [ ] Promote to production → first-app review (days–2 weeks)
 
 ---
