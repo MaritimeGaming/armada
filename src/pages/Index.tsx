@@ -2502,7 +2502,7 @@ const Index = () => {
                       >
                         {renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
                           showArrows: true,
-                          showSettings: true,
+                          showSettings: side === 'enemy',
                         })}
                       </div>
                     ))}
