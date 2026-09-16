@@ -41,6 +41,7 @@ import {
   GAME_STATE_VERSION,
   getLocalDateString,
   getMoabTargetIndexes,
+  getOilIgnitionHitCellIndexes,
   getRevealedTargetIndexes,
   getShips,
   GRID_SIZE,
@@ -120,6 +121,15 @@ const WEAPON_TRAVEL_STEP_DELAY_MS = 500;
 // with no further animation) how long its use-count dot keeps flashing
 // after firing before settling to solid red.
 const WEAPON_FIRE_ANIMATION_MS = 380;
+// How long, once an oil-slick ignition's explosion visual clears, a ship
+// cell newly caught by that chain reaction stays forced to the "hit but
+// not sunk" red before settling into its real post-explosion style (which
+// may already be that same red, or sunk/oil-tanker-sunk if the chain
+// finished the ship off). Without this, a cell that the chain both hits
+// and sinks in the same instant jumps straight to its sunk color the
+// moment the explosion animation clears, so a multi-ship detonation reads
+// as one indistinct flash instead of showing which cells actually got hit.
+const OIL_IGNITION_HIGHLIGHT_MS = 500;
 // A standing inventory, not part of GameState - survives New Game and
 // browser restarts, same as the weapon counts above, and likewise
 // untouched by Reset Statistics (that only resets SessionStats). Spent one
@@ -363,6 +373,13 @@ const Index = () => {
     player: [],
     enemy: [],
   });
+  // Ship cells an oil-slick ignition chain reaction just caught, still
+  // showing red as they wait out OIL_IGNITION_HIGHLIGHT_MS after the
+  // explosion visual clears - see triggerOilSlickDetonation.
+  const [oilIgnitionHighlightCells, setOilIgnitionHighlightCells] = useState<Record<NavySide, number[]>>({
+    player: [],
+    enemy: [],
+  });
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement[]>>({
     splash: [],
     sink: [],
@@ -584,6 +601,53 @@ const Index = () => {
     }, WEAPON_FIRE_ANIMATION_MS);
   };
 
+  // Same as triggerCellExplosions, but for a shot that ignited the oil
+  // slick: beforeNavy is that side's navy exactly as it stood before this
+  // shot/weapon resolved, and directTargetIndexes is the cell(s) the shot
+  // itself directly targeted (as opposed to cells the chain reaction swept
+  // up) - together they tell getOilIgnitionHitCellIndexes which of
+  // ignitedCellIndexes are ship cells the chain reaction newly caught.
+  // Those newly-caught cells flash the explosion like normal, then - once
+  // that visual clears - hold at the "hit but not sunk" red for
+  // OIL_IGNITION_HIGHLIGHT_MS before settling into their real resolved
+  // style, so a chain that both hits and instantly sinks a ship doesn't
+  // read as a single indistinct flash. The directly-targeted cell(s) are
+  // deliberately left out of that treatment, so a plain shot that happens
+  // to also ignite the slick still resolves exactly like every other
+  // direct hit elsewhere in the game.
+  const triggerOilSlickDetonation = (
+    side: NavySide,
+    beforeNavy: NavyState,
+    ignitedCellIndexes: number[],
+    directTargetIndexes: number[],
+    extraExplosionIndexes: number[] = [],
+  ) => {
+    const explosionIndexes = extraExplosionIndexes.length > 0
+      ? Array.from(new Set([...extraExplosionIndexes, ...ignitedCellIndexes]))
+      : ignitedCellIndexes;
+    triggerCellExplosions(side, explosionIndexes);
+
+    const hitCellIndexes = getOilIgnitionHitCellIndexes(beforeNavy, ignitedCellIndexes, directTargetIndexes);
+
+    if (hitCellIndexes.length === 0) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      setOilIgnitionHighlightCells((current) => ({
+        ...current,
+        [side]: Array.from(new Set([...current[side], ...hitCellIndexes])),
+      }));
+
+      window.setTimeout(() => {
+        setOilIgnitionHighlightCells((current) => ({
+          ...current,
+          [side]: current[side].filter((index) => !hitCellIndexes.includes(index)),
+        }));
+      }, OIL_IGNITION_HIGHLIGHT_MS);
+    }, WEAPON_FIRE_ANIMATION_MS);
+  };
+
   // Marks weapon as "firing" (keeps its use-count dot flashing) and, for an
   // instant weapon with no further animation of its own, clears it again
   // after WEAPON_FIRE_ANIMATION_MS. Traveling weapons (Torpedo/Rocket/
@@ -604,6 +668,7 @@ const Index = () => {
     navySide: NavySide,
     steps: WeaponTravelStep[],
     stepIndex: number,
+    previousNavy: NavyState,
     onComplete: () => void,
   ) => {
     if (stepIndex >= steps.length) {
@@ -636,7 +701,7 @@ const Index = () => {
 
       if (step.isHit) {
         if (step.ignited && step.ignitedCellIndexes) {
-          triggerCellExplosions(navySide, step.ignitedCellIndexes);
+          triggerOilSlickDetonation(navySide, previousNavy, step.ignitedCellIndexes, [step.cellIndex]);
         } else {
           triggerCellExplosions(navySide, [step.cellIndex]);
         }
@@ -650,7 +715,7 @@ const Index = () => {
         }
       }
 
-      runWeaponTravelSteps(navySide, steps, stepIndex + 1, onComplete);
+      runWeaponTravelSteps(navySide, steps, stepIndex + 1, step.navy, onComplete);
     }, WEAPON_TRAVEL_STEP_DELAY_MS);
   };
 
@@ -670,6 +735,7 @@ const Index = () => {
       appWeaponInFlightRef.current = false;
       setIsWeaponInFlight(false);
       setExplosionCells({ player: [], enemy: [] });
+      setOilIgnitionHighlightCells({ player: [], enemy: [] });
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       setGameState(nextState);
 
@@ -1064,13 +1130,14 @@ const Index = () => {
         let mineWanderOilDetonationSize = 0;
 
         if (mineIndex !== null) {
+          const enemyBeforeMineWander = currentEnemy;
           const moveResult = moveMine(currentEnemy, mineIndex);
           currentEnemy = moveResult.navy;
           mineIndex = moveResult.mineIndex;
 
           if (moveResult.hit) {
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
-              triggerCellExplosions('enemy', moveResult.ignitedCellIndexes);
+              triggerOilSlickDetonation('enemy', enemyBeforeMineWander, moveResult.ignitedCellIndexes, moveResult.hitIndexes ?? []);
               mineWanderOilDetonationSize = moveResult.ignitedCellIndexes.length;
             } else if (moveResult.hitIndexes) {
               triggerCellExplosions('enemy', moveResult.hitIndexes);
@@ -1097,10 +1164,12 @@ const Index = () => {
           // changed. If it also ignited the oil slick, that chain reaction
           // can reach further than the blast itself, so include those too.
           const moabFootprint = getMoabTargetIndexes(releaseIndex);
-          const explosionIndexes = ignited && ignitedCellIndexes
-            ? Array.from(new Set([...moabFootprint, ...ignitedCellIndexes]))
-            : moabFootprint;
-          triggerCellExplosions('enemy', explosionIndexes);
+
+          if (ignited && ignitedCellIndexes) {
+            triggerOilSlickDetonation('enemy', currentEnemy, ignitedCellIndexes, moabResult.targetedIndexes ?? [], moabFootprint);
+          } else {
+            triggerCellExplosions('enemy', moabFootprint);
+          }
 
           playerShotExtendedDelayRef.current = mineCausedExtendedDelay || audioSequence.includes('sink') || Boolean(ignited);
 
@@ -1151,7 +1220,7 @@ const Index = () => {
           const shotOutcome = shotOutcomeFromTargetingResult(mineResult, targetedIndexes ?? [], targetCell.occupied);
 
           if (ignited && ignitedCellIndexes) {
-            triggerCellExplosions('enemy', ignitedCellIndexes);
+            triggerOilSlickDetonation('enemy', currentEnemy, ignitedCellIndexes, targetedIndexes ?? []);
           } else {
             const hitIndexes = (targetedIndexes ?? []).filter((index) => currentEnemy.cells[index]?.occupied);
             if (hitIndexes.length > 0) {
@@ -1207,7 +1276,7 @@ const Index = () => {
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerCellExplosions('enemy', launchStep.ignitedCellIndexes);
+              triggerOilSlickDetonation('enemy', currentEnemy, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
             } else {
               triggerCellExplosions('enemy', [launchStep.cellIndex]);
             }
@@ -1264,7 +1333,7 @@ const Index = () => {
             return nextState;
           }
 
-          runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+          runWeaponTravelSteps('enemy', travelSteps, 0, launchStep.navy, () => {
             setFiringWeaponType((current) => (current === 'torpedo' ? null : current));
             setGameState((current) => {
               if (!current) {
@@ -1298,7 +1367,7 @@ const Index = () => {
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerCellExplosions('enemy', launchStep.ignitedCellIndexes);
+              triggerOilSlickDetonation('enemy', currentEnemy, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
             } else {
               triggerCellExplosions('enemy', [launchStep.cellIndex]);
             }
@@ -1355,7 +1424,7 @@ const Index = () => {
             return nextState;
           }
 
-          runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+          runWeaponTravelSteps('enemy', travelSteps, 0, launchStep.navy, () => {
             setFiringWeaponType((current) => (current === 'rocket' ? null : current));
             setGameState((current) => {
               if (!current) {
@@ -1389,7 +1458,7 @@ const Index = () => {
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerCellExplosions('enemy', launchStep.ignitedCellIndexes);
+              triggerOilSlickDetonation('enemy', currentEnemy, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
             } else {
               triggerCellExplosions('enemy', [launchStep.cellIndex]);
             }
@@ -1446,7 +1515,7 @@ const Index = () => {
             return nextState;
           }
 
-          runWeaponTravelSteps('enemy', travelSteps, 0, () => {
+          runWeaponTravelSteps('enemy', travelSteps, 0, launchStep.navy, () => {
             setFiringWeaponType((current) => (current === 'harpoon' ? null : current));
             setGameState((current) => {
               if (!current) {
@@ -1519,7 +1588,7 @@ const Index = () => {
         const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = plainShotResult;
 
         if (ignited && ignitedCellIndexes) {
-          triggerCellExplosions('enemy', ignitedCellIndexes);
+          triggerOilSlickDetonation('enemy', currentEnemy, ignitedCellIndexes, [releaseIndex]);
         } else if (targetCell.occupied) {
           triggerCellExplosions('enemy', [releaseIndex]);
         }
@@ -1731,13 +1800,14 @@ const Index = () => {
         let mineWanderOilDetonationSize = 0;
 
         if (appMineIndex !== null) {
+          const playerBeforeMineWander = currentPlayer;
           const moveResult = moveMine(currentPlayer, appMineIndex);
           currentPlayer = moveResult.navy;
           appMineIndex = moveResult.mineIndex;
 
           if (moveResult.hit) {
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
-              triggerCellExplosions('player', moveResult.ignitedCellIndexes);
+              triggerOilSlickDetonation('player', playerBeforeMineWander, moveResult.ignitedCellIndexes, moveResult.hitIndexes ?? []);
               mineWanderOilDetonationSize = moveResult.ignitedCellIndexes.length;
             } else if (moveResult.hitIndexes) {
               triggerCellExplosions('player', moveResult.hitIndexes);
@@ -1759,10 +1829,13 @@ const Index = () => {
           const shotOutcome = shotOutcomeFromTargetingResult(moabResult, moabResult.targetedIndexes ?? [], true);
 
           const moabFootprint = getMoabTargetIndexes(previewIndex);
-          const explosionIndexes = ignited && ignitedCellIndexes
-            ? Array.from(new Set([...moabFootprint, ...ignitedCellIndexes]))
-            : moabFootprint;
-          triggerCellExplosions('player', explosionIndexes);
+
+          if (ignited && ignitedCellIndexes) {
+            triggerOilSlickDetonation('player', currentPlayer, ignitedCellIndexes, moabResult.targetedIndexes ?? [], moabFootprint);
+          } else {
+            triggerCellExplosions('player', moabFootprint);
+          }
+
           window.setTimeout(() => setAppFiringWeaponType((current) => (current === 'moab' ? null : current)), WEAPON_FIRE_ANIMATION_MS);
 
           const hasStaggered = true;
@@ -1806,7 +1879,7 @@ const Index = () => {
           const shotOutcome = shotOutcomeFromTargetingResult(mineResult, targetedIndexes ?? [], Boolean(targetCell?.occupied));
 
           if (ignited && ignitedCellIndexes) {
-            triggerCellExplosions('player', ignitedCellIndexes);
+            triggerOilSlickDetonation('player', currentPlayer, ignitedCellIndexes, targetedIndexes ?? []);
           } else {
             const hitIndexes = (targetedIndexes ?? []).filter((index) => currentPlayer.cells[index]?.occupied);
             if (hitIndexes.length > 0) {
@@ -1859,7 +1932,7 @@ const Index = () => {
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerCellExplosions('player', launchStep.ignitedCellIndexes);
+              triggerOilSlickDetonation('player', currentPlayer, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
             } else {
               triggerCellExplosions('player', [launchStep.cellIndex]);
             }
@@ -1912,7 +1985,7 @@ const Index = () => {
             return nextState;
           }
 
-          runWeaponTravelSteps('player', travelSteps, 0, () => {
+          runWeaponTravelSteps('player', travelSteps, 0, launchStep.navy, () => {
             setAppFiringWeaponType((current) => (current === 'torpedo' ? null : current));
             setGameState((current) => {
               if (!current) {
@@ -1949,7 +2022,7 @@ const Index = () => {
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerCellExplosions('player', launchStep.ignitedCellIndexes);
+              triggerOilSlickDetonation('player', currentPlayer, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
             } else {
               triggerCellExplosions('player', [launchStep.cellIndex]);
             }
@@ -2002,7 +2075,7 @@ const Index = () => {
             return nextState;
           }
 
-          runWeaponTravelSteps('player', travelSteps, 0, () => {
+          runWeaponTravelSteps('player', travelSteps, 0, launchStep.navy, () => {
             setAppFiringWeaponType((current) => (current === 'rocket' ? null : current));
             setGameState((current) => {
               if (!current) {
@@ -2039,7 +2112,7 @@ const Index = () => {
 
           if (launchStep.isHit) {
             if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerCellExplosions('player', launchStep.ignitedCellIndexes);
+              triggerOilSlickDetonation('player', currentPlayer, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
             } else {
               triggerCellExplosions('player', [launchStep.cellIndex]);
             }
@@ -2092,7 +2165,7 @@ const Index = () => {
             return nextState;
           }
 
-          runWeaponTravelSteps('player', travelSteps, 0, () => {
+          runWeaponTravelSteps('player', travelSteps, 0, launchStep.navy, () => {
             setAppFiringWeaponType((current) => (current === 'harpoon' ? null : current));
             setGameState((current) => {
               if (!current) {
@@ -2158,7 +2231,7 @@ const Index = () => {
         const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = plainShotResult;
 
         if (ignited && ignitedCellIndexes) {
-          triggerCellExplosions('player', ignitedCellIndexes);
+          triggerOilSlickDetonation('player', currentPlayer, ignitedCellIndexes, [previewIndex]);
         } else if (currentPlayer.cells[previewIndex]?.occupied) {
           triggerCellExplosions('player', [previewIndex]);
         }
@@ -2290,6 +2363,7 @@ const Index = () => {
       onCellPressCancel={side === 'enemy' ? handleEnemyCellPressCancel : undefined}
       isCellTargetable={side === 'enemy' ? (cell) => !isWeaponInFlight && cell.effect === 'untargeted' && !cell.targeting : undefined}
       explodingCellIndexes={explosionCells[side]}
+      ignitionHighlightCellIndexes={oilIgnitionHighlightCells[side]}
       showSettings={showSettings}
       reserveArrowSpace={showArrows}
       mineIndex={side === 'enemy' ? gameState?.playerMineIndex : gameState?.appMineIndex}
@@ -2848,6 +2922,7 @@ type NavyPanelProps = {
   onCellPressCancel?: (cellIndex: number) => void;
   isCellTargetable?: (cell: CellState) => boolean;
   explodingCellIndexes?: number[];
+  ignitionHighlightCellIndexes?: number[];
   showSettings?: boolean;
   reserveArrowSpace?: boolean;
   /** Index within this navy's cells currently holding an active mine, if any. */
@@ -2941,6 +3016,7 @@ function NavyPanel({
   onCellPressCancel,
   isCellTargetable,
   explodingCellIndexes,
+  ignitionHighlightCellIndexes,
   showSettings = true,
   reserveArrowSpace = true,
   mineIndex = null,
@@ -3124,6 +3200,7 @@ function NavyPanel({
               onPressEnd={onCellPressEnd ? () => onCellPressEnd(index) : undefined}
               onPressCancel={onCellPressCancel ? () => onCellPressCancel(index) : undefined}
               isExploding={explodingCellIndexes?.includes(index) ?? false}
+              isIgnitionHighlighted={ignitionHighlightCellIndexes?.includes(index) ?? false}
               hasMine={index === mineIndex}
               armedWeapon={armedWeapon}
             />
@@ -3332,6 +3409,10 @@ function getWeaponPreviewIcon(weapon: WeaponType, cellIndex: number): typeof Bom
   return asset[key] ?? Object.values(asset)[0]!;
 }
 
+// Matches getCellPresentation()'s own 'occupied and targeted' (hit but not
+// sunk) style exactly - see the isIgnitionHighlighted override in GridCell.
+const OIL_IGNITION_HIT_CLASS_NAME = 'border-[#FF0000] bg-[#FF0000] text-white';
+
 function GridCell({
   cell,
   cellIndex,
@@ -3341,6 +3422,7 @@ function GridCell({
   onPressEnd,
   onPressCancel,
   isExploding,
+  isIgnitionHighlighted,
   hasMine,
   armedWeapon,
 }: {
@@ -3352,11 +3434,18 @@ function GridCell({
   onPressEnd?: () => void;
   onPressCancel?: () => void;
   isExploding?: boolean;
+  isIgnitionHighlighted?: boolean;
   hasMine?: boolean;
   armedWeapon?: WeaponType | null;
 }) {
   const exposure = cell.exposure;
-  const { className, value, label } = getCellPresentation(cell, hasMine ?? false);
+  const { className: presentationClassName, value, label } = getCellPresentation(cell, hasMine ?? false);
+  // Forces the same "hit but not sunk" red an ordinary shot uses, overriding
+  // whatever this cell's real post-explosion style would be (including
+  // sunk/oil-tanker-sunk) - see triggerOilSlickDetonation for why a cell the
+  // chain reaction both hits and sinks still needs this beat before
+  // settling into its real style.
+  const className = isIgnitionHighlighted ? OIL_IGNITION_HIT_CLASS_NAME : presentationClassName;
   const WeaponIcon = armedWeapon ? getWeaponPreviewIcon(armedWeapon, cellIndex) : null;
   // The unoccupied case is handled by getCellPresentation() itself (value
   // becomes just MINE_GLYPH, already colored). An occupied cell keeps its

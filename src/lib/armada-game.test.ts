@@ -9,6 +9,7 @@ import {
   fireMoab,
   fireTorpedo,
   getLocalDateString,
+  getOilIgnitionHitCellIndexes,
   moveMine,
   resolveMineHit,
   resolveMineIndexAfterDrop,
@@ -252,6 +253,58 @@ describe('Oil slick management', () => {
       const index = selectAppTargetIndex(navy);
       expect(index).not.toBe(83);
     }
+  });
+});
+
+// Regression coverage for the "which cells did the oil slick actually hit?"
+// UI request: an ignition's own ignitedCellIndexes includes every cell the
+// chain reaction visited, but only some of those are ship cells the
+// explosion itself newly caught - see getOilIgnitionHitCellIndexes's own doc
+// comment and GAME_DESIGN.md's Variable B.
+describe('getOilIgnitionHitCellIndexes', () => {
+  it('includes an occupied cell the chain reaction found still untargeted beforehand', () => {
+    const beforeNavy = makeNavy({ 61: { occupied: true, shipCode: 'B', oil: true } });
+
+    expect(getOilIgnitionHitCellIndexes(beforeNavy, [61], [])).toEqual([61]);
+  });
+
+  it('excludes the cell the shot itself directly targeted, even though it reads untargeted in beforeNavy', () => {
+    // beforeNavy is captured before the direct target is even marked
+    // 'targeted' (see every triggerOilSlickDetonation call site in
+    // Index.tsx), so it reads exactly like any other untouched cell there -
+    // only directTargetIndexes distinguishes it from a cell the chain
+    // reaction itself newly caught.
+    const beforeNavy = makeNavy({ 60: { occupied: true, shipCode: 'B', oil: true } });
+
+    expect(getOilIgnitionHitCellIndexes(beforeNavy, [60, 61], [60])).toEqual([]);
+  });
+
+  it('excludes an already-sunk cell the chain merely passed back over', () => {
+    const beforeNavy = makeNavy({ 61: { occupied: true, shipCode: 'B', oil: true, effect: 'sunk' } });
+
+    expect(getOilIgnitionHitCellIndexes(beforeNavy, [61], [])).toEqual([]);
+  });
+
+  it('excludes empty, oil-covered water the chain burned through', () => {
+    const beforeNavy = makeNavy({ 61: { oil: true } });
+
+    expect(getOilIgnitionHitCellIndexes(beforeNavy, [61], [])).toEqual([]);
+  });
+
+  it('picks out only the newly-caught cells from a chain spanning several ships', () => {
+    const beforeNavy = makeNavy({
+      // Direct target: untargeted in beforeNavy, same as everything else -
+      // only being listed in directTargetIndexes below excludes it.
+      60: { occupied: true, shipCode: 'B', oil: true },
+      // Newly caught by the chain.
+      61: { occupied: true, shipCode: 'B', oil: true },
+      // Empty oiled water the chain passed through.
+      70: { oil: true },
+      // A second ship's cell the chain also newly caught.
+      20: { occupied: true, shipCode: 'C', oil: true },
+    });
+
+    expect(getOilIgnitionHitCellIndexes(beforeNavy, [60, 61, 70, 20], [60])).toEqual([61, 20]);
   });
 });
 

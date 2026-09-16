@@ -404,6 +404,35 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
   };
 }
 
+/**
+ * Of an ignition's own ignitedCellIndexes (every cell resolveTargetingSequence
+ * visited this chain - see its own doc comment), which ones are ship cells
+ * the chain reaction itself newly caught, as opposed to directTargetIndexes
+ * (the cell(s) the shot/weapon itself directly targeted - resolved the same
+ * instant the chain started, not "hit by the explosion") or empty water the
+ * chain just burned through. beforeNavy is that side's navy exactly as it
+ * stood before this shot/weapon resolved - both directTargetIndexes and any
+ * chain-caught cell still read as 'untargeted' there, so directTargetIndexes
+ * has to be excluded explicitly rather than inferred from beforeNavy alone.
+ * Used by the UI to hold a newly-caught cell at the "hit but not sunk" red
+ * for a beat after the explosion visual clears, even if the chain also sank
+ * it in the same instant - see GAME_DESIGN.md's Variable B.
+ */
+export function getOilIgnitionHitCellIndexes(
+  beforeNavy: NavyState,
+  ignitedCellIndexes: number[],
+  directTargetIndexes: number[],
+): number[] {
+  return ignitedCellIndexes.filter((index) => {
+    if (directTargetIndexes.includes(index)) {
+      return false;
+    }
+
+    const cell = beforeNavy.cells[index];
+    return cell?.occupied && cell.effect === 'untargeted';
+  });
+}
+
 // Some ships can't be damaged by certain weapon types - a small
 // (Ensign/Lifeboat-scale), airborne (Helicopter), or submerged (Submarine)
 // target that a given weapon's mechanic just can't harm. A weapon that

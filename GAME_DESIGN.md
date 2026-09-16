@@ -169,6 +169,20 @@ game) is a 3-cell ship. Sinking it triggers an oil slick:
   is intentional, per the core philosophy above — realism would hide it, but
   gameplay is better when the player can see the slick creeping across the
   board and has to make a real timing decision about it.
+- **A chain reaction that both hits and sinks a ship in the same instant
+  still shows the hit** (`triggerOilSlickDetonation()` in `Index.tsx`).
+  Every cell an ignition catches resolves to its final state (sunk,
+  targeted, oil-tanker-black, ...) immediately, underneath the same brief
+  "explosion" visual any hit plays - so without this, a ship the chain also
+  finishes off jumps straight to its sunk color the moment that visual
+  clears, and a detonation across several ships reads as one indistinct
+  flash instead of showing which cells actually got hit. Any newly-caught
+  ship cell (occupied, still `'untargeted'` immediately before this shot -
+  not the cell(s) directly targeted by the shot itself) instead holds at
+  the ordinary "hit but not sunk" red for `OIL_IGNITION_HIGHLIGHT_MS`
+  (500ms) once the explosion visual clears, before settling into its real
+  style. See "End-of-game reveal sequence" below for why this fits inside
+  the existing two-second win-reveal hold without needing to lengthen it.
 
 This creates the game's main timing/risk metagame: if you sink the Oil
 Tanker early, the rest of the round becomes partly about *managing* the
@@ -788,6 +802,11 @@ popping the win/lose dialog immediately:
    fatal shot's own audio and animation to finish, including the longer
    cues (an oil ignition or a MOAB kill queues a second/third "explosion"
    sound 300-600ms after the first, and that cue alone is a ~1.5s clip).
+   This also comfortably covers the oil-ignition hit highlight (see
+   Variable B): `WEAPON_FIRE_ANIMATION_MS` (380ms) plus
+   `OIL_IGNITION_HIGHLIGHT_MS` (500ms) is 880ms from the fatal shot, well
+   under the two-second hold - so a game-ending detonation still gets to
+   show which cells it hit before the dialog's own reveal takes over.
 3. After the two seconds, `revealRemainingShipsInWinningNavy()` marks
    every still-untargeted, occupied cell in the **winning** side's own
    navy (the side that survived, not the side it defeated) with exposure
