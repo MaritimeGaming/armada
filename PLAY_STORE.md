@@ -21,7 +21,7 @@ Play Console walkthrough with pre-filled answers for every policy form.
 
 **Blocking the closed test (do these first — nothing below matters until the 12/14 clock is running)**
 - [ ] 4–6 phone screenshots captured on a device → `store-assets/` (§4) — the one real content gap; at least 2 are required to save a usable store listing
-- [ ] "Set up your app" forms still open: app access, ads, target audience, data safety, advertising ID, etc. (§6) — Play Console gates rollout on *every* track, including closed testing, behind these
+- [ ] "Set up your app" forms still open: app access, ads, data safety, advertising ID, etc. (§6) — Play Console gates rollout on *every* track, including closed testing, behind these
 - [ ] Main store listing: descriptions, graphics, category, tags (§7.1)
 - [ ] Store settings + contact details (§7.2)
 - [ ] Build *any* signed AAB (§7.4) — enrolls Play App Signing automatically on first upload; test ads are fine for this build, see below
@@ -355,7 +355,7 @@ generated from the same answers by IARC — check those land somewhere
 similarly mild once the questionnaire shows them; nothing above suggests
 otherwise.
 
-### 6.4 Target audience and content
+### 6.4 Target audience and content — DONE
 - Target age groups: select **13–15, 16–17, 18 and over**. Do **not**
   select any under-13 band — the privacy policy states the app is not
   directed to children under 13, and staying out of the under-13 bands
