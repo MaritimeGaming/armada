@@ -398,6 +398,13 @@ const Index = () => {
   const [panelWidth, setPanelWidth] = useState(0);
   const swipeResizeObserverRef = useRef<ResizeObserver | null>(null);
   const swipeInstantSwitchFrameRef = useRef(0);
+  // Both ad-prompt dialogs default their focus to "Watch Ad" rather than
+  // "No" (see each dialog's own onOpenAutoFocus below) - watching the ad is
+  // the expected happy path (a free, optional top-up the player only sees
+  // because they chose to interact with the button that got them here), so
+  // a stray Enter/Space shouldn't accidentally land on the dismissal.
+  const weaponProcurementWatchAdButtonRef = useRef<HTMLButtonElement>(null);
+  const newGameWatchAdButtonRef = useRef<HTMLButtonElement>(null);
   const isDesktopLayout = useMediaQuery(DESKTOP_LAYOUT_QUERY);
   const [armedWeapon, setArmedWeapon] = useState<WeaponType | null>(null);
   // Which weapon type currently has a "pending" shot in progress on each
@@ -2665,7 +2672,13 @@ const Index = () => {
           }
         }}
       >
-        <DialogContent className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white">
+        <DialogContent
+          className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            weaponProcurementWatchAdButtonRef.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{pendingWeaponProcurement ? WEAPON_DISPLAY[pendingWeaponProcurement].label : 'Ammo'} supply depleted.</DialogTitle>
             <DialogDescription className="text-slate-300">
@@ -2676,7 +2689,7 @@ const Index = () => {
             <Button type="button" variant="outline" onClick={cancelWeaponProcurement} className="w-full sm:w-auto">
               No
             </Button>
-            <Button type="button" onClick={confirmWeaponProcurement} className="w-full sm:w-auto">
+            <Button type="button" ref={weaponProcurementWatchAdButtonRef} onClick={confirmWeaponProcurement} className="w-full sm:w-auto">
               Watch Ad
             </Button>
           </DialogFooter>
@@ -2704,7 +2717,13 @@ const Index = () => {
           }
         }}
       >
-        <DialogContent className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white">
+        <DialogContent
+          className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            newGameWatchAdButtonRef.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>New Game</DialogTitle>
             <DialogDescription className="text-slate-300">Watch an ad to start a new game?</DialogDescription>
@@ -2713,7 +2732,7 @@ const Index = () => {
             <Button type="button" variant="outline" onClick={cancelNewGameAdFlow} className="w-full sm:w-auto">
               No
             </Button>
-            <Button type="button" onClick={confirmNewGameAdFlow} className="w-full sm:w-auto">
+            <Button type="button" ref={newGameWatchAdButtonRef} onClick={confirmNewGameAdFlow} className="w-full sm:w-auto">
               Watch Ad
             </Button>
           </DialogFooter>
