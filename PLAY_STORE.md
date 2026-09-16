@@ -329,8 +329,11 @@ Start the questionnaire. Email: `contact@maritimegaming.com`. Category:
 Recommended answers:
 | Question | Answer |
 | --- | --- |
-| Violence — cartoon/fantasy or realistic? | The game has **mild, non-realistic combat** (abstract grid, no characters shown). If asked "does the game contain violence": you may answer **No** in the strict sense (no depiction of a person/creature being harmed) — the "combat" is tapping grid cells. If the questionnaire's violence definition seems to fit the explosions/weapon theme, answer **Yes → cartoon/fantasy, not realistic, no blood**. |
-| Blood / gore | No |
+| "Does the game contain inferences of, references to, or depictions of violence, blood, or gory images?" | **Yes** — the phrase "inferences of, references to" is a deliberately low bar, and Armada has named military weapons (MOAB, Torpedo, Rocket, Mine, Harpoon), explosion effects on every hit, and ships get "sunk." No blood, no gore, no human characters shown being harmed (there's no player avatar, just a fleet). |
+| Follow-up: frequency | **Frequent/Often** — combat is the core loop, every turn. |
+| Follow-up: realism | **Cartoon/fantasy, not realistic** — abstract grid, no photorealistic imagery. |
+| Follow-up: blood/gore present | No |
+| Follow-up: violence against defenseless characters / motivates real-world violence / sexual violence | No to all |
 | Sexual content, nudity | No |
 | Profanity / crude humor | No |
 | Controlled substances (drugs, alcohol, tobacco) | No |
@@ -340,8 +343,10 @@ Recommended answers:
 | Digital purchases | No |
 | Does the app contain ads? | Yes |
 
-Expected outcome: **Everyone (ESRB) / PEGI 3 / USK 0 / IARC 3+**, possibly
-Everyone 10+ if you answered Yes to cartoon violence. Either is fine.
+Expected outcome: **Everyone 10+ (ESRB)** or **Everyone**, roughly
+**PEGI 7** or **PEGI 3**, **USK 0** — frequent-but-cartoonish violence
+with no blood/gore typically lands in this mild range either way. Nothing
+to be concerned about.
 
 ### 6.4 Target audience and content
 - Target age groups: select **13–15, 16–17, 18 and over**. Do **not**
