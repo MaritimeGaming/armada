@@ -345,7 +345,33 @@ export const AUDIO_FILES: Record<AudioCue, string> = {
   camera: `${import.meta.env.BASE_URL}audio/Camera.wav`,
 };
 
+/**
+ * Resolves one or more cells (a plain shot's single cell, a MOAB's blast
+ * footprint, a Mine's impact-plus-bonus-cell, ...) including any oil-slick
+ * chain reaction, then ticks the oil slick exactly once - spreading it by
+ * one cell if nothing ignited, or extinguishing it entirely if anything
+ * did (see resolveTargetingHits and GAME_DESIGN.md's Variable B). Every
+ * single-call site (plain shot, fireMoab, resolveMineHit, a mine's own
+ * wander hit) gets this one-tick-per-call behavior for free, since each of
+ * those only ever calls this once per turn. fireTravelingWeapon is the one
+ * exception - see its own doc comment for why it calls resolveTargetingHits
+ * directly instead, ticking the slick itself exactly once for the whole run.
+ */
 export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
+  const result = resolveTargetingHits(navy, initialCellIndexes);
+  const tickedNavy = result.ignited ? extinguishOilSlick(result.navy) : spreadOilSlick(result.navy);
+
+  return { ...result, navy: tickedNavy };
+}
+
+/**
+ * The actual targeting/damage/chain-reaction work resolveTargetingSequence
+ * does, minus its once-per-turn oil-slick tick at the end - see that
+ * function's own doc comment. Not exported: every caller other than
+ * fireTravelingWeapon should go through resolveTargetingSequence itself so
+ * the tick isn't forgotten.
+ */
+function resolveTargetingHits(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
   let currentNavy = activatePendingOilSlick(navy);
   const playedCues = new Set<AudioCue>();
   const pendingIndexes = [...initialCellIndexes];
@@ -389,8 +415,6 @@ export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: nu
       currentNavy = setCellState(currentNavy, cellIndex, { oil: false });
     }
   }
-
-  currentNavy = ignited ? extinguishOilSlick(currentNavy) : spreadOilSlick(currentNavy);
 
   const audioSequence = ignited
     ? Array.from(playedCues).filter((cue) => cue !== 'explosion' && cue !== 'splash')
@@ -820,6 +844,16 @@ export function getWeaponTravelIndexes(cellIndex: number, axis: WeaponTravelAxis
  * weapon merely crosses in flight, so a real weapon shrugged off by an
  * immune ship never resolves in total silence. Running off the edge of the
  * board just ends the run early.
+ *
+ * The oil slick ticks exactly once for the whole run, not once per hit: the
+ * launch and every hit along the way call resolveTargetingHits (the
+ * non-ticking core - see its own doc comment) instead of
+ * resolveTargetingSequence, and this function applies the single spread-or-
+ * extinguish tick itself afterward, based on whether *any* cell in the run
+ * ignited. Regression coverage for a real bug: a multi-hit Torpedo/Rocket/
+ * Harpoon run used to tick once per hit cell (each one calling
+ * resolveTargetingSequence directly), so a single lucky run could spread
+ * the slick three or four cells in one turn instead of the intended one.
  */
 function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTravelAxis, weapon: WeaponType): WeaponTravelResult {
   const launchCell = navy.cells[cellIndex];
@@ -828,7 +862,7 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
   const launchNavy = launchIsImmune
     ? exposeCellWithoutDamage(navy, cellIndex)
     : setCellState(navy, cellIndex, { effect: 'targeted', targeting: false });
-  const launchResult = resolveTargetingSequence(launchNavy, launchIsImmune ? [] : [cellIndex]);
+  const launchResult = resolveTargetingHits(launchNavy, launchIsImmune ? [] : [cellIndex]);
 
   const steps: WeaponTravelStep[] = [
     {
@@ -842,6 +876,7 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
   ];
 
   let currentNavy = launchResult.navy;
+  let anyIgnited = Boolean(launchResult.ignited);
 
   for (const nextIndex of getWeaponTravelIndexes(cellIndex, axis)) {
     const candidateCell = currentNavy.cells[nextIndex];
@@ -861,8 +896,9 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
 
     if (candidateCell.effect === 'untargeted' && candidateCell.occupied) {
       const preparedNavy = setCellState(currentNavy, nextIndex, { effect: 'targeted', targeting: false });
-      const hitResult = resolveTargetingSequence(preparedNavy, [nextIndex]);
+      const hitResult = resolveTargetingHits(preparedNavy, [nextIndex]);
       currentNavy = hitResult.navy;
+      anyIgnited = anyIgnited || Boolean(hitResult.ignited);
 
       steps.push({
         cellIndex: nextIndex,
@@ -887,6 +923,9 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
       audioSequence: [],
     });
   }
+
+  currentNavy = anyIgnited ? extinguishOilSlick(currentNavy) : spreadOilSlick(currentNavy);
+  steps[steps.length - 1] = { ...steps[steps.length - 1], navy: currentNavy };
 
   return { steps };
 }

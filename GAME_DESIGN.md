@@ -160,7 +160,18 @@ The Oil Tanker (code `O`, part of `BASE_SHIPS`, always included in every
 game) is a 3-cell ship. Sinking it triggers an oil slick:
 
 - The slick starts at the tanker's wreck cells and **spreads by one
-  untargeted adjacent cell per turn** (`spreadOilSlick()`).
+  untargeted adjacent cell per turn** (`spreadOilSlick()`) - exactly one
+  cell, regardless of how many hits that turn scored. `resolveTargetingHits`
+  (`armada-game.ts`) is the "resolve targeting, don't tick the slick yet"
+  core `resolveTargetingSequence` wraps with a single spread-or-extinguish
+  tick; every single-call site (a plain shot, MOAB, a Mine) gets that one
+  tick for free, but a Torpedo/Rocket/Harpoon run calls
+  `resolveTargetingHits` directly once per cell it resolves (launch plus
+  every hit along its travel path) and ticks the slick itself exactly once
+  for the whole run, in `fireTravelingWeapon`. This was a real bug: a run
+  used to call the ticking `resolveTargetingSequence` per hit, so a Torpedo
+  that hit four ships in one flight spread the slick four cells in a single
+  turn instead of one.
 - Targeting an oil-covered cell has a **1-in-12 chance to ignite** the slick
   (`OIL_IGNITION_ODDS`), which chain-detonates every remaining untargeted
   oil cell at once, then extinguishes the slick.

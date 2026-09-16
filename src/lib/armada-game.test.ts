@@ -391,6 +391,37 @@ describe("Weapon immunity: the 'deflect' audio cue", () => {
   });
 });
 
+// Regression coverage for a real bug: a Torpedo/Rocket/Harpoon run that
+// scored several hits ticked the oil slick once per hit (each hit routed
+// through resolveTargetingSequence separately), so a single lucky run could
+// spread the slick three or four cells in one turn instead of the intended
+// one - see fireTravelingWeapon's own doc comment in armada-game.ts and
+// GAME_DESIGN.md's Variable B ("spreads by one untargeted adjacent cell per
+// turn").
+describe('Oil slick ticks once per turn, even across a multi-hit weapon run', () => {
+  it('spreads by exactly one cell when a Torpedo run scores several hits, none of which ignite', () => {
+    const navy = makeNavy({
+      // Launch cell (30) plus 3 more untargeted, oil-free, non-immune
+      // single-cell "ships" the rightward run crosses at 31, 32, 33 - 4
+      // hits in one run, none of them oil-covered so none can ignite.
+      30: { occupied: true, shipCode: 'X0' },
+      31: { occupied: true, shipCode: 'X1' },
+      32: { occupied: true, shipCode: 'X2' },
+      33: { occupied: true, shipCode: 'X3' },
+      // The slick's only cell, well away from the run, so there's exactly
+      // one turn's worth of spreading to observe.
+      70: { oil: true },
+    });
+    const oilCountBefore = navy.cells.filter((cell) => cell.oil).length;
+
+    const result = fireTorpedo(navy, 30);
+    const finalNavy = result.steps[result.steps.length - 1].navy;
+    const oilCountAfter = finalNavy.cells.filter((cell) => cell.oil).length;
+
+    expect(oilCountAfter - oilCountBefore).toBe(1);
+  });
+});
+
 function makeTargetingResult(overrides: Partial<TargetingResult> = {}): TargetingResult {
   return { navy: makeNavy(), audioSequence: [], ...overrides };
 }
