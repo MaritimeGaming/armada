@@ -87,31 +87,35 @@ const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
 const SOUND_EFFECTS_STORAGE_KEY = 'armada:sound-effects-enabled';
 const MOAB_COUNT_STORAGE_KEY = 'armada:moab-count';
-// Starting inventory the first time someone plays; not the same as the
-// refill amount below - see the "no progression" philosophy in
-// GAME_DESIGN.md, weapon charges are a standing inventory, not a per-round
-// resource, so this only ever applies once, before anything is persisted.
-// 5 (not the refill amount's 3) so a brand-new player gets roughly 3 games
-// of room before ever needing an ad, matching the New Game token gate's
-// own GAME_TOKENS_STARTING_COUNT reasoning below.
+// Starting inventory the first time someone plays; not the same constant as
+// the refill amount below (they just happen to share a value) - see the "no
+// progression" philosophy in GAME_DESIGN.md, weapon charges are a standing
+// inventory, not a per-round resource, so this only ever applies once,
+// before anything is persisted. 5 gives a brand-new player roughly 3 games
+// of room before ever needing an ad, matching the New Game token gate's own
+// GAME_TOKENS_STARTING_COUNT reasoning below.
 const MOAB_STARTING_COUNT = 5;
-// How many charges a "Procuring Weapons" refill grants once the player runs out.
-const MOAB_REFILL_COUNT = 3;
+// How many charges a "Procuring Weapons" refill grants once the player runs
+// out. Was 3; raised to 5 (matching MOAB_STARTING_COUNT above) so a refill
+// covers more games before the next ad is needed - 3 meant ads could cluster
+// at similar intervals, and fewer, better-spaced ad prompts beat frequent
+// ones for adoption even though it means fewer total ad views.
+const MOAB_REFILL_COUNT = 5;
 const MINE_COUNT_STORAGE_KEY = 'armada:mine-count';
 const MINE_STARTING_COUNT = 5;
-const MINE_REFILL_COUNT = 3;
+const MINE_REFILL_COUNT = 5;
 const TORPEDO_COUNT_STORAGE_KEY = 'armada:torpedo-count';
 const TORPEDO_STARTING_COUNT = 5;
-const TORPEDO_REFILL_COUNT = 3;
+const TORPEDO_REFILL_COUNT = 5;
 const ROCKET_COUNT_STORAGE_KEY = 'armada:rocket-count';
 const ROCKET_STARTING_COUNT = 5;
-const ROCKET_REFILL_COUNT = 3;
+const ROCKET_REFILL_COUNT = 5;
 const HARPOON_COUNT_STORAGE_KEY = 'armada:harpoon-count';
 const HARPOON_STARTING_COUNT = 5;
-const HARPOON_REFILL_COUNT = 3;
+const HARPOON_REFILL_COUNT = 5;
 const DRONE_COUNT_STORAGE_KEY = 'armada:drone-count';
 const DRONE_STARTING_COUNT = 5;
-const DRONE_REFILL_COUNT = 3;
+const DRONE_REFILL_COUNT = 5;
 // How long each traveled cell (beyond the launch cell) stays lit with the
 // targeting highlight before it resolves and the weapon moves on. Shared by
 // the Torpedo, Rocket, and Harpoon - direct counterparts, differing only in
@@ -2663,7 +2667,7 @@ const Index = () => {
       >
         <DialogContent className="max-w-sm rounded-2xl border-white/10 bg-slate-950 text-white">
           <DialogHeader>
-            <DialogTitle>Out of {pendingWeaponProcurement ? WEAPON_DISPLAY[pendingWeaponProcurement].label : 'Ammo'}</DialogTitle>
+            <DialogTitle>{pendingWeaponProcurement ? WEAPON_DISPLAY[pendingWeaponProcurement].label : 'Ammo'} supply depleted.</DialogTitle>
             <DialogDescription className="text-slate-300">
               Watch an ad to procure {pendingWeaponProcurement ? WEAPON_REFILL_COUNTS[pendingWeaponProcurement] : ''} more?
             </DialogDescription>

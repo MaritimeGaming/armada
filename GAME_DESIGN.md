@@ -1128,10 +1128,10 @@ from anywhere on the board, so none of them ever restricts
 
 Monetization model: players start with a handful of charges per weapon,
 with refills obtainable via rewarded ads (Google Play style: watch a
-30-second ad for +3 charges of that type). Tapping a weapon icon that's at
-0 opens a Yes/No confirmation ("Out of MOAB - Watch an ad to procure 3
-more?", the count pulled from `WEAPON_REFILL_COUNTS` so the copy can't
-drift from the actual refill amount) rather than launching the ad
+30-second ad for +5 charges of that type). Tapping a weapon icon that's at
+0 opens a Yes/No confirmation ("MOAB supply depleted. Watch an ad to
+procure 5 more?", the count pulled from `WEAPON_REFILL_COUNTS` so the copy
+can't drift from the actual refill amount) rather than launching the ad
 immediately - unlike the New Game token gate below, running dry mid-game
 isn't a break point the player is already expecting, so they get an
 explicit opt-out instead of an unannounced ad. **No** just dismisses the
@@ -1141,7 +1141,10 @@ exactly where they were and can pick something else. **Watch Ad**
 `beginWeaponProcurement` in `Index.tsx`) hands off to `showRewardedAd`
 (`src/lib/ads.ts`) - a real AdMob rewarded ad via
 `@capacitor-community/admob` on a native build, refilling to that weapon's
-`*_REFILL_COUNT` (3) and *arming* it only once the ad's own reward-earned
+`*_REFILL_COUNT` (5 - was 3; raised so a refill covers more games before
+the next ad, since infrequent, well-spaced prompts beat frequent ones for
+adoption even at the cost of fewer total ad views) and *arming* it only
+once the ad's own reward-earned
 event fires; a decline, an early close, or a failed show leaves the weapon
 untouched. Outside a native build (the desktop dev server, GitHub Pages,
 the test suite - none of which can run a real AdMob ad at all) it falls
@@ -1590,12 +1593,12 @@ to that weapon type, which opens a plain confirmation `Dialog`
   `beginWeaponProcurement`, which calls the same `showRewardedAd` (see the
   New Game token gate above) the other ad integration point uses, and on a
   genuine reward refills that weapon's standing inventory to its
-  `*_REFILL_COUNT` (3) and arms it.
+  `*_REFILL_COUNT` (5) and arms it.
 
 **Both gates ask now, for the same underlying reason, worded to fit each
 moment.** Here, running out of a weapon mid-game interrupts an otherwise
 free action (the player was about to take a shot), so the dialog names
-the specific thing being traded ("Watch an ad to procure 3 more?"). The
+the specific thing being traded ("Watch an ad to procure 5 more?"). The
 New Game gate's dialog is worded more generically ("Watch an ad to start
 a new game?") since there's no per-weapon specificity to name - but both
 exist for the identical reason: Google Play's rewarded-ad exemption
