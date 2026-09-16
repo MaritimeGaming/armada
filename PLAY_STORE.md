@@ -16,11 +16,12 @@ Play Console walkthrough with pre-filled answers for every policy form.
 - [x] Listing copy drafted (§3)
 - [x] Category decided: Board
 - [x] Account type confirmed: individual → closed testing required
+- [x] App entry created in Play Console (§5)
+- [x] Content ratings (IARC questionnaire) complete — result: **Everyone 10+ (ESRB)** (§6.3)
 
 **Blocking the closed test (do these first — nothing below matters until the 12/14 clock is running)**
 - [ ] 4–6 phone screenshots captured on a device → `store-assets/` (§4) — the one real content gap; at least 2 are required to save a usable store listing
-- [ ] Create the app entry (§5)
-- [ ] "Set up your app" forms: app access, ads, content rating, target audience, data safety, advertising ID, etc. (§6) — Play Console gates rollout on *every* track, including closed testing, behind these
+- [ ] "Set up your app" forms still open: app access, ads, target audience, data safety, advertising ID, etc. (§6) — Play Console gates rollout on *every* track, including closed testing, behind these
 - [ ] Main store listing: descriptions, graphics, category, tags (§7.1)
 - [ ] Store settings + contact details (§7.2)
 - [ ] Build *any* signed AAB (§7.4) — enrolls Play App Signing automatically on first upload; test ads are fine for this build, see below
@@ -322,31 +323,37 @@ no gated areas.
 ### 6.2 Ads
 - Does your app contain ads? → **Yes**.
 
-### 6.3 Content ratings (IARC questionnaire)
-Start the questionnaire. Email: `contact@maritimegaming.com`. Category:
-**Game**.
+### 6.3 Content ratings (IARC questionnaire) — DONE, result: Everyone 10+ (ESRB)
 
-Recommended answers:
-| Question | Answer |
-| --- | --- |
-| "Does the game contain inferences of, references to, or depictions of violence, blood, or gory images?" | **Yes** — the phrase "inferences of, references to" is a deliberately low bar, and Armada has named military weapons (MOAB, Torpedo, Rocket, Mine, Harpoon), explosion effects on every hit, and ships get "sunk." No blood, no gore, no human characters shown being harmed (there's no player avatar, just a fleet). |
-| Follow-up: frequency | **Frequent/Often** — combat is the core loop, every turn. |
-| Follow-up: realism | **Cartoon/fantasy, not realistic** — abstract grid, no photorealistic imagery. |
-| Follow-up: blood/gore present | No |
-| Follow-up: violence against defenseless characters / motivates real-world violence / sexual violence | No to all |
-| Sexual content, nudity | No |
-| Profanity / crude humor | No |
-| Controlled substances (drugs, alcohol, tobacco) | No |
-| Gambling — real or simulated | No |
-| Simulated gambling | No |
-| User interaction / user-generated content / shares location | No |
-| Digital purchases | No |
-| Does the app contain ads? | Yes |
+Completed. Email: `contact@maritimegaming.com`. Category: **Game**.
 
-Expected outcome: **Everyone 10+ (ESRB)** or **Everyone**, roughly
-**PEGI 7** or **PEGI 3**, **USK 0** — frequent-but-cartoonish violence
-with no blood/gore typically lands in this mild range either way. Nothing
-to be concerned about.
+The reasoning that got there — worth keeping as a record, since a couple of
+answers turned on details that aren't obvious from the game's overall
+"abstract grid, no blood" surface impression:
+
+| Question | Answer | Why |
+| --- | --- | --- |
+| Violence/blood/gore: inferred, referenced, or depicted? | **Yes** | Low bar ("inferences of, references to") cleared by named weapons (MOAB, Torpedo, Rocket, Mine, Harpoon) and hit/sink mechanics alone. |
+| Violence against humans | **Yes** | The Ensign ("a lonely officer, floating in the waves") and Lifeboat ("Women and children first!") are people, not vessels — sinking them plays a man's yell-then-gulp and a woman's scream respectively, implying drowning. |
+| Violence against non-humans (vehicles etc.) | **Yes** | Every other ship. |
+| Disturbing/gory images without a violent act; blood unrelated to a violent act | No / No | Neither exists. |
+| Setting: realistic or fantastical | **Fantastical** | No real-world conflict, nation, or map is depicted — gameplay is an abstract letter-grid. (Ship/weapon *names* are real-world military terms, but naming alone doesn't make the depicted setting realistic.) |
+| Childlike or pixelated style | **No** | Dark navy/cyan UI, moody cinematic title screen — reads adult-coded, not aimed at young children; also keeps this consistent with the 13+ target-audience answer in §6.4. |
+| Reactions to violence | **Unrealistic** | A hit is a cell-state color change plus a stylized fire-flash animation and a sound cue — no depicted injury. |
+| How the violence is presented | **Often, from a distant perspective** | There *is* a visual element (a fire animation on every scoring hit, multiplied across cells on an oil-slick chain detonation) — ruling out "implied but not seen" — and it fires on every hit, which is the core loop, so "often" rather than "rarely." The view is always an abstract top-down grid, never a close/graphic framing, which is what keeps it at "distant perspective" rather than a more explicit option. |
+| Can innocent/defenseless characters be seriously injured or killed? | **Yes, without penalties** | Sinking the Ensign/Lifeboat is required progress toward winning (same "Hits: N/28" credit as any ship) — nothing in the design penalizes or discourages targeting them. |
+| Fierce sounds / sinister characters / dark overtones | **Yes** | Fierce sounds (explosions, the scream/gulp cues) and dark overtones (the oil-slick "chain-detonate a fleet" mechanic, the burning-wreckage title art) both apply; "sinister or intimidating characters" doesn't — there are no characters at all, just an unseen computer opponent. |
+| Fear: scary/horrifying pictures or sounds | **Yes — Scary, not Horrifying; Rare** | The scream and yell-then-gulp sounds qualify as "scary" (startling/unsettling) but not "horrifying" (no graphic/grotesque content, no sustained dread). Rare because each of the Ensign/Lifeboat is a single cell — its sound can fire at most once per game per navy, unlike the fire-hit animation which is frequent. |
+| Sexual content, nudity, profanity, crude humor | No to all | |
+| Controlled substances, gambling (real or simulated) | No to all | |
+| User interaction / user-generated content / shares location | No | No multiplayer, no UGC, no location access. |
+| Digital purchases | No | Rewarded ads only, no Play Billing. |
+| Contains ads | Yes | |
+
+**Result: Everyone 10+ (ESRB).** Companion regions (PEGI/USK/etc.) are
+generated from the same answers by IARC — check those land somewhere
+similarly mild once the questionnaire shows them; nothing above suggests
+otherwise.
 
 ### 6.4 Target audience and content
 - Target age groups: select **13–15, 16–17, 18 and over**. Do **not**
