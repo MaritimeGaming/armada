@@ -424,7 +424,7 @@ const Index = () => {
   // just closes this dialog: no charge, no ad, and the weapon stays
   // unarmed, same as before the click.
   const [pendingWeaponProcurement, setPendingWeaponProcurement] = useState<WeaponType | null>(null);
-  const [infoDialog, setInfoDialog] = useState<'ships' | 'weapons' | 'statistics' | null>(null);
+  const [infoDialog, setInfoDialog] = useState<'ships' | 'weapons' | 'statistics' | 'howToPlay' | null>(null);
 
   // A callback ref, not an effect: the swipe viewport only exists once
   // gameState is loaded, so an effect with an empty dependency array would
@@ -2363,6 +2363,7 @@ const Index = () => {
       onSoundEffectsToggle={handleSoundEffectsToggle}
       onNewGame={() => requestNewGame()}
       onShowStatistics={() => setInfoDialog('statistics')}
+      onShowHowToPlay={() => setInfoDialog('howToPlay')}
       onShowAboutShips={() => setInfoDialog('ships')}
       onShowAboutWeapons={() => setInfoDialog('weapons')}
       onShowPrivacyPolicy={() => navigate('/privacy')}
@@ -2616,6 +2617,27 @@ const Index = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={infoDialog === 'howToPlay'} onOpenChange={(open) => setInfoDialog(open ? 'howToPlay' : null)}>
+        <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto rounded-2xl border-white/10 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle>How to Play</DialogTitle>
+            <DialogDescription className="text-slate-300">
+              The short version - see About Ships and About Weapons for the details on each one.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-4 text-sm text-slate-200">
+            {HOW_TO_PLAY_SECTIONS.map((section) => (
+              <li key={section.title}>
+                <p className="font-semibold text-cyan-100">{section.title}</p>
+                {section.body.map((paragraph, index) => (
+                  <p key={index} className="mt-1 text-slate-300">{paragraph}</p>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={infoDialog === 'ships'} onOpenChange={(open) => setInfoDialog(open ? 'ships' : null)}>
         <DialogContent className="max-h-[85vh] max-w-md overflow-y-auto rounded-2xl border-white/10 bg-slate-950 text-white">
           <DialogHeader>
@@ -2827,6 +2849,37 @@ const WEAPON_REFERENCE_DESCRIPTIONS: Record<WeaponType, string> = {
   torpedo: 'Launches on a fixed horizontal line, striking every ship it crosses along the way.',
 };
 
+// Big-picture copy for the "How to Play" dialog - turn structure and
+// game-wide systems, deliberately not per-ship/per-weapon characteristics
+// (About Ships and About Weapons already own those, referenced from here
+// instead of duplicated).
+const HOW_TO_PLAY_SECTIONS: { title: string; body: string[] }[] = [
+  {
+    title: 'Objective',
+    body: ['Sink every ship in the enemy fleet before they sink yours. Both fleets are placed randomly and hidden - tap a cell on the Enemy Navy grid to fire at it.'],
+  },
+  {
+    title: 'Taking a turn',
+    body: ["You and the computer alternate turns. Each turn is one action: a plain shot, or firing a weapon instead - firing replaces your shot rather than adding to it. Dropping a Mine is the one exception: placing it costs a turn, but once it's down it drifts to a neighboring cell on its own every later turn, for free."],
+  },
+  {
+    title: 'Weapons',
+    body: ["Only 3 of the 6 weapon types are in play each game, chosen at random, so the mix changes round to round. Each of those three is capped at 2 uses for the game (5 special shots total, so you can't dump them all into one favorite). Your ammo itself - 5 charges per type to start - is a separate, standing supply that carries between games; watch a rewarded ad to top up a type once it runs dry. See About Weapons for what each one does."],
+  },
+  {
+    title: 'The Oil Slick',
+    body: [
+      "Sinking an Oil Tanker spills oil that spreads one cell further every turn on that side's own board, staying visible regardless of fog of war. Firing into oil has a small chance to ignite that side's whole slick at once, sinking anything still hiding underneath it.",
+      "The two slicks are independent - sinking the enemy's Tanker doesn't touch your own board, and you can't defuse your own slick yourself; only the computer's shots decide its fate. So the timing call is all about the enemy's board: let their slick grow for a bigger potential payoff, or press it early, while racing to sink their fleet before the computer sinks yours.",
+      "It can only spread into untargeted cells, though, including diagonally - a wall of shots only seals it off once you've covered all eight sides, not just up/down/left/right, so watch where you're firing near a slick you're trying to grow.",
+    ],
+  },
+  {
+    title: 'Singles',
+    body: ['Ensign, Helicopter, and Lifeboat are optional one-cell ships ("Singles" in Settings). Because they are placed randomly, there\'s no strategy that helps you find one on purpose - a lucky Oil Slick ignition is the only edge you get late in a round.'],
+  },
+];
+
 type WeaponsBarProps = {
   label: string;
   weaponsUsed: number;
@@ -2954,6 +3007,7 @@ type NavyPanelProps = {
   onSoundEffectsToggle: (enabled: boolean) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
+  onShowHowToPlay: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
   onShowPrivacyPolicy: () => void;
@@ -2983,6 +3037,7 @@ type SettingsMenuProps = {
   onSoundEffectsToggle: (enabled: boolean) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
+  onShowHowToPlay: () => void;
   onShowAboutShips: () => void;
   onShowAboutWeapons: () => void;
   onShowPrivacyPolicy: () => void;
@@ -2995,6 +3050,7 @@ function SettingsMenu({
   onSoundEffectsToggle,
   onNewGame,
   onShowStatistics,
+  onShowHowToPlay,
   onShowAboutShips,
   onShowAboutWeapons,
   onShowPrivacyPolicy,
@@ -3031,6 +3087,7 @@ function SettingsMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowStatistics}>Statistics</DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onShowHowToPlay}>How to Play</DropdownMenuItem>
         <DropdownMenuItem onSelect={onShowAboutShips}>About Ships</DropdownMenuItem>
         <DropdownMenuItem onSelect={onShowAboutWeapons}>About Weapons</DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -3048,6 +3105,7 @@ function NavyPanel({
   onSoundEffectsToggle,
   onNewGame,
   onShowStatistics,
+  onShowHowToPlay,
   onShowAboutShips,
   onShowAboutWeapons,
   onShowPrivacyPolicy,
@@ -3218,6 +3276,7 @@ function NavyPanel({
               onSoundEffectsToggle={onSoundEffectsToggle}
               onNewGame={onNewGame}
               onShowStatistics={onShowStatistics}
+              onShowHowToPlay={onShowHowToPlay}
               onShowAboutShips={onShowAboutShips}
               onShowAboutWeapons={onShowAboutWeapons}
               onShowPrivacyPolicy={onShowPrivacyPolicy}
