@@ -2689,7 +2689,19 @@ const Index = () => {
             <Button type="button" variant="outline" onClick={cancelWeaponProcurement} className="w-full sm:w-auto">
               No
             </Button>
-            <Button type="button" ref={weaponProcurementWatchAdButtonRef} onClick={confirmWeaponProcurement} className="w-full sm:w-auto">
+            <Button
+              type="button"
+              ref={weaponProcurementWatchAdButtonRef}
+              onClick={confirmWeaponProcurement}
+              // A permanent ring, not just focus-visible:ring (see
+              // onOpenAutoFocus above) - browsers vary on whether a
+              // programmatic .focus() right after a mouse/touch tap (how
+              // this dialog always opens) counts as ":focus-visible", so
+              // relying on that alone left this button's default-action
+              // status invisible in some environments even though it was
+              // correctly focused.
+              className="w-full ring-2 ring-cyan-300 ring-offset-2 ring-offset-slate-950 sm:w-auto"
+            >
               Watch Ad
             </Button>
           </DialogFooter>
@@ -2732,7 +2744,15 @@ const Index = () => {
             <Button type="button" variant="outline" onClick={cancelNewGameAdFlow} className="w-full sm:w-auto">
               No
             </Button>
-            <Button type="button" ref={newGameWatchAdButtonRef} onClick={confirmNewGameAdFlow} className="w-full sm:w-auto">
+            <Button
+              type="button"
+              ref={newGameWatchAdButtonRef}
+              onClick={confirmNewGameAdFlow}
+              // See the weapon-procurement dialog's own Watch Ad button
+              // above for why this ring is permanent, not just
+              // focus-visible:ring.
+              className="w-full ring-2 ring-cyan-300 ring-offset-2 ring-offset-slate-950 sm:w-auto"
+            >
               Watch Ad
             </Button>
           </DialogFooter>
