@@ -191,7 +191,7 @@ game) is a 3-cell ship. Sinking it triggers an oil slick:
   ship cell (occupied, still `'untargeted'` immediately before this shot -
   not the cell(s) directly targeted by the shot itself) instead holds at
   the ordinary "hit but not sunk" red for `OIL_IGNITION_HIGHLIGHT_MS`
-  (500ms) once the explosion visual clears, before settling into its real
+  (1000ms) once the explosion visual clears, before settling into its real
   style. See "End-of-game reveal sequence" below for why this fits inside
   the existing two-second win-reveal hold without needing to lengthen it.
 
@@ -815,9 +815,10 @@ popping the win/lose dialog immediately:
    sound 300-600ms after the first, and that cue alone is a ~1.5s clip).
    This also comfortably covers the oil-ignition hit highlight (see
    Variable B): `WEAPON_FIRE_ANIMATION_MS` (380ms) plus
-   `OIL_IGNITION_HIGHLIGHT_MS` (500ms) is 880ms from the fatal shot, well
-   under the two-second hold - so a game-ending detonation still gets to
-   show which cells it hit before the dialog's own reveal takes over.
+   `OIL_IGNITION_HIGHLIGHT_MS` (1000ms) is 1380ms from the fatal shot,
+   still under the two-second hold - so a game-ending detonation still
+   gets to show which cells it hit before the dialog's own reveal takes
+   over.
 3. After the two seconds, `revealRemainingShipsInWinningNavy()` marks
    every still-untargeted, occupied cell in the **winning** side's own
    navy (the side that survived, not the side it defeated) with exposure

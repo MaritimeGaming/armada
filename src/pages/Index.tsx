@@ -133,7 +133,7 @@ const WEAPON_FIRE_ANIMATION_MS = 380;
 // and sinks in the same instant jumps straight to its sunk color the
 // moment the explosion animation clears, so a multi-ship detonation reads
 // as one indistinct flash instead of showing which cells actually got hit.
-const OIL_IGNITION_HIGHLIGHT_MS = 500;
+const OIL_IGNITION_HIGHLIGHT_MS = 1000;
 // A standing inventory, not part of GameState - survives New Game and
 // browser restarts, same as the weapon counts above, and likewise
 // untouched by Reset Statistics (that only resets SessionStats). Spent one
