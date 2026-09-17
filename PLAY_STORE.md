@@ -19,10 +19,10 @@ Play Console walkthrough with pre-filled answers for every policy form.
 - [x] App entry created in Play Console (§5)
 - [x] Content ratings (IARC questionnaire) complete — result: **Everyone 10+ (ESRB)** (§6.3)
 - [x] "Set up your app" / App content — all forms complete, Console shows "You're all caught up" (§6)
+- [x] 6 phone screenshots captured on-device, all in `store-assets/` (§4) — all graphic assets are now ready to upload
 
 **Blocking the closed test (do these first — nothing below matters until the 12/14 clock is running)**
-- [ ] 4–6 phone screenshots captured on a device → `store-assets/` (§4) — **the one remaining content gap; Console requires at least 2 to save the main store listing at all**
-- [ ] Main store listing: descriptions, graphics, category, tags (§7.1) — blocked on screenshots above
+- [ ] Main store listing: descriptions, graphics, category, tags (§7.1) — nothing left blocking this, ready to fill in
 - [ ] Store settings + contact details (§7.2)
 - [ ] Build *any* signed AAB (§7.4) — enrolls Play App Signing automatically on first upload; test ads are fine for this build, see below
 - [ ] Recruit 12+ testers with Android devices (start immediately, in parallel with the above)
@@ -221,7 +221,7 @@ Play uses the description text for search, not a keyword field, but pick up to
 | --- | --- | --- | --- |
 | App icon | 512×512, 32-bit PNG, ≤1 MB | downscaled from `assets/icon.png` | **Done** → `store-assets/icon-512.png` |
 | Feature graphic | 1024×500, PNG or JPG, no alpha | new design (canvas) | **Done** → `store-assets/feature-graphic-1024x500.jpg` |
-| Phone screenshots | 2–8 images, PNG/JPG, 16:9 or 9:16, each side 320–3840 px | capture from device | **TODO — capture on device** |
+| Phone screenshots | 2–8 images, PNG/JPG, 16:9 or 9:16, each side 320–3840 px | captured on-device | **Done** → `store-assets/Shot 1-6 *.jpg` |
 | 7" tablet screenshots | optional, same rules | — | skip (portrait phone game) |
 | 10" tablet screenshots | optional | — | skip |
 | Promo video | optional YouTube URL | — | skip for v1 |
@@ -231,29 +231,39 @@ upload as-is. The feature graphic is generated programmatically — the
 source is reproducible; regenerate by restoring the canvas script if the
 tagline or art needs to change.
 
-### Screenshots — capture on a device / emulator
+### Screenshots — DONE
 
-Browser-preview screenshots come out scaled and letterboxed; capture the
-real thing from the running Android build at native resolution instead:
+Captured on the developer's own phone, at full native resolution, via
+"Add to Home Screen" on `https://armada.maritimegaming.com` (the manifest
+declares `display: standalone`, so it launches chrome-less — no browser
+address bar to crop, just the OS status/nav bars, which the developer
+cropped before sending). Since the Capacitor native app is this same web
+build running inside a system WebView, this is visually identical to a
+native-APK capture and fully satisfies Google's "truthfully represent the
+app" requirement — no need for an actual device install via `adb`.
 
-```bash
-npm run cap:sync && cd android && ./gradlew installDebug
-```
-Then, with the app open on a connected device or emulator (portrait):
-```bash
-adb exec-out screencap -p > store-assets/screenshot-1.png
-```
+All 6 shots from the original list landed:
+1. `Shot 1 - Title.jpg` — title screen.
+2. `Shot 2 - Mid-game.jpg` — enemy board with fog of war, hits and misses.
+3. `Shot 3 - Armed.jpg` — Rocket armed, cyan target-preview cursor visible.
+4. `Shot 4 - Slick.jpg` — oil slick spread across the board (the `#404040` cells).
+5. `Shot 5 - MOAB.jpg` — a blast resolving (an oil-slick chain detonation
+   lighting several cells at once — the fire animation ruled out any
+   "nothing is shown" concern raised earlier in §6.3's violence reasoning).
+6. `Shot 6 - Victory.jpg` — victory dialog with the end-of-game green
+   reveal, plus the Wins/Win Streak stats visible behind it.
 
-Shot list (aim for 4–6, portrait):
-1. Title screen (`title-screen.jpg` art + PLAY).
-2. Mid-game: enemy board with fog of war, a few hits (orange) and misses.
-3. A weapon armed — crosshair cursor on the enemy grid, weapons bar lit.
-4. Oil slick spread across the board (sink the Oil Tanker first).
-5. A MOAB or Torpedo blast resolving.
-6. Victory dialog with the end-of-game green ship reveal, or the
-   Statistics dialog showing the Daily Win Streak.
+The hardest shot (5, mid-animation) was captured by screen-recording the
+shot and extracting a still frame afterward, rather than trying to time a
+live screenshot against a sub-second animation.
 
-Google displays the first 3–4 most prominently — lead with 1, 2, 4.
+**Shot 6 needed a fix**: it came in at 982×1970 (2.006:1), just over
+Google's 2:1 long/short-side limit. Padded to 986×1970 by adding 2px of
+the app's own `#020617` navy on each side (via an offscreen canvas) —
+invisible in practice, and safer than cropping into the dialog's own
+content. The other five were already within limits as captured.
+
+Google displays the first 3–4 screenshots most prominently — 1, 2, 4 lead.
 
 #### Editing screenshots — what's allowed
 
