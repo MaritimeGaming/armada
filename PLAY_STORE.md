@@ -21,10 +21,17 @@ Play Console walkthrough with pre-filled answers for every policy form.
 - [x] "Set up your app" / App content — all forms complete, Console shows "You're all caught up" (§6)
 - [x] 6 phone screenshots captured on-device, all in `store-assets/` (§4) — all graphic assets are now ready to upload
 
+- [x] Main store listing complete (§7.1)
+- [x] Signed release AAB built (§7.4) — `android/app/build/outputs/bundle/release/app-release.aab`,
+  verified genuinely signed (`jarsigner -verify` → `jar verified`), `FORCE_TEST_ADS` still `true` for
+  this build. Built with a **regenerated** upload keystore — the original from an earlier session had
+  its password lost before ever being used to upload anything, so it was discarded with zero
+  consequence (nothing had been submitted to Google yet) and replaced. `android/keystore.properties`
+  and `armada-upload.jks` are git-ignored, local-only; the password lives only in that file and
+  whatever password manager it was saved to — back it up.
+
 **Blocking the closed test (do these first — nothing below matters until the 12/14 clock is running)**
-- [ ] Main store listing: descriptions, graphics, category, tags (§7.1) — nothing left blocking this, ready to fill in
 - [ ] Store settings + contact details (§7.2)
-- [ ] Build *any* signed AAB (§7.4) — enrolls Play App Signing automatically on first upload; test ads are fine for this build, see below
 - [ ] Recruit 12+ testers with Android devices (start immediately, in parallel with the above)
 - [ ] Closed testing track: upload the AAB, send the opt-in link (§7.5)
 - [ ] 14 continuous days at ≥12 opted-in testers
