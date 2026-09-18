@@ -112,7 +112,7 @@ export type GameState = {
   appOilDetonationPeak: number;
 };
 
-export type AudioCue = 'splash' | 'sink' | 'lifeboat' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'deflect' | 'camera';
+export type AudioCue = 'splash' | 'sink' | 'pirate' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'deflect' | 'camera';
 export type AudioSequence = AudioCue[];
 export type ShipSetOptions = {
   includeSingles: boolean;
@@ -301,7 +301,7 @@ const BASE_SHIPS: ShipDefinition[] = [
 const SINGLE_SHIPS: ShipDefinition[] = [
   { code: 'E', name: 'Ensign', length: 1 },
   { code: 'H', name: 'Helicopter', length: 1 },
-  { code: 'L', name: 'Lifeboat', length: 1 },
+  { code: 'P', name: 'Pirate', length: 1 },
 ];
 
 export const DEFAULT_SHIP_SET_OPTIONS: ShipSetOptions = {
@@ -322,7 +322,7 @@ const ORIENTATIONS: Orientation[] = [
 export const AUDIO_FILES: Record<AudioCue, string> = {
   splash: `${import.meta.env.BASE_URL}audio/Splash.wav`,
   sink: `${import.meta.env.BASE_URL}audio/Sink.wav`,
-  lifeboat: `${import.meta.env.BASE_URL}audio/LifeBoat.wav`,
+  pirate: `${import.meta.env.BASE_URL}audio/Pirate.wav`,
   ensign: `${import.meta.env.BASE_URL}audio/Ensign.wav`,
   helicopter: `${import.meta.env.BASE_URL}audio/Helicopter.wav`,
   explosion: `${import.meta.env.BASE_URL}audio/Explosion.wav`,
@@ -458,7 +458,7 @@ export function getOilIgnitionHitCellIndexes(
 }
 
 // Some ships can't be damaged by certain weapon types - a small
-// (Ensign/Lifeboat-scale), airborne (Helicopter), or submerged (Submarine)
+// (Ensign/Pirate-scale), airborne (Helicopter), or submerged (Submarine)
 // target that a given weapon's mechanic just can't harm. A weapon that
 // finds one of these anyway still exposes it (see exposeCellWithoutDamage)
 // rather than passing over it as if nothing were there - the ship becomes
@@ -1727,8 +1727,8 @@ function resolveAudioSequence(cell: CellState): AudioSequence {
       sequence.push('ensign');
     }
 
-    if (cell.shipCode === 'L') {
-      sequence.push('lifeboat');
+    if (cell.shipCode === 'P') {
+      sequence.push('pirate');
     }
 
     if (cell.shipCode === 'H') {

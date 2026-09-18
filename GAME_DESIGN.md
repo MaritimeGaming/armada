@@ -247,8 +247,8 @@ oil-covered.
 
 ## Variable C: Single-cell ships
 
-Optional ships — Ensign (`E`), Helicopter (`H`), Lifeboat (`L`), all
-1-cell — toggleable via the "Singles (E H L)" setting (`includeSingles`,
+Optional ships — Ensign (`E`), Helicopter (`H`), Pirate (`P`), all
+1-cell — toggleable via the "Singles (E H P)" setting (`includeSingles`,
 default on, persisted to localStorage). Unlike multi-cell ships, there is no
 strategy that improves your odds of finding a single-cell ship: you can sink
 every other ship in the enemy fleet and still be reduced to pure luck to
@@ -260,6 +260,23 @@ it and catching whatever single-cell ships happen to be sitting under the
 oil at that moment. This is the only lever that gives a player *some*
 influence over an otherwise pure-luck endgame — worth keeping in mind when
 tuning either mechanic, since they're designed to interact.
+
+**Pirate (`P`) replaced Lifeboat (`L`).** Both are a single sunk human,
+played for a startled "surprise" sound cue on the sink - the design intent
+never changed. What changed was tone: a Lifeboat's own sink cue was a
+woman's scream, which read as implying an actual drowning death - more
+morbid than the rest of the game's cartoonish violence (explosions,
+color-change hits, an oil slick that "sinks" ships without ever depicting
+anything graphic). A Pirate sinking with a shouted "Arrrgh!" keeps the same
+startle-cue design (a human voice, still implies a hit was scored) without
+that darker undertone - and having your own navy carry a Pirate is no
+stranger than anything else already unexplained in this fleet (a Garbage
+Scow, a volatile Oil Tanker, ships that are physically longer on the
+diagonal). See `AudioCue`'s `'pirate'` entry (`armada-game.ts`) and the
+`Pirate.wav` asset (`public/audio/`) for the actual cue - swap the
+`AUDIO_FILES.pirate` path and `SINGLE_SHIPS`'s `'P'` entry back to
+`'lifeboat'`/`LifeBoat.wav` (still kept in `public/audio/`) to revert if
+the new cue doesn't land.
 
 ## Variable D: Additional weapons
 
@@ -1639,7 +1656,7 @@ call sites: `playAudioCue` itself - the single low-level function every
 one of those cues, and every higher-level helper built on it
 (`playAudioSequence`, `playIgnitionSequence`, `playMoabSequence`), always
 funnels through - returns immediately, before constructing an `Audio` at
-all, whenever this is off. This includes the Helicopter/Ensign/Lifeboat
+all, whenever this is off. This includes the Helicopter/Ensign/Pirate
 immunity "surprise" cues (see Variable D's `'deflect'` discussion above),
 which are as much a part of those moments landing as the visual is, so
 disabling sound was worth a dedicated setting rather than leaving it

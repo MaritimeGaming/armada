@@ -329,7 +329,7 @@ describe('Singles toggle vs. the New Game ad gate', () => {
     expect(JSON.parse(baselineOptions ?? '{}').includeSingles).toBe(true);
 
     openSettingsMenu();
-    const singlesItem = await screen.findByRole('menuitemcheckbox', { name: 'Singles (E H L)' });
+    const singlesItem = await screen.findByRole('menuitemcheckbox', { name: 'Singles (E H P)' });
     expect(singlesItem).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(singlesItem);
 
@@ -343,7 +343,7 @@ describe('Singles toggle vs. the New Game ad gate', () => {
     expect(window.localStorage.getItem('armada:ship-set-options')).toBe(baselineOptions);
 
     openSettingsMenu();
-    expect(await screen.findByRole('menuitemcheckbox', { name: 'Singles (E H L)' })).toHaveAttribute(
+    expect(await screen.findByRole('menuitemcheckbox', { name: 'Singles (E H P)' })).toHaveAttribute(
       'aria-checked',
       'true',
     );

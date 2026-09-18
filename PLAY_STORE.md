@@ -194,7 +194,7 @@ WHAT'S DIFFERENT
 • Ship immunities. A Submarine shrugs off a MOAB. A Helicopter dodges a torpedo.
   Knowing what beats what is its own layer of strategy.
 
-• Optional single-cell ships. Turn the Ensign, Helicopter, and Lifeboat on for a
+• Optional single-cell ships. Turn the Ensign, Helicopter, and Pirate on for a
   brutal pure-luck endgame, or leave them off for a cleaner match.
 
 • Lifetime stats and a Daily Win Streak to chase.
@@ -348,19 +348,33 @@ The reasoning that got there — worth keeping as a record, since a couple of
 answers turned on details that aren't obvious from the game's overall
 "abstract grid, no blood" surface impression:
 
+> **Updated 2026-09-17**: the Lifeboat single-cell ship was replaced with a
+> Pirate (same mechanic, different flavor - see GAME_DESIGN.md's Variable C)
+> because its sink cue was a woman's scream, read as implying an actual
+> drowning death and more morbid than the rest of the game's cartoonish
+> violence. The table below has been updated to describe the Pirate instead.
+> None of the Yes/No conclusions change - it's still a human character, still
+> implies a hit was scored via a startled voice cue, still not graphic - so
+> this doesn't call the **Everyone 10+** result into question. Flagging it
+> here anyway since this doc's own reasoning column quoted the Lifeboat's
+> specific line and sound by name; if the questionnaire is ever re-opened in
+> the Play Console (a rating refresh, a new form version, etc.), re-confirm
+> the "violence against humans" and "fear" answers against whatever the
+> actual shipped `Pirate.wav` sounds like once it's in.
+
 | Question | Answer | Why |
 | --- | --- | --- |
 | Violence/blood/gore: inferred, referenced, or depicted? | **Yes** | Low bar ("inferences of, references to") cleared by named weapons (MOAB, Torpedo, Rocket, Mine, Harpoon) and hit/sink mechanics alone. |
-| Violence against humans | **Yes** | The Ensign ("a lonely officer, floating in the waves") and Lifeboat ("Women and children first!") are people, not vessels — sinking them plays a man's yell-then-gulp and a woman's scream respectively, implying drowning. |
+| Violence against humans | **Yes** | The Ensign ("a lonely officer, floating in the waves") and Pirate ("a stowaway who snuck aboard before the voyage") are people, not vessels — sinking them plays a man's yell-then-gulp and a shouted "Arrrgh!" respectively, implying a hit was scored. |
 | Violence against non-humans (vehicles etc.) | **Yes** | Every other ship. |
 | Disturbing/gory images without a violent act; blood unrelated to a violent act | No / No | Neither exists. |
 | Setting: realistic or fantastical | **Fantastical** | No real-world conflict, nation, or map is depicted — gameplay is an abstract letter-grid. (Ship/weapon *names* are real-world military terms, but naming alone doesn't make the depicted setting realistic.) |
 | Childlike or pixelated style | **No** | Dark navy/cyan UI, moody cinematic title screen — reads adult-coded, not aimed at young children; also keeps this consistent with the 13+ target-audience answer in §6.4. |
 | Reactions to violence | **Unrealistic** | A hit is a cell-state color change plus a stylized fire-flash animation and a sound cue — no depicted injury. |
 | How the violence is presented | **Often, from a distant perspective** | There *is* a visual element (a fire animation on every scoring hit, multiplied across cells on an oil-slick chain detonation) — ruling out "implied but not seen" — and it fires on every hit, which is the core loop, so "often" rather than "rarely." The view is always an abstract top-down grid, never a close/graphic framing, which is what keeps it at "distant perspective" rather than a more explicit option. |
-| Can innocent/defenseless characters be seriously injured or killed? | **Yes, without penalties** | Sinking the Ensign/Lifeboat is required progress toward winning (same "Hits: N/28" credit as any ship) — nothing in the design penalizes or discourages targeting them. |
-| Fierce sounds / sinister characters / dark overtones | **Yes** | Fierce sounds (explosions, the scream/gulp cues) and dark overtones (the oil-slick "chain-detonate a fleet" mechanic, the burning-wreckage title art) both apply; "sinister or intimidating characters" doesn't — there are no characters at all, just an unseen computer opponent. |
-| Fear: scary/horrifying pictures or sounds | **Yes — Scary, not Horrifying; Rare** | The scream and yell-then-gulp sounds qualify as "scary" (startling/unsettling) but not "horrifying" (no graphic/grotesque content, no sustained dread). Rare because each of the Ensign/Lifeboat is a single cell — its sound can fire at most once per game per navy, unlike the fire-hit animation which is frequent. |
+| Can innocent/defenseless characters be seriously injured or killed? | **Yes, without penalties** | Sinking the Ensign/Pirate is required progress toward winning (same "Hits: N/28" credit as any ship) — nothing in the design penalizes or discourages targeting them. |
+| Fierce sounds / sinister characters / dark overtones | **Yes** | Fierce sounds (explosions, the yell-then-gulp/"Arrrgh!" cues) and dark overtones (the oil-slick "chain-detonate a fleet" mechanic, the burning-wreckage title art) both apply; "sinister or intimidating characters" doesn't — there are no characters at all, just an unseen computer opponent. |
+| Fear: scary/horrifying pictures or sounds | **Yes — Scary, not Horrifying; Rare** | The yell-then-gulp/"Arrrgh!" sounds qualify as "scary" (startling/unsettling) but not "horrifying" (no graphic/grotesque content, no sustained dread). Rare because each of the Ensign/Pirate is a single cell — its sound can fire at most once per game per navy, unlike the fire-hit animation which is frequent. |
 | Sexual content, nudity, profanity, crude humor | No to all | |
 | Controlled substances, gambling (real or simulated) | No to all | |
 | User interaction / user-generated content / shares location | No | No multiplayer, no UGC, no location access. |

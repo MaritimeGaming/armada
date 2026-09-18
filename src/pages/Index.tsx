@@ -310,7 +310,7 @@ const Index = () => {
   // Reset Statistics like the weapon/token inventories below, but unlike
   // those it's never spent or refilled, just toggled. Gates playAudioCue
   // itself (see below) so every cue - splash, sink, and especially the
-  // Helicopter/Ensign/Lifeboat "surprise" sounds that make immunity land -
+  // Helicopter/Ensign/Pirate "surprise" sounds that make immunity land -
   // is covered by a single check, without threading a mute flag through
   // every individual playAudioSequence/playIgnitionSequence/playMoabSequence
   // call site.
@@ -387,7 +387,7 @@ const Index = () => {
   const audioRef = useRef<Record<AudioCue, HTMLAudioElement[]>>({
     splash: [],
     sink: [],
-    lifeboat: [],
+    pirate: [],
     ensign: [],
     helicopter: [],
     explosion: [],
@@ -2829,8 +2829,8 @@ const SHIP_REFERENCE_DESCRIPTIONS: Record<string, string> = {
   F: 'A 3-cell warship.',
   G: 'A 2-cell support vessel.',
   H: 'A rotor-wing aircraft. One of three optional "Singles" - only in play when Singles is turned on in Settings. Can be exposed but not damaged by Harpoons, Mines, or Torpedoes.',
-  L: 'Women and children first! One of three optional "Singles" - only in play when Singles is turned on in Settings.',
   O: "A 3-cell vessel carrying a volatile cargo. Sinking it spills an oil slick that spreads across the board over time and can ignite if struck, taking out anything still underneath it.",
+  P: 'A stowaway who snuck aboard before the voyage. One of three optional "Singles" - only in play when Singles is turned on in Settings.',
   S: 'A 2-cell vessel. Can be exposed but not damaged by MOABs or Rockets',
 };
 const SHIP_REFERENCE: ShipDefinition[] = getShips({ includeSingles: true })
@@ -2876,7 +2876,7 @@ const HOW_TO_PLAY_SECTIONS: { title: string; body: string[] }[] = [
   },
   {
     title: 'Singles',
-    body: ['Ensign, Helicopter, and Lifeboat are optional one-cell ships ("Singles" in Settings). Because they are placed randomly, there\'s no strategy that helps you find one on purpose - a lucky Oil Slick ignition is the only edge you get late in a round.'],
+    body: ['Ensign, Helicopter, and Pirate are optional one-cell ships ("Singles" in Settings). Because they are placed randomly, there\'s no strategy that helps you find one on purpose - a lucky Oil Slick ignition is the only edge you get late in a round.'],
   },
 ];
 
@@ -3075,7 +3075,7 @@ function SettingsMenu({
           onSelect={() => onSinglesToggle(!shipSetOptions.includeSingles)}
           indicatorAlign="right"
         >
-          Singles (E H L)
+          Singles (E H P)
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={soundEffectsEnabled}
