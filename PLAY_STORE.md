@@ -136,7 +136,9 @@ targetSdk 36 clears Google Play's "new apps must target API 35+" bar for 2025.
 - `minifyEnabled false` — fine (no obfuscation needed; keeps stack traces
   readable).
 - No IAP, no account system, no analytics SDK, no crash reporter, no
-  location/camera/contacts/mic permissions. Only `INTERNET` in source.
+  location/camera/contacts/mic permissions. Only `INTERNET` and
+  `VIBRATE` (a normal, install-time permission for the hit buzz - no prompt,
+  no data) in source.
 - IARC content: cartoonish letter-grid Battleship; explosions and weapon
   names (MOAB, torpedo, mine) but no characters, blood, gore, or
   depictions of violence against people. Rating should land at

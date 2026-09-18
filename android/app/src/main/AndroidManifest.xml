@@ -42,4 +42,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets navigator.vibrate() in the WebView buzz the phone on a hit. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

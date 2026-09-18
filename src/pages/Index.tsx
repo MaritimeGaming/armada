@@ -86,6 +86,7 @@ const STORAGE_KEY = 'armada:game-state';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
 const SOUND_EFFECTS_STORAGE_KEY = 'armada:sound-effects-enabled';
+const VIBRATION_STORAGE_KEY = 'armada:vibration-enabled';
 const MOAB_COUNT_STORAGE_KEY = 'armada:moab-count';
 // Starting inventory the first time someone plays; not the same constant as
 // the refill amount below (they just happen to share a value) - see the "no
@@ -125,6 +126,13 @@ const WEAPON_TRAVEL_STEP_DELAY_MS = 500;
 // with no further animation) how long its use-count dot keeps flashing
 // after firing before settling to solid red.
 const WEAPON_FIRE_ANIMATION_MS = 380;
+// The haptic buzz the phone gives for a hit, by who scored it: one short
+// pulse (short enough to read as a tap rather than an alert) when the player
+// hits, and a distinct double pulse when the computer does, so the buzz alone
+// tells you whose hit it was. Also used for an oil-slick detonation, hit or
+// not.
+const PLAYER_HIT_BUZZ_PATTERN: VibratePattern = 50;
+const COMPUTER_HIT_BUZZ_PATTERN: VibratePattern = [50, 70, 50];
 // How long, once an oil-slick ignition's explosion visual clears, a ship
 // cell newly caught by that chain reaction stays forced to the "hit but
 // not sunk" red before settling into its real post-explosion style (which
@@ -317,6 +325,11 @@ const Index = () => {
   const [soundEffectsEnabled, setSoundEffectsEnabled] = useState<boolean>(() =>
     readStoredBoolean(SOUND_EFFECTS_STORAGE_KEY, true),
   );
+  // Same kind of standing preference as soundEffectsEnabled, for the haptic
+  // buzz instead - gates buzzForHit.
+  const [vibrationEnabled, setVibrationEnabled] = useState<boolean>(() =>
+    readStoredBoolean(VIBRATION_STORAGE_KEY, true),
+  );
   // Standing inventories, not part of GameState: they must survive a New
   // Game (and browser restarts) untouched. The only way to increase either
   // is through its "Procuring Weapons" refill flow.
@@ -373,6 +386,12 @@ const Index = () => {
   // more time to read" reasoning (a sink, an ignition chain, or the passive
   // mine wander landing a hit).
   const playerDroneRevealExtraDelayRef = useRef(false);
+  // Latches once the phone has buzzed for a hit (or oil detonation) on a
+  // given side's turn, so a turn that lands several (a MOAB, an oil chain
+  // reaction, a Torpedo striking more than one ship) still only buzzes once
+  // - see buzzForHit. Each side's latch is reset at the start of that side's
+  // own turn.
+  const hitBuzzedRef = useRef<Record<TurnOwner, boolean>>({ player: false, app: false });
   const [explosionCells, setExplosionCells] = useState<Record<NavySide, number[]>>({
     player: [],
     enemy: [],
@@ -571,6 +590,56 @@ const Index = () => {
     });
   };
 
+  // Buzzes the phone (where the browser/WebView supports it - not iOS, and
+  // not desktop, where it's a no-op) for a hit `shooter` just scored, or an
+  // oil-slick detonation they set off, whether or not it hit anything. The
+  // pattern differs by shooter (see COMPUTER_HIT_BUZZ_PATTERN). Gated on the
+  // Vibration setting, not Sound Effects, which is about audio only.
+  const buzzForHit = (shooter: TurnOwner) => {
+    if (!vibrationEnabled || hitBuzzedRef.current[shooter]) {
+      return;
+    }
+
+    hitBuzzedRef.current[shooter] = true;
+
+    if (typeof navigator.vibrate === 'function') {
+      navigator.vibrate(shooter === 'player' ? PLAYER_HIT_BUZZ_PATTERN : COMPUTER_HIT_BUZZ_PATTERN);
+    }
+  };
+
+  // A Torpedo/Rocket/Harpoon step buzzes if it hit a ship or set off the oil
+  // slick - the latter can happen without a hit, when the launch cell is
+  // just oil floating on open water.
+  const buzzForTravelStep = (step: WeaponTravelStep, shooter: TurnOwner) => {
+    if (step.isHit || step.ignited) {
+      buzzForHit(shooter);
+    }
+  };
+
+  // Everything one Torpedo/Rocket/Harpoon step does on screen and to the
+  // ear: the buzz, the explosion (or oil-slick detonation) animation, and
+  // the sound. targetSide is the navy being fired at and navyBefore is that
+  // navy as it stood before this step resolved. An ignition is its own
+  // event, independent of isHit - a launch onto oil floating over open
+  // water can light the whole slick without hitting any ship (isHit false,
+  // no audio cues of its own), and still gets the full detonation animation
+  // and ignition sound, same as a plain shot into that oil.
+  const playTravelStepEffects = (step: WeaponTravelStep, targetSide: NavySide, navyBefore: NavyState) => {
+    buzzForTravelStep(step, targetSide === 'enemy' ? 'player' : 'app');
+
+    if (step.ignited && step.ignitedCellIndexes) {
+      triggerOilSlickDetonation(targetSide, navyBefore, step.ignitedCellIndexes, [step.cellIndex]);
+    } else if (step.isHit) {
+      triggerCellExplosions(targetSide, [step.cellIndex]);
+    }
+
+    if (step.ignited) {
+      playIgnitionSequence(step.audioSequence);
+    } else if (step.audioSequence.length > 0) {
+      playAudioSequence(step.audioSequence);
+    }
+  };
+
   const playAudioSequence = (sequence: AudioSequence) => {
     sequence.forEach((cue) => {
       playAudioCue(cue);
@@ -637,6 +706,12 @@ const Index = () => {
       ? Array.from(new Set([...extraExplosionIndexes, ...ignitedCellIndexes]))
       : ignitedCellIndexes;
     triggerCellExplosions(side, explosionIndexes);
+
+    // A detonation buzzes whether or not the chain reaction caught any
+    // ship - the blast itself is the event. This is only ever called for an
+    // actual ignition. `side` is the navy that blew up, so the shooter is
+    // the opposite one.
+    buzzForHit(side === 'enemy' ? 'player' : 'app');
 
     const hitCellIndexes = getOilIgnitionHitCellIndexes(beforeNavy, ignitedCellIndexes, directTargetIndexes);
 
@@ -710,21 +785,7 @@ const Index = () => {
         return nextState;
       });
 
-      if (step.isHit) {
-        if (step.ignited && step.ignitedCellIndexes) {
-          triggerOilSlickDetonation(navySide, previousNavy, step.ignitedCellIndexes, [step.cellIndex]);
-        } else {
-          triggerCellExplosions(navySide, [step.cellIndex]);
-        }
-      }
-
-      if (step.audioSequence.length > 0) {
-        if (step.ignited) {
-          playIgnitionSequence(step.audioSequence);
-        } else {
-          playAudioSequence(step.audioSequence);
-        }
-      }
+      playTravelStepEffects(step, navySide, previousNavy);
 
       runWeaponTravelSteps(navySide, steps, stepIndex + 1, step.navy, onComplete);
     }, WEAPON_TRAVEL_STEP_DELAY_MS);
@@ -876,6 +937,11 @@ const Index = () => {
   const handleSoundEffectsToggle = (enabled: boolean) => {
     window.localStorage.setItem(SOUND_EFFECTS_STORAGE_KEY, String(enabled));
     setSoundEffectsEnabled(enabled);
+  };
+
+  const handleVibrationToggle = (enabled: boolean) => {
+    window.localStorage.setItem(VIBRATION_STORAGE_KEY, String(enabled));
+    setVibrationEnabled(enabled);
   };
 
   const handleResetStatistics = () => {
@@ -1126,6 +1192,7 @@ const Index = () => {
         // to keep a previous turn's Drone reveal from leaking an extra
         // 500ms onto some later, unrelated shot.
         playerDroneRevealExtraDelayRef.current = false;
+        hitBuzzedRef.current.player = false;
 
         // An active mine (placed on a prior turn) moves automatically the
         // moment the player takes any turn, regardless of what that turn's
@@ -1147,6 +1214,8 @@ const Index = () => {
           mineIndex = moveResult.mineIndex;
 
           if (moveResult.hit) {
+            buzzForHit('player');
+
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
               triggerOilSlickDetonation('enemy', enemyBeforeMineWander, moveResult.ignitedCellIndexes, moveResult.hitIndexes ?? []);
               mineWanderOilDetonationSize = moveResult.ignitedCellIndexes.length;
@@ -1168,6 +1237,10 @@ const Index = () => {
           const moabResult = fireMoab(currentEnemy, releaseIndex);
           const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = moabResult;
           const shotOutcome = shotOutcomeFromTargetingResult(moabResult, moabResult.targetedIndexes ?? [], true);
+
+          if (shotOutcome.dealtDamage) {
+            buzzForHit('player');
+          }
 
           // Always animate the MOAB's full blast footprint (hit, miss, or
           // already-targeted) so the explosion visually covers every cell
@@ -1230,6 +1303,10 @@ const Index = () => {
           // immune) fully resolves this turn, so it does.
           const shotOutcome = shotOutcomeFromTargetingResult(mineResult, targetedIndexes ?? [], targetCell.occupied);
 
+          if (shotOutcome.dealtDamage) {
+            buzzForHit('player');
+          }
+
           if (ignited && ignitedCellIndexes) {
             triggerOilSlickDetonation('enemy', currentEnemy, ignitedCellIndexes, targetedIndexes ?? []);
           } else {
@@ -1285,20 +1362,7 @@ const Index = () => {
           const [launchStep, ...travelSteps] = result.steps;
           const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
-          if (launchStep.isHit) {
-            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerOilSlickDetonation('enemy', currentEnemy, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
-            } else {
-              triggerCellExplosions('enemy', [launchStep.cellIndex]);
-            }
-          }
-          if (launchStep.audioSequence.length > 0) {
-            if (launchStep.ignited) {
-              playIgnitionSequence(launchStep.audioSequence);
-            } else {
-              playAudioSequence(launchStep.audioSequence);
-            }
-          }
+          playTravelStepEffects(launchStep, 'enemy', currentEnemy);
 
           setArmedWeapon(null);
           setFiringWeaponType('torpedo');
@@ -1376,20 +1440,7 @@ const Index = () => {
           const [launchStep, ...travelSteps] = result.steps;
           const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
-          if (launchStep.isHit) {
-            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerOilSlickDetonation('enemy', currentEnemy, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
-            } else {
-              triggerCellExplosions('enemy', [launchStep.cellIndex]);
-            }
-          }
-          if (launchStep.audioSequence.length > 0) {
-            if (launchStep.ignited) {
-              playIgnitionSequence(launchStep.audioSequence);
-            } else {
-              playAudioSequence(launchStep.audioSequence);
-            }
-          }
+          playTravelStepEffects(launchStep, 'enemy', currentEnemy);
 
           setArmedWeapon(null);
           setFiringWeaponType('rocket');
@@ -1467,20 +1518,7 @@ const Index = () => {
           const [launchStep, ...travelSteps] = result.steps;
           const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
-          if (launchStep.isHit) {
-            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerOilSlickDetonation('enemy', currentEnemy, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
-            } else {
-              triggerCellExplosions('enemy', [launchStep.cellIndex]);
-            }
-          }
-          if (launchStep.audioSequence.length > 0) {
-            if (launchStep.ignited) {
-              playIgnitionSequence(launchStep.audioSequence);
-            } else {
-              playAudioSequence(launchStep.audioSequence);
-            }
-          }
+          playTravelStepEffects(launchStep, 'enemy', currentEnemy);
 
           setArmedWeapon(null);
           setFiringWeaponType('harpoon');
@@ -1597,6 +1635,10 @@ const Index = () => {
         });
         const plainShotResult = resolveTargetingSequence(enemyWithTargetedCell, [releaseIndex]);
         const { navy: updatedEnemy, audioSequence, ignited, ignitedCellIndexes } = plainShotResult;
+
+        if (targetCell.occupied) {
+          buzzForHit('player');
+        }
 
         if (ignited && ignitedCellIndexes) {
           triggerOilSlickDetonation('enemy', currentEnemy, ignitedCellIndexes, [releaseIndex]);
@@ -1795,6 +1837,7 @@ const Index = () => {
 
         appPreviewIndexRef.current = null;
         appWeaponChoiceRef.current = undefined;
+        hitBuzzedRef.current.app = false;
         setAppArmedWeapon(null);
         if (weaponChoice) {
           setAppFiringWeaponType(weaponChoice);
@@ -1817,6 +1860,8 @@ const Index = () => {
           appMineIndex = moveResult.mineIndex;
 
           if (moveResult.hit) {
+            buzzForHit('app');
+
             if (moveResult.ignited && moveResult.ignitedCellIndexes) {
               triggerOilSlickDetonation('player', playerBeforeMineWander, moveResult.ignitedCellIndexes, moveResult.hitIndexes ?? []);
               mineWanderOilDetonationSize = moveResult.ignitedCellIndexes.length;
@@ -1838,6 +1883,10 @@ const Index = () => {
           const moabResult = fireMoab(currentPlayer, previewIndex);
           const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = moabResult;
           const shotOutcome = shotOutcomeFromTargetingResult(moabResult, moabResult.targetedIndexes ?? [], true);
+
+          if (shotOutcome.dealtDamage) {
+            buzzForHit('app');
+          }
 
           const moabFootprint = getMoabTargetIndexes(previewIndex);
 
@@ -1888,6 +1937,10 @@ const Index = () => {
           const mineResult = resolveMineHit(currentPlayer, previewIndex);
           const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes, targetedIndexes } = mineResult;
           const shotOutcome = shotOutcomeFromTargetingResult(mineResult, targetedIndexes ?? [], Boolean(targetCell?.occupied));
+
+          if (shotOutcome.dealtDamage) {
+            buzzForHit('app');
+          }
 
           if (ignited && ignitedCellIndexes) {
             triggerOilSlickDetonation('player', currentPlayer, ignitedCellIndexes, targetedIndexes ?? []);
@@ -1941,20 +1994,7 @@ const Index = () => {
           const [launchStep, ...travelSteps] = result.steps;
           const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
-          if (launchStep.isHit) {
-            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerOilSlickDetonation('player', currentPlayer, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
-            } else {
-              triggerCellExplosions('player', [launchStep.cellIndex]);
-            }
-          }
-          if (launchStep.audioSequence.length > 0) {
-            if (launchStep.ignited) {
-              playIgnitionSequence(launchStep.audioSequence);
-            } else {
-              playAudioSequence(launchStep.audioSequence);
-            }
-          }
+          playTravelStepEffects(launchStep, 'player', currentPlayer);
 
           const hasTravel = travelSteps.length > 0;
 
@@ -2031,20 +2071,7 @@ const Index = () => {
           const [launchStep, ...travelSteps] = result.steps;
           const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
-          if (launchStep.isHit) {
-            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerOilSlickDetonation('player', currentPlayer, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
-            } else {
-              triggerCellExplosions('player', [launchStep.cellIndex]);
-            }
-          }
-          if (launchStep.audioSequence.length > 0) {
-            if (launchStep.ignited) {
-              playIgnitionSequence(launchStep.audioSequence);
-            } else {
-              playAudioSequence(launchStep.audioSequence);
-            }
-          }
+          playTravelStepEffects(launchStep, 'player', currentPlayer);
 
           const hasTravel = travelSteps.length > 0;
 
@@ -2121,20 +2148,7 @@ const Index = () => {
           const [launchStep, ...travelSteps] = result.steps;
           const shotOutcome = shotOutcomeFromTravelSteps(result.steps);
 
-          if (launchStep.isHit) {
-            if (launchStep.ignited && launchStep.ignitedCellIndexes) {
-              triggerOilSlickDetonation('player', currentPlayer, launchStep.ignitedCellIndexes, [launchStep.cellIndex]);
-            } else {
-              triggerCellExplosions('player', [launchStep.cellIndex]);
-            }
-          }
-          if (launchStep.audioSequence.length > 0) {
-            if (launchStep.ignited) {
-              playIgnitionSequence(launchStep.audioSequence);
-            } else {
-              playAudioSequence(launchStep.audioSequence);
-            }
-          }
+          playTravelStepEffects(launchStep, 'player', currentPlayer);
 
           const hasTravel = travelSteps.length > 0;
 
@@ -2240,6 +2254,10 @@ const Index = () => {
         });
         const plainShotResult = resolveTargetingSequence(playerWithTargetedCell, [previewIndex]);
         const { navy: updatedPlayer, audioSequence, ignited, ignitedCellIndexes } = plainShotResult;
+
+        if (currentPlayer.cells[previewIndex]?.occupied) {
+          buzzForHit('app');
+        }
 
         if (ignited && ignitedCellIndexes) {
           triggerOilSlickDetonation('player', currentPlayer, ignitedCellIndexes, [previewIndex]);
@@ -2361,6 +2379,8 @@ const Index = () => {
       onSinglesToggle={handleSinglesToggle}
       soundEffectsEnabled={soundEffectsEnabled}
       onSoundEffectsToggle={handleSoundEffectsToggle}
+      vibrationEnabled={vibrationEnabled}
+      onVibrationToggle={handleVibrationToggle}
       onNewGame={() => requestNewGame()}
       onShowStatistics={() => setInfoDialog('statistics')}
       onShowHowToPlay={() => setInfoDialog('howToPlay')}
@@ -2869,9 +2889,9 @@ const HOW_TO_PLAY_SECTIONS: { title: string; body: string[] }[] = [
   {
     title: 'The Oil Slick',
     body: [
-      "Sinking an Oil Tanker spills oil that spreads one cell further every turn on that side's own board, staying visible regardless of fog of war. Firing into oil has a small chance to ignite that side's whole slick at once, sinking anything still hiding underneath it.",
-      "The two slicks are independent - sinking the enemy's Tanker doesn't touch your own board, and you can't defuse your own slick yourself; only the computer's shots decide its fate. So the timing call is all about the enemy's board: let their slick grow for a bigger potential payoff, or press it early, while racing to sink their fleet before the computer sinks yours.",
-      "It can only spread into untargeted cells, though, including diagonally - a wall of shots only seals it off once you've covered all eight sides, not just up/down/left/right, so watch where you're firing near a slick you're trying to grow.",
+      "Sinking an Oil Tanker spills oil that spreads one cell further every turn on that side's own board, staying visible regardless of fog of war. Firing into oil has a small chance to ignite the whole slick at once, sinking anything still hiding underneath it.",
+      "The two slicks are independent - sinking the enemy's Tanker doesn't touch your own board, and you can't defuse your own slick yourself; only the computer's shots decide its fate. So the timing call is all about the enemy's board: let the slick grow for a bigger potential payoff, or press it early, while racing to sink their fleet before the computer sinks yours.",
+      "The slick spreads only to adjacent untargeted cells, including diagonals. Building a wall of shots can block the slick from expanding any further, be careful to preserve the free flow of oil.",
     ],
   },
   {
@@ -3005,6 +3025,8 @@ type NavyPanelProps = {
   onSinglesToggle: (includeSingles: boolean) => void;
   soundEffectsEnabled: boolean;
   onSoundEffectsToggle: (enabled: boolean) => void;
+  vibrationEnabled: boolean;
+  onVibrationToggle: (enabled: boolean) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
   onShowHowToPlay: () => void;
@@ -3035,6 +3057,8 @@ type SettingsMenuProps = {
   onSinglesToggle: (includeSingles: boolean) => void;
   soundEffectsEnabled: boolean;
   onSoundEffectsToggle: (enabled: boolean) => void;
+  vibrationEnabled: boolean;
+  onVibrationToggle: (enabled: boolean) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
   onShowHowToPlay: () => void;
@@ -3048,6 +3072,8 @@ function SettingsMenu({
   onSinglesToggle,
   soundEffectsEnabled,
   onSoundEffectsToggle,
+  vibrationEnabled,
+  onVibrationToggle,
   onNewGame,
   onShowStatistics,
   onShowHowToPlay,
@@ -3084,6 +3110,13 @@ function SettingsMenu({
         >
           Sound Effects
         </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={vibrationEnabled}
+          onSelect={() => onVibrationToggle(!vibrationEnabled)}
+          indicatorAlign="right"
+        >
+          Vibration
+        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowStatistics}>Statistics</DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -3103,6 +3136,8 @@ function NavyPanel({
   onSinglesToggle,
   soundEffectsEnabled,
   onSoundEffectsToggle,
+  vibrationEnabled,
+  onVibrationToggle,
   onNewGame,
   onShowStatistics,
   onShowHowToPlay,
@@ -3274,6 +3309,8 @@ function NavyPanel({
               onSinglesToggle={onSinglesToggle}
               soundEffectsEnabled={soundEffectsEnabled}
               onSoundEffectsToggle={onSoundEffectsToggle}
+              vibrationEnabled={vibrationEnabled}
+              onVibrationToggle={onVibrationToggle}
               onNewGame={onNewGame}
               onShowStatistics={onShowStatistics}
               onShowHowToPlay={onShowHowToPlay}

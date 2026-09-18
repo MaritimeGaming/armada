@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyMineWanderOilDetonation,
   applyShotOutcome,
@@ -419,6 +419,34 @@ describe('Oil slick ticks once per turn, even across a multi-hit weapon run', ()
     const oilCountAfter = finalNavy.cells.filter((cell) => cell.oil).length;
 
     expect(oilCountAfter - oilCountBefore).toBe(1);
+  });
+});
+
+// Documents a real (and slightly surprising) property of the engine that the
+// UI has to account for: a Torpedo/Rocket/Harpoon launched onto oil floating
+// over open water can ignite the whole slick even though the launch isn't a
+// "hit" (isHit is about damaging a ship). See Index.tsx's playTravelStepEffects.
+describe('A traveling weapon launched onto open-water oil', () => {
+  it('can ignite the slick while its launch step still reports isHit: false', () => {
+    const navy = makeNavy({
+      30: { oil: true },
+      45: { oil: true },
+    });
+
+    // Ignition is a 1-in-OIL_IGNITION_ODDS roll on randomInt(1, ODDS) - a
+    // Math.random() of 0 always wins it.
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const result = fireTorpedo(navy, 30);
+    randomSpy.mockRestore();
+
+    const launchStep = result.steps[0];
+    expect(launchStep.isHit).toBe(false);
+    expect(launchStep.ignited).toBe(true);
+    expect(launchStep.ignitedCellIndexes).toEqual(expect.arrayContaining([30, 45]));
+    // No cue comes back with it either (the engine drops the plain
+    // splash/explosion cues on an ignition, and there was no ship to sink),
+    // and the UI only plays audio for a launch step when this is non-empty.
+    expect(launchStep.audioSequence).toEqual([]);
   });
 });
 

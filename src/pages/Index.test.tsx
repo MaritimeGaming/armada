@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 import { __resetTitleScreenSessionFlagForTests } from '@/pages/Index';
+import { createGameState, getMoabTargetIndexes, SPECIAL_WEAPON_QUOTA, type GameState } from '@/lib/armada-game';
 
 // Regression coverage for a reported bug: on mobile, clicking New Game could
 // leave the swipe carousel between "My Navy" and "Enemy Navy" showing a
@@ -284,6 +285,253 @@ describe('Sound Effects setting', () => {
     FakeAudio.instances = [];
     fireAShot();
     expect(FakeAudio.instances.length).toBe(0);
+  });
+});
+
+// The phone buzzes (navigator.vibrate) when someone scores a hit or sets off
+// the oil slick - once per turn however many cells/ships that turn hit, a
+// single pulse for the player and a double pulse for the computer - unless
+// the Vibration setting is off. jsdom has no navigator.vibrate, so it's
+// stubbed here.
+describe('Hit haptics', () => {
+  let vibrate: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    __resetTitleScreenSessionFlagForTests();
+    vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, 'vibrate', { configurable: true, writable: true, value: vibrate });
+    // jsdom's Audio.play() returns undefined, which the game's own cue
+    // playback can't handle - see the Sound Effects tests above.
+    vi.stubGlobal('Audio', FakeAudio);
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'vibrate');
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  // Seeds a saved game (see the game-state-loading effect in Index.tsx) so
+  // the layout is known up front: the player's turn, with a MOAB in play,
+  // unless mutate says otherwise.
+  function seedGame(mutate?: (state: GameState) => void) {
+    const state = createGameState();
+    state.currentTurn = 'player';
+    state.activeWeaponTypes = ['moab', 'torpedo', 'drone'];
+    mutate?.(state);
+    window.localStorage.setItem('armada:game-state', JSON.stringify(state));
+    return state;
+  }
+
+  function fireAt(cellIndex: number) {
+    const cell = within(screen.getByLabelText('Enemy Navy grid')).getAllByRole('button')[cellIndex];
+    fireEvent.mouseDown(cell);
+    fireEvent.mouseUp(cell);
+  }
+
+  function openSettingsMenu() {
+    // See the same helper in the Sound Effects tests above for why ctrlKey
+    // has to be set explicitly.
+    fireEvent.pointerDown(screen.getAllByLabelText('Open settings')[0], { button: 0, ctrlKey: false });
+  }
+
+  // Lets any delayed audio cue the shot scheduled (an ignition or MOAB
+  // plays extra explosions at 300/600ms) fire while the Audio stub is
+  // still in place, and gives a stray extra buzz time to show up.
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 700));
+
+  it('buzzes once for a plain shot that hits a ship', () => {
+    const cells = seedGame().enemy.cells;
+    render(<App />);
+    dismissTitleScreen();
+
+    fireAt(cells.findIndex((cell) => cell.occupied));
+
+    expect(vibrate).toHaveBeenCalledTimes(1);
+    expect(vibrate).toHaveBeenCalledWith(50);
+  });
+
+  it('does not buzz for a plain shot that misses', () => {
+    const cells = seedGame().enemy.cells;
+    render(<App />);
+    dismissTitleScreen();
+
+    fireAt(cells.findIndex((cell) => !cell.occupied));
+
+    expect(vibrate).not.toHaveBeenCalled();
+  });
+
+  it('buzzes only once when a MOAB hits several cells at once', async () => {
+    const cells = seedGame().enemy.cells;
+    // A MOAB's blast covers several cells (getMoabTargetIndexes) - pick a
+    // target where more than one of them holds a ship it can actually
+    // damage. The 2-cell 'S' vessel is immune to MOABs (exposed, never
+    // hit), so it doesn't count toward that.
+    const damageableCount = (index: number) =>
+      getMoabTargetIndexes(index).filter(
+        (footprintIndex) => cells[footprintIndex]?.occupied && cells[footprintIndex].shipCode !== 'S',
+      ).length;
+    const targetIndex = cells.findIndex((_, index) => damageableCount(index) >= 2);
+    expect(targetIndex).toBeGreaterThanOrEqual(0);
+
+    render(<App />);
+    dismissTitleScreen();
+    fireEvent.click(screen.getAllByRole('button', { name: /MOAB/ }).find((button) => !(button as HTMLButtonElement).disabled)!);
+    fireAt(targetIndex);
+    await settle();
+
+    expect(vibrate).toHaveBeenCalledTimes(1);
+  });
+
+  describe('oil slick detonation', () => {
+    // A lone oil cell over open water: nothing under it to hit, so
+    // detonating it is the only thing that can happen.
+    function seedOilOnOpenWater() {
+      let oilIndex = -1;
+      seedGame((state) => {
+        oilIndex = state.enemy.cells.findIndex((cell) => !cell.occupied);
+        state.enemy.cells[oilIndex] = { ...state.enemy.cells[oilIndex], oil: true };
+      });
+      return oilIndex;
+    }
+
+    it('buzzes even though it hits no ship', async () => {
+      const oilIndex = seedOilOnOpenWater();
+      render(<App />);
+      dismissTitleScreen();
+
+      // Ignition is a 1-in-OIL_IGNITION_ODDS roll on randomInt(1, ODDS) - a
+      // Math.random() of 0 always wins it.
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      fireAt(oilIndex);
+      await settle();
+
+      expect(vibrate).toHaveBeenCalledTimes(1);
+      expect(vibrate).toHaveBeenCalledWith(50);
+    });
+
+    // Regression coverage for a real bug: a Torpedo/Rocket/Harpoon launched
+    // onto oil over open water can ignite the slick without the launch being
+    // a "hit" (see the matching armada-game.test.ts test), and the launch
+    // handling only animated/played sound for isHit steps - so the slick
+    // detonated with no explosion and no sound.
+    it('animates, sounds and buzzes for a Torpedo launched onto open-water oil that ignites', async () => {
+      let oilIndex = -1;
+      seedGame((state) => {
+        // Keep the computer to plain shots so its turn stays simple.
+        state.appWeaponsUsed = SPECIAL_WEAPON_QUOTA;
+        oilIndex = state.enemy.cells.findIndex((cell) => !cell.occupied);
+        // Clear the launch cell's whole row of ships so the rest of the
+        // Torpedo's run is empty water - the launch is then the only thing
+        // that can happen.
+        const rowStart = oilIndex - (oilIndex % 10);
+        for (let index = rowStart; index < rowStart + 10; index += 1) {
+          state.enemy.cells[index] = { ...state.enemy.cells[index], occupied: false, shipCode: undefined };
+        }
+        state.enemy.cells[oilIndex] = { ...state.enemy.cells[oilIndex], oil: true };
+      });
+      render(<App />);
+      dismissTitleScreen();
+      fireEvent.click(screen.getAllByRole('button', { name: /TORPEDO/ }).find((button) => !(button as HTMLButtonElement).disabled)!);
+
+      // The Torpedo's flight (and the computer's turn after it) run on
+      // timers - fake them so they can be run to completion below instead of
+      // leaking into whatever test comes next.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+        FakeAudio.instances = [];
+        fireAt(oilIndex);
+
+        expect(screen.getByLabelText('Enemy Navy grid').querySelector('.cell-explosion')).not.toBeNull();
+        expect(FakeAudio.instances.length).toBeGreaterThan(0);
+        expect(vibrate).toHaveBeenCalledWith(50);
+
+        await vi.advanceTimersByTimeAsync(15000);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not buzz when the same shot fails to ignite it (control for the ignition tests above)', async () => {
+      const oilIndex = seedOilOnOpenWater();
+      render(<App />);
+      dismissTitleScreen();
+
+      vi.spyOn(Math, 'random').mockReturnValue(0.99);
+      fireAt(oilIndex);
+      await settle();
+
+      expect(vibrate).not.toHaveBeenCalled();
+    });
+  });
+
+  it("gives the computer's hit a distinct double pulse", async () => {
+    seedGame((state) => {
+      state.currentTurn = 'app';
+      // No special weapons for the computer, so it takes a plain shot.
+      state.appWeaponsUsed = SPECIAL_WEAPON_QUOTA;
+      // Leave exactly one cell untargeted - a ship cell - so that's the only
+      // place the computer's shot can go.
+      const targetIndex = state.player.cells.findIndex((cell) => cell.occupied);
+      state.player.cells = state.player.cells.map((cell, index) =>
+        index === targetIndex ? cell : { ...cell, effect: 'targeted' },
+      );
+    });
+    render(<App />);
+    dismissTitleScreen();
+
+    await waitFor(() => expect(vibrate).toHaveBeenCalledWith([50, 70, 50]), { timeout: 4000 });
+    expect(vibrate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw where the Vibration API is unavailable', () => {
+    Reflect.deleteProperty(navigator, 'vibrate');
+    const cells = seedGame().enemy.cells;
+    render(<App />);
+    dismissTitleScreen();
+
+    expect(() => fireAt(cells.findIndex((cell) => cell.occupied))).not.toThrow();
+  });
+
+  describe('Vibration setting', () => {
+    it('is checked by default, listed right after Sound Effects', async () => {
+      render(<App />);
+      dismissTitleScreen();
+      openSettingsMenu();
+
+      const items = await screen.findAllByRole('menuitemcheckbox');
+      const names = items.map((item) => item.textContent);
+      expect(names.indexOf('Vibration')).toBe(names.indexOf('Sound Effects') + 1);
+      expect(screen.getByRole('menuitemcheckbox', { name: 'Vibration' })).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('persists to localStorage and unchecks the menu item when turned off', async () => {
+      render(<App />);
+      dismissTitleScreen();
+      openSettingsMenu();
+
+      fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Vibration' }));
+      expect(window.localStorage.getItem('armada:vibration-enabled')).toBe('false');
+
+      openSettingsMenu();
+      expect(await screen.findByRole('menuitemcheckbox', { name: 'Vibration' })).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('stops a hit from buzzing once turned off, without touching Sound Effects', () => {
+      window.localStorage.setItem('armada:vibration-enabled', 'false');
+      const cells = seedGame().enemy.cells;
+      render(<App />);
+      dismissTitleScreen();
+
+      FakeAudio.instances = [];
+      fireAt(cells.findIndex((cell) => cell.occupied));
+
+      expect(vibrate).not.toHaveBeenCalled();
+      expect(FakeAudio.instances.length).toBeGreaterThan(0);
+    });
   });
 });
 

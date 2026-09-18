@@ -1669,3 +1669,57 @@ either way. The mount-time audio-prewarming effect (see the Drone's own
 camera-cue timing work) still runs regardless of this setting, so
 re-enabling mid-session plays instantly rather than paying a fresh fetch
 cost on the next cue.
+
+## Hit haptics
+
+On a phone, the device buzzes (`navigator.vibrate`) when a hit lands or the
+oil slick detonates. It's a physical counterpart to the explosion visual and
+sound, not a separate feedback channel.
+
+**Two patterns, so the buzz says whose it was.** One short pulse
+(`PLAYER_HIT_BUZZ_PATTERN`) when the player scores; a double pulse
+(`COMPUTER_HIT_BUZZ_PATTERN`) when the computer does. An earlier version
+buzzed for the player only, on the reasoning that a buzz should mean "I hit
+something" - but the view swings to your own board when the computer fires,
+and a haptic makes being hit land. Giving it a different pattern keeps both
+readings distinct instead of diluting the reward signal.
+
+**One buzz per turn, not per hit.** A MOAB that catches several cells, an oil
+chain reaction that sinks several ships, or a Torpedo/Rocket/Harpoon that
+strikes more than one ship along its run all buzz exactly once.
+`buzzForHit` in `Index.tsx` latches on its first call, per side
+(`hitBuzzedRef`), and each side's latch is reset at the start of that side's
+own turn. The same latch covers a hit *and* a detonation in the same turn.
+
+**What counts.** A hit means real damage - the same definition as
+`ShotOutcome.dealtDamage` and `WeaponTravelStep.isHit` - so a weapon merely
+*exposing* an immune ship (Ensign/Helicopter/'S') doesn't buzz. A mine landing
+a hit on its passive wander counts for whoever placed it. **An oil-slick
+ignition always buzzes, even if the chain reaction caught no ship at all** (a
+shot into oil over open water): the blast is the event.
+`triggerOilSlickDetonation` is the single place that's wired, since every
+ignition already routes through it.
+
+**A launch can ignite the slick without being a hit.** A Torpedo/Rocket/Harpoon
+launched onto oil floating over open water can roll the 1-in-12 ignition and
+light the whole slick while its launch step still reports `isHit: false` (no
+ship was damaged) and comes back with no audio cues of its own. Ignition is
+therefore treated as its own event, separate from "hit", everywhere a weapon
+step is played (`playTravelStepEffects` in `Index.tsx`, used for the launch cell
+and every in-flight step): it gets the full detonation animation, the ignition
+sound cascade, and the buzz, exactly like the same oil struck by a plain shot.
+This used to be silent - the launch handling only animated and played sound
+for `isHit` steps.
+
+**Settings > Vibration** (`vibrationEnabled` / `armada:vibration-enabled`),
+right after Sound Effects, on by default: a standing preference like Sound
+Effects that survives New Game, gating `buzzForHit`. It's independent of
+Sound Effects - muting audio doesn't silence the buzz or vice versa. The item
+is always shown, even on devices with no vibration hardware, where the
+setting is simply inert.
+
+**Where it works.** Where `navigator.vibrate` doesn't exist (iOS WebViews,
+Safari, Firefox desktop) this is a silent no-op; desktop Chrome exposes the
+API but has nothing to vibrate, so it does nothing there either. The Android
+build needs `android.permission.VIBRATE` in `AndroidManifest.xml` for the
+WebView to honor it.
