@@ -273,8 +273,11 @@ that darker undertone - and having your own navy carry a Pirate is no
 stranger than anything else already unexplained in this fleet (a Garbage
 Scow, a volatile Oil Tanker, ships that are physically longer on the
 diagonal). See `AudioCue`'s `'pirate'` entry (`armada-game.ts`) and the
-`Pirate.wav` asset (`public/audio/`) for the actual cue - swap the
-`AUDIO_FILES.pirate` path and `SINGLE_SHIPS`'s `'P'` entry back to
+`Pirate-*.wav` assets (`public/audio/`) for the actual cue. Each sink
+picks one clip at random from `PIRATE_AUDIO_FILES` (add a take by dropping
+the file in `public/audio/` and adding its path to that list), played on
+top of the standard sink sound. To revert, swap the
+`AUDIO_FILES.pirate` entry and `SINGLE_SHIPS`'s `'P'` entry back to
 `'lifeboat'`/`LifeBoat.wav` (still kept in `public/audio/`) to revert if
 the new cue doesn't land.
 

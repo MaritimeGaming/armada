@@ -362,7 +362,7 @@ answers turned on details that aren't obvious from the game's overall
 > specific line and sound by name; if the questionnaire is ever re-opened in
 > the Play Console (a rating refresh, a new form version, etc.), re-confirm
 > the "violence against humans" and "fear" answers against whatever the
-> actual shipped `Pirate.wav` sounds like once it's in.
+> actual shipped `Pirate-*.wav` clips sound like once it's in.
 
 | Question | Answer | Why |
 | --- | --- | --- |

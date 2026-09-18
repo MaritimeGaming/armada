@@ -7,6 +7,10 @@ import {
   DEFAULT_SESSION_STATS,
   DRONE_SHOT_OUTCOME,
   fireMoab,
+  getAllAudioFiles,
+  getAudioFileForCue,
+  AUDIO_FILES,
+  resolveTargetingSequence,
   fireTorpedo,
   getLocalDateString,
   getOilIgnitionHitCellIndexes,
@@ -261,6 +265,41 @@ describe('Oil slick management', () => {
 // chain reaction visited, but only some of those are ship cells the
 // explosion itself newly caught - see getOilIgnitionHitCellIndexes's own doc
 // comment and GAME_DESIGN.md's Variable B.
+describe('Pirate sink audio', () => {
+  it('plays the standard sink cue plus a pirate cue when a Pirate is sunk', () => {
+    const navy = makeEmptyNavy({ 42: 'P' });
+    const prepared = { ...navy, cells: navy.cells.map((cell, i) => (i === 42 ? { ...cell, effect: 'targeted' as const } : cell)) };
+
+    const result = resolveTargetingSequence(prepared, [42]);
+
+    expect(result.audioSequence).toEqual(expect.arrayContaining(['sink', 'pirate']));
+  });
+
+  it('picks each available clip depending on the random roll', () => {
+    const clips = AUDIO_FILES.pirate as string[];
+    expect(clips.length).toBeGreaterThanOrEqual(2);
+
+    const spy = vi.spyOn(Math, 'random');
+    const picked = [0, 0.999].map((roll) => {
+      spy.mockReturnValueOnce(roll);
+      return getAudioFileForCue('pirate');
+    });
+    spy.mockRestore();
+
+    expect(picked[0]).toBe(clips[0]);
+    expect(picked[1]).toBe(clips[clips.length - 1]);
+  });
+
+  it('resolves single-file cues without any randomness, and preloads every clip', () => {
+    const spy = vi.spyOn(Math, 'random');
+    expect(getAudioFileForCue('sink')).toBe(AUDIO_FILES.sink);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+
+    (AUDIO_FILES.pirate as string[]).forEach((clip) => expect(getAllAudioFiles()).toContain(clip));
+  });
+});
+
 describe('getOilIgnitionHitCellIndexes', () => {
   it('includes an occupied cell the chain reaction found still untargeted beforehand', () => {
     const beforeNavy = makeNavy({ 61: { occupied: true, shipCode: 'B', oil: true } });

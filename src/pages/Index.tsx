@@ -27,7 +27,6 @@ import {
   applyMineWanderOilDetonation,
   applyShotOutcome,
   areAllShipsSunk,
-  AUDIO_FILES,
   computeSessionStatsUpdate,
   createGameState,
   DEFAULT_SESSION_STATS,
@@ -39,6 +38,8 @@ import {
   fireRocket,
   fireTorpedo,
   GAME_STATE_VERSION,
+  getAllAudioFiles,
+  getAudioFileForCue,
   getLocalDateString,
   getMoabTargetIndexes,
   getOilIgnitionHitCellIndexes,
@@ -468,11 +469,11 @@ const Index = () => {
   // mount, well before any of them are ever needed - each of these Audio
   // elements is discarded immediately after kicking off its own load; it's
   // never touched again, and playAudioCue (below) always constructs its
-  // own fresh element from AUDIO_FILES[cue] to actually play, unaffected
+  // own fresh element from getAudioFileForCue(cue) to actually play, unaffected
   // by whatever this does. This can't fix format/decode latency, only
   // whether the bytes still need to come over the network at play time.
   useEffect(() => {
-    Object.values(AUDIO_FILES).forEach((src) => {
+    getAllAudioFiles().forEach((src) => {
       const warmupAudio = new Audio(src);
       warmupAudio.preload = 'auto';
       warmupAudio.load();
@@ -572,7 +573,7 @@ const Index = () => {
       return;
     }
 
-    const audio = new Audio(AUDIO_FILES[cue]);
+    const audio = new Audio(getAudioFileForCue(cue));
     audio.preload = 'auto';
     audioRef.current[cue].push(audio);
 

@@ -319,10 +319,20 @@ const ORIENTATIONS: Orientation[] = [
   'diagonal-up',
 ];
 
-export const AUDIO_FILES: Record<AudioCue, string> = {
+// Every clip the Pirate's sink cue can play - one is picked at random each
+// time (see getAudioFileForCue). To add another take, save it in
+// public/audio and add its path here; nothing else needs to change.
+const PIRATE_AUDIO_FILES = [
+  `${import.meta.env.BASE_URL}audio/Pirate-1.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-2.wav`,
+];
+
+// A cue maps to one file, or to a list of interchangeable clips to choose
+// between - use getAudioFileForCue to resolve it to a single path.
+export const AUDIO_FILES: Record<AudioCue, string | string[]> = {
   splash: `${import.meta.env.BASE_URL}audio/Splash.wav`,
   sink: `${import.meta.env.BASE_URL}audio/Sink.wav`,
-  pirate: `${import.meta.env.BASE_URL}audio/Pirate.wav`,
+  pirate: PIRATE_AUDIO_FILES,
   ensign: `${import.meta.env.BASE_URL}audio/Ensign.wav`,
   helicopter: `${import.meta.env.BASE_URL}audio/Helicopter.wav`,
   explosion: `${import.meta.env.BASE_URL}audio/Explosion.wav`,
@@ -357,6 +367,18 @@ export const AUDIO_FILES: Record<AudioCue, string> = {
  * exception - see its own doc comment for why it calls resolveTargetingHits
  * directly instead, ticking the slick itself exactly once for the whole run.
  */
+/** The single file to play for cue - a random pick when the cue has several clips. */
+export function getAudioFileForCue(cue: AudioCue): string {
+  const files = AUDIO_FILES[cue];
+
+  return typeof files === 'string' ? files : randomItem(files);
+}
+
+/** Every distinct file a cue can play, for preloading. */
+export function getAllAudioFiles(): string[] {
+  return Object.values(AUDIO_FILES).flat();
+}
+
 export function resolveTargetingSequence(navy: NavyState, initialCellIndexes: number[]): TargetingResult {
   const result = resolveTargetingHits(navy, initialCellIndexes);
   const tickedNavy = result.ignited ? extinguishOilSlick(result.navy) : spreadOilSlick(result.navy);
