@@ -530,6 +530,60 @@ describe('shotOutcomeFromTargetingResult', () => {
   });
 });
 
+describe('hitCellCount', () => {
+  it('counts every occupied target cell of a MOAB-style multi-cell blast', () => {
+    const navy = makeNavy({
+      5: { occupied: true, shipCode: 'X', effect: 'targeted' },
+      6: { occupied: true, shipCode: 'Y', effect: 'targeted' },
+      7: { occupied: false, effect: 'targeted' },
+      8: { occupied: true, shipCode: 'Z', effect: 'targeted' },
+    });
+    const outcome = shotOutcomeFromTargetingResult(makeTargetingResult({ navy }), [5, 6, 7, 8], true);
+    expect(outcome.hitCellCount).toBe(3);
+    expect(outcome.dealtDamage).toBe(true);
+  });
+
+  it('counts ship cells caught by an oil-slick chain on top of the direct target', () => {
+    const navy = makeNavy({
+      5: { occupied: true, shipCode: 'X', effect: 'targeted' },
+      6: { occupied: true, shipCode: 'Y', effect: 'targeted' },
+      7: { oil: true, effect: 'targeted' },
+    });
+    const outcome = shotOutcomeFromTargetingResult(
+      makeTargetingResult({ navy, ignited: true, ignitedCellIndexes: [5, 6, 7] }),
+      [5],
+      true,
+    );
+    expect(outcome.hitCellCount).toBe(2);
+  });
+
+  it('is 0 for a miss', () => {
+    const navy = makeNavy({ 5: { occupied: false, effect: 'targeted' } });
+    expect(shotOutcomeFromTargetingResult(makeTargetingResult({ navy }), [5], true).hitCellCount).toBe(0);
+  });
+
+  it('sums every hit step of a Torpedo/Rocket/Harpoon run', () => {
+    const outcome = shotOutcomeFromTravelSteps([
+      makeTravelStep({ isHit: true }),
+      makeTravelStep({ isHit: false }),
+      makeTravelStep({ isHit: true }),
+      makeTravelStep({ isHit: true }),
+    ]);
+    expect(outcome.hitCellCount).toBe(3);
+  });
+
+  it("counts the ship cells of an ignited step's chain instead of just its struck cell", () => {
+    const navy = makeNavy({
+      5: { occupied: true, shipCode: 'X', effect: 'targeted' },
+      6: { occupied: true, shipCode: 'Y', effect: 'targeted' },
+    });
+    const outcome = shotOutcomeFromTravelSteps([
+      makeTravelStep({ isHit: true, navy, ignited: true, ignitedCellIndexes: [5, 6, 7] }),
+    ]);
+    expect(outcome.hitCellCount).toBe(2);
+  });
+});
+
 describe('shotOutcomeFromTravelSteps', () => {
   it('counts as a hit if any step along the run connected', () => {
     const outcome = shotOutcomeFromTravelSteps([
@@ -559,7 +613,7 @@ describe('shotOutcomeFromTravelSteps', () => {
 });
 
 function makeShotOutcome(overrides: Partial<ShotOutcome> = {}): ShotOutcome {
-  return { dealtDamage: false, countsTowardHitStreak: true, oilDetonationSize: 0, ...overrides };
+  return { dealtDamage: false, hitCellCount: 0, countsTowardHitStreak: true, oilDetonationSize: 0, ...overrides };
 }
 
 function makeGameState(overrides: Partial<GameState> = {}): GameState {
@@ -580,9 +634,16 @@ describe('applyShotOutcome', () => {
 
   it('extends the current hit streak, and its peak, on a hit', () => {
     const state = makeGameState({ playerCurrentHitStreak: 2, playerHitStreakPeak: 2 });
-    const next = applyShotOutcome(state, 'player', makeShotOutcome({ dealtDamage: true }));
+    const next = applyShotOutcome(state, 'player', makeShotOutcome({ dealtDamage: true, hitCellCount: 1 }));
     expect(next.playerCurrentHitStreak).toBe(3);
     expect(next.playerHitStreakPeak).toBe(3);
+  });
+
+  it('advances the streak by every cell a multi-cell turn damaged, not just by 1', () => {
+    const state = makeGameState({ playerCurrentHitStreak: 2, playerHitStreakPeak: 2 });
+    const next = applyShotOutcome(state, 'player', makeShotOutcome({ dealtDamage: true, hitCellCount: 3 }));
+    expect(next.playerCurrentHitStreak).toBe(5);
+    expect(next.playerHitStreakPeak).toBe(5);
   });
 
   it('resets the current hit streak to 0 on a miss that counts, without erasing this game\'s peak', () => {
@@ -607,7 +668,7 @@ describe('applyShotOutcome', () => {
 
   it('tracks the player and the computer independently', () => {
     const state = makeGameState({ playerCurrentHitStreak: 1, appCurrentHitStreak: 1 });
-    const next = applyShotOutcome(state, 'app', makeShotOutcome({ dealtDamage: true }));
+    const next = applyShotOutcome(state, 'app', makeShotOutcome({ dealtDamage: true, hitCellCount: 1 }));
     expect(next.appCurrentHitStreak).toBe(2);
     expect(next.playerCurrentHitStreak).toBe(1);
   });

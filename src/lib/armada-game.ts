@@ -98,7 +98,7 @@ export type GameState = {
   playerTurnsTaken: number;
   /** Mirrors playerTurnsTaken for the computer. Feeds the Quickest Loss record. */
   appTurnsTaken: number;
-  /** The player's current run of consecutive damage-dealing turns - see ShotOutcome/applyShotOutcome for exactly what counts. Resets to 0 on a miss; untouched by a turn that doesn't count toward the streak at all (a Drone, or a Mine dropped on empty water). */
+  /** The player's current hit streak: the running total of cells damaged since the last miss (a multi-cell turn adds every cell it hit) - see ShotOutcome/applyShotOutcome for exactly what counts. Resets to 0 on a miss; untouched by a turn that doesn't count toward the streak at all (a Drone, or a Mine dropped on empty water). */
   playerCurrentHitStreak: number;
   /** The highest playerCurrentHitStreak has reached at any point this game - not necessarily where it stands now, since it can fall back after a later miss. Feeds the Longest Hit Streak (You) record. */
   playerHitStreakPeak: number;
@@ -138,6 +138,14 @@ export type ShotOutcome = {
   /** Real damage dealt to at least one occupied, non-immune cell this turn - an exposure without damage (see exposeCellWithoutDamage) never counts on its own. */
   dealtDamage: boolean;
   /**
+   * How many occupied, non-immune cells this turn actually damaged - every
+   * cell of a MOAB blast, a travelling weapon's whole run, or a Mine's
+   * impact-plus-bonus pair counts, as do ship cells caught by an oil-slick
+   * chain reaction it set off. 0 exactly when dealtDamage is false. This is
+   * how far a turn advances the hit streak (see applyShotOutcome).
+   */
+  hitCellCount: number;
+  /**
    * False for a Drone (never deals damage - see isShipImmuneToWeapon's own
    * doc comment) and for a Mine dropped on empty water (still armed and
    * pending until its passive wander eventually connects or not - see
@@ -152,7 +160,7 @@ export type ShotOutcome = {
 };
 
 /** A Drone can never deal damage or ignite anything, and is excluded from the hit streak entirely - see ShotOutcome. */
-export const DRONE_SHOT_OUTCOME: ShotOutcome = { dealtDamage: false, countsTowardHitStreak: false, oilDetonationSize: 0 };
+export const DRONE_SHOT_OUTCOME: ShotOutcome = { dealtDamage: false, hitCellCount: 0, countsTowardHitStreak: false, oilDetonationSize: 0 };
 
 /** Derives a ShotOutcome from a fireMoab/resolveMineHit/plain-shot result - anything built on a single TargetingResult plus the cell(s) it actually tried to target (as opposed to merely exposed - see targetIndexes on each of those). */
 export function shotOutcomeFromTargetingResult(
@@ -160,8 +168,12 @@ export function shotOutcomeFromTargetingResult(
   targetIndexes: number[],
   countsTowardHitStreak: boolean,
 ): ShotOutcome {
+  const damagedIndexes = new Set([...targetIndexes, ...(result.ignited ? result.ignitedCellIndexes ?? [] : [])]);
+  const hitCellCount = Array.from(damagedIndexes).filter((index) => result.navy.cells[index]?.occupied).length;
+
   return {
-    dealtDamage: targetIndexes.some((index) => result.navy.cells[index]?.occupied),
+    dealtDamage: hitCellCount > 0,
+    hitCellCount,
     countsTowardHitStreak,
     oilDetonationSize: result.ignited && result.ignitedCellIndexes ? result.ignitedCellIndexes.length : 0,
   };
@@ -169,8 +181,21 @@ export function shotOutcomeFromTargetingResult(
 
 /** Derives a ShotOutcome from a fireTorpedo/fireRocket/fireHarpoon result - a hit anywhere along the run counts as a hit for the whole turn, and the biggest single ignition among its steps (never their sum) is what could set an Oil Detonation record. */
 export function shotOutcomeFromTravelSteps(steps: WeaponTravelStep[]): ShotOutcome {
+  // A hit step damages its own cell; an ignited one also caught every ship
+  // cell in its chain (ignitedCellIndexes includes the struck cell itself).
+  const hitCellCount = steps.reduce((total, step) => {
+    if (!step.isHit) {
+      return total;
+    }
+
+    return total + (step.ignited && step.ignitedCellIndexes
+      ? step.ignitedCellIndexes.filter((index) => step.navy.cells[index]?.occupied).length
+      : 1);
+  }, 0);
+
   return {
-    dealtDamage: steps.some((step) => step.isHit),
+    dealtDamage: hitCellCount > 0,
+    hitCellCount,
     countsTowardHitStreak: true,
     oilDetonationSize: steps.reduce(
       (peak, step) => Math.max(peak, step.ignited && step.ignitedCellIndexes ? step.ignitedCellIndexes.length : 0),
@@ -184,7 +209,9 @@ export function shotOutcomeFromTravelSteps(steps: WeaponTravelStep[]): ShotOutco
  * turns taken (every turn, regardless of countsTowardHitStreak - a Drone
  * turn still counts as a turn for Quickest Win/Loss purposes, just not for
  * the hit streak), advances or resets the hit streak, and raises either
- * peak if this turn set a new in-game high. A turn excluded from the hit
+ * peak if this turn set a new in-game high. A hit turn advances the streak
+ * by the number of cells it damaged (outcome.hitCellCount), not by 1 - a
+ * multi-cell weapon shouldn't be worth less than its cells. A turn excluded from the hit
  * streak (countsTowardHitStreak: false) leaves the current streak
  * untouched rather than resetting it.
  */
@@ -194,7 +221,7 @@ export function applyShotOutcome(state: GameState, side: TurnOwner, outcome: Sho
   const nextStreak = !outcome.countsTowardHitStreak
     ? currentStreak
     : outcome.dealtDamage
-      ? currentStreak + 1
+      ? currentStreak + outcome.hitCellCount
       : 0;
   const streakPeak = isPlayer ? state.playerHitStreakPeak : state.appHitStreakPeak;
   const oilPeak = isPlayer ? state.playerOilDetonationPeak : state.appOilDetonationPeak;

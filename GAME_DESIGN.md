@@ -1334,9 +1334,15 @@ running streak:
   Variable D's ship-immunity rules) is not damage on its own - a MOAB that
   finds only an immune Submarine in its blast is a miss for streak
   purposes, same as splashing into empty water.
-- A multi-cell action (MOAB's blast, a travelling weapon's whole run) is
-  judged as one turn, one verdict: a hit if *any* cell in it actually took
-  damage, a miss only if the whole thing whiffed.
+- A multi-cell action (MOAB's blast, a travelling weapon's whole run, a
+  Mine's impact-plus-bonus pair) is still one turn with one verdict - a
+  hit if *any* cell in it took damage, a miss (streak resets to 0) only if
+  the whole thing whiffed - but a hit advances the streak by **the number
+  of cells it damaged** (`ShotOutcome.hitCellCount`), not by 1. Ship cells
+  caught by an oil-slick chain the action set off count too. Originally
+  every hit turn was worth exactly 1, which penalized the player for using
+  a well-placed multi-cell weapon: a Torpedo through three ships advanced
+  the streak no further than a plain shot at one.
 - **A Drone never counts either way** - not a hit (it can't deal damage by
   design; see Variable D), but deliberately not a miss either. It's
   excluded from the sequence entirely, so scouting with a Drone can never
