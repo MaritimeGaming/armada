@@ -6,7 +6,7 @@ Play Console walkthrough with pre-filled answers for every policy form.
 
 ---
 
-## 0. Status checklist (updated 2026-09-10)
+## 0. Status checklist (updated 2026-09-18)
 
 **Done**
 - [x] Package renamed to `com.maritimegaming.armada` (permanent ID, set before first upload)
@@ -29,12 +29,24 @@ Play Console walkthrough with pre-filled answers for every policy form.
   consequence (nothing had been submitted to Google yet) and replaced. `android/keystore.properties`
   and `armada-upload.jks` are git-ignored, local-only; the password lives only in that file and
   whatever password manager it was saved to — back it up.
+- [x] **AAB rebuilt 2026-09-18 from `ee9f5f8`** (10.5 MB, `jar verified`, still `versionCode 1` /
+  `versionName "1.0"`, `FORCE_TEST_ADS` still `true`). The 09-16 build was stale — it predated the
+  How to Play dialog, the Lifeboat→Pirate swap (6 `Pirate-*.wav` clips), the hit-buzz `VIBRATE`
+  permission, and the hit-streak change. Rebuild whenever gameplay code changes before an upload.
+- [x] Store settings + contact details (§7.2) — completed in Console
 
 **Blocking the closed test (do these first — nothing below matters until the 12/14 clock is running)**
-- [ ] Store settings + contact details (§7.2)
-- [ ] Recruit 12+ testers with Android devices (start immediately, in parallel with the above)
-- [ ] Closed testing track: upload the AAB, send the opt-in link (§7.5)
-- [ ] 14 continuous days at ≥12 opted-in testers
+- [ ] Edit the Console **full description**: it was pasted before the Lifeboat→Pirate swap, so it
+  still says "Ensign, Helicopter, and Lifeboat" — change to "Pirate" (§3 already has the fix)
+- [ ] Decide whether the `Pirate-*.wav` voice clips are AI-generated; if so, update the Console
+  **AI-generated content** declaration (it currently reflects only the title-screen art)
+- [ ] Closed testing track: countries, tester email list, feedback email, upload the AAB, roll out (§7.5)
+- [ ] Send the opt-in link once the release is live; get **all** testers opted in fast (clock starts at 12)
+- [ ] 14 continuous days at ≥12 opted-in testers (recruit 14–15 for a buffer)
+
+**Before production (not gating the closed test)**
+- [ ] Re-shoot screenshots 2–6: they show the retired Lifeboat `L` in the ship legend / green reveal
+  (Shot 6); the shipped game now shows the Pirate `P`. Consider adding the new How to Play dialog.
 
 **NOT required before the closed test — do before promoting to production instead**
 - [ ] `FORCE_TEST_ADS` → `false` in `src/lib/ads.ts` — fine, arguably better, to leave `true` through testing (no real ad traffic against the account while 12 people poke at it)
