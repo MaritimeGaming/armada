@@ -325,6 +325,10 @@ const ORIENTATIONS: Orientation[] = [
 const PIRATE_AUDIO_FILES = [
   `${import.meta.env.BASE_URL}audio/Pirate-1.wav`,
   `${import.meta.env.BASE_URL}audio/Pirate-2.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-3.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-4.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-5.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-6.wav`,
 ];
 
 // A cue maps to one file, or to a list of interchangeable clips to choose
