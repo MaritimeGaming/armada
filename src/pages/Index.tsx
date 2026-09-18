@@ -2892,7 +2892,7 @@ const HOW_TO_PLAY_SECTIONS: { title: string; body: string[] }[] = [
     body: [
       "Sinking an Oil Tanker spills oil that spreads one cell further every turn on that side's own board, staying visible regardless of fog of war. Firing into oil has a small chance to ignite the whole slick at once, sinking anything still hiding underneath it.",
       "The two slicks are independent - sinking the enemy's Tanker doesn't touch your own board, and you can't defuse your own slick yourself; only the computer's shots decide its fate. So the timing call is all about the enemy's board: let the slick grow for a bigger potential payoff, or press it early, while racing to sink their fleet before the computer sinks yours.",
-      "The slick spreads only to adjacent untargeted cells, including diagonals. Building a wall of shots can block the slick from expanding any further, be careful to preserve the free flow of oil.",
+      "The slick spreads only to adjacent untargeted cells, including diagonals. Building a wall of shots can block the slick from expanding any further, so be careful to preserve the free flow of oil.",
     ],
   },
   {
