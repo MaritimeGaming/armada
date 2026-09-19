@@ -47,6 +47,19 @@ Play Console walkthrough with pre-filled answers for every policy form.
 **Before production (not gating the closed test)**
 - [ ] Re-shoot screenshots 2–6: they show the retired Lifeboat `L` in the ship legend / green reveal
   (Shot 6); the shipped game now shows the Pirate `P`. Consider adding the new How to Play dialog.
+- [ ] **In-app rating prompt** (optional, but worth it once there are real players — closed-test
+  reviews aren't public ratings). Use Google's In-App Review API (native 1–5 star sheet, player
+  never leaves the game), not a custom dialog that forwards to the Play listing. Likely via a
+  Capacitor plugin (`@capacitor-community/in-app-review` — verify it exists and supports
+  Capacitor 8 before relying on it), which means a native sync + AAB rebuild. Rules:
+  - Native Android only (`Capacitor.isNativePlatform()`); no-op on the web build.
+  - Ask only right after a **win**, after a handful of finished games (Statistics already tracks
+    `gamesPlayed` / `gamesWon`), never mid-game or right after an ad.
+  - Long cooldown between asks (months, not days); persist a "last asked" date in localStorage.
+  - No pre-question ("do you like the game?") that routes only happy players to the store, and no
+    rewards for rating — both against Google's guidelines. The API is quota-limited and never
+    reports whether the sheet was shown or a rating given, so don't depend on the outcome.
+  - Add a test for the trigger rules; note the design in `GAME_DESIGN.md`.
 
 **NOT required before the closed test — do before promoting to production instead**
 - [ ] `FORCE_TEST_ADS` → `false` in `src/lib/ads.ts` — fine, arguably better, to leave `true` through testing (no real ad traffic against the account while 12 people poke at it)
