@@ -6,7 +6,7 @@ Play Console walkthrough with pre-filled answers for every policy form.
 
 ---
 
-## 0. Status checklist (updated 2026-09-21)
+## 0. Status checklist (updated 2026-09-22)
 
 **Closed testing is live.** About half the tester list has opted in as of
 2026-09-21; still waiting on the rest before the 14-day clock starts.
@@ -46,8 +46,24 @@ IDs are kept for when `FORCE_TEST_ADS` flips to `false` before production. `vers
 3 for this fix (1 and 2 were already consumed by earlier uploads — Play never lets a code be reused).
 **Upload this new AAB as a fresh release to the closed testing track and have testers update.**
 
+**versionCode 4 built 2026-09-22** — `android/app/build/outputs/bundle/release/app-release.aab`,
+signed with the release upload key, `FORCE_TEST_ADS` still `true` (per the "not required before the
+closed test" note below). Bundles everything since versionCode 3:
+- Fixed the "Loading Ad"/"Procuring Weapons" placeholder banners rendering even on a native build,
+  where a real ad is about to take over the screen anyway - reported from a device in this same
+  closed test as an unwanted pause bolted in front of the real ad. They now only render outside a
+  native build (`areAdsAvailable()` in `src/lib/ads.ts`).
+- Raised the oil slick's ignition odds from 1-in-12 to 1-in-6 (`OIL_IGNITION_ODDS` in
+  `armada-game.ts`) - the old odds were too rare to feel like a real risk worth timing around.
+- Silenced the 'deflect' audio cue for a Torpedo/Rocket/Harpoon crossing an immune ship
+  (launch cell or mid-flight); it's reserved for MOAB/Mine's own single-cell aimed shots now - a
+  traveling weapon's run played it as clutter, especially crossing more than one immune ship.
+- Tightened left/right margins around the app shell and each navy panel on mobile - reported as the
+  Special Weapons panel's 3 weapon buttons (icon, label, count badge, use-dots) overlapping on a
+  phone for lack of width.
+
 **Blocking the closed test — do these next**
-- [ ] Upload the `versionCode 3` AAB (with the ads fix) to the closed testing track; existing
+- [ ] Upload the `versionCode 4` AAB (see above) to the closed testing track; existing
   opted-in testers need to update to get it
 - [ ] Edit the Console **full description**: it was pasted before the Lifeboat→Pirate swap, so it
   still says "Ensign, Helicopter, and Lifeboat" — change to "Pirate" (§3 already has the fix)
