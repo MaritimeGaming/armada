@@ -2557,7 +2557,7 @@ const Index = () => {
     <>
       <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-50">
       <div className="relative isolate min-h-screen bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.18),_transparent_40%),linear-gradient(180deg,_#020617_0%,_#0f172a_45%,_#111827_100%)]">
-        <div className={cn('mx-auto flex min-h-screen w-full flex-col px-3 pb-3 pt-2 sm:px-4', isDesktopLayout ? 'max-w-5xl' : 'max-w-sm')}>
+        <div className={cn('mx-auto flex min-h-screen w-full flex-col px-1.5 pb-3 pt-2 sm:px-4', isDesktopLayout ? 'max-w-5xl' : 'max-w-sm')}>
           {gameState && activeNavy ? (
             isDesktopLayout ? (
               <section className="flex min-h-0 flex-1 flex-col gap-3">
@@ -2586,7 +2586,7 @@ const Index = () => {
                     {navyViewOrder.map((side) => (
                       <div
                         key={side}
-                        className="flex w-1/2 shrink-0 flex-col gap-2 p-2.5"
+                        className="flex w-1/2 shrink-0 flex-col gap-2 px-1.5 py-2.5"
                         style={panelWidth ? { width: panelWidth } : undefined}
                       >
                         {renderNavyPanel(side, side === 'player' ? gameState.player : gameState.enemy, {
@@ -3063,7 +3063,7 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
 
 function WeaponsBar({ label, weaponsUsed, weapons }: WeaponsBarProps) {
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-2.5 py-3 backdrop-blur-md">
+    <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-3 backdrop-blur-md">
       <div className="flex min-h-6 items-center">
         <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">
           {label}
@@ -3083,7 +3083,7 @@ function WeaponsBar({ label, weaponsUsed, weapons }: WeaponsBarProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-x-1.5">
         {weapons.map((weapon) => (
           <WeaponButton
             key={weapon.type}
