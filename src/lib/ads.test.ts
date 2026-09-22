@@ -72,7 +72,7 @@ describe('showRewardedAd', () => {
     expect(initialize).not.toHaveBeenCalled();
   });
 
-  it('initializes the SDK, requests that placement\'s real ad unit forced to test mode, and resolves true on a genuine reward', async () => {
+  it('initializes the SDK, requests Google\'s sample ad unit while FORCE_TEST_ADS is on, and resolves true on a genuine reward', async () => {
     isNativePlatform.mockReturnValue(true);
 
     const promise = showRewardedAd('gameTokens');
@@ -80,8 +80,12 @@ describe('showRewardedAd', () => {
 
     expect(initialize).toHaveBeenCalledTimes(1);
     expect(initialize).toHaveBeenCalledWith({ initializeForTesting: true });
+    // Google's own published sample rewarded ad unit ID, not the real
+    // per-placement one - see GOOGLE_SAMPLE_REWARDED_AD_UNIT_ID's own doc
+    // comment in ads.ts for why passing isTesting alongside a *real* ad
+    // unit ID doesn't reliably guarantee test fill.
     expect(prepareRewardVideoAd).toHaveBeenCalledWith({
-      adId: 'ca-app-pub-1765694427918098/5770042821',
+      adId: 'ca-app-pub-3940256099942544/5224354917',
       isTesting: true,
     });
 
@@ -98,14 +102,18 @@ describe('showRewardedAd', () => {
     expect(initialize).toHaveBeenCalledTimes(1);
   });
 
-  it('requests the weaponRefill placement\'s own, distinct ad unit ID', async () => {
+  it('requests the same Google sample ad unit for the weaponRefill placement too, while FORCE_TEST_ADS is on', async () => {
     isNativePlatform.mockReturnValue(true);
 
     const promise = showRewardedAd('weaponRefill');
     await flushMicrotasks();
 
+    // Each placement has its own *real* ad unit ID (for distinct AdMob
+    // console reporting once FORCE_TEST_ADS is off), but while it's on
+    // every placement collapses onto the one Google sample ID - there's
+    // no separate sample ID per placement, only per ad format.
     expect(prepareRewardVideoAd).toHaveBeenCalledWith({
-      adId: 'ca-app-pub-1765694427918098/9897472590',
+      adId: 'ca-app-pub-3940256099942544/5224354917',
       isTesting: true,
     });
 
@@ -177,7 +185,7 @@ describe('preloadRewardedAd', () => {
 
     expect(prepareRewardVideoAd).toHaveBeenCalledTimes(1);
     expect(prepareRewardVideoAd).toHaveBeenCalledWith({
-      adId: 'ca-app-pub-1765694427918098/5770042821',
+      adId: 'ca-app-pub-3940256099942544/5224354917',
       isTesting: true,
     });
   });
@@ -195,7 +203,7 @@ describe('preloadRewardedAd', () => {
     // Still just the one prepare call from the preload - showRewardedAd
     // didn't start a second one.
     expect(prepareRewardVideoAd).toHaveBeenCalledTimes(1);
-    expect(showRewardVideoAd).toHaveBeenCalledWith({ adId: 'ca-app-pub-1765694427918098/5770042821' });
+    expect(showRewardVideoAd).toHaveBeenCalledWith({ adId: 'ca-app-pub-3940256099942544/5224354917' });
 
     fireEvent('onRewardedVideoAdReward', { type: 'coins', amount: 1 });
     await expect(promise).resolves.toBe(true);
@@ -207,19 +215,20 @@ describe('preloadRewardedAd', () => {
     expect(prepareRewardVideoAd).toHaveBeenCalledTimes(2);
   });
 
-  it('preloads each placement independently, under its own ad unit ID', async () => {
+  it('preloads each placement independently', async () => {
     isNativePlatform.mockReturnValue(true);
 
     preloadRewardedAd('gameTokens');
     preloadRewardedAd('weaponRefill');
     await flushMicrotasks();
 
+    // Both placements share Google's one sample ad unit while
+    // FORCE_TEST_ADS is on (see ads.ts), but each still gets its own
+    // independent prepare call - "independently" here is about the two
+    // placements not sharing a single in-flight prepare, not about the
+    // ad unit ID.
     expect(prepareRewardVideoAd).toHaveBeenCalledWith({
-      adId: 'ca-app-pub-1765694427918098/5770042821',
-      isTesting: true,
-    });
-    expect(prepareRewardVideoAd).toHaveBeenCalledWith({
-      adId: 'ca-app-pub-1765694427918098/9897472590',
+      adId: 'ca-app-pub-3940256099942544/5224354917',
       isTesting: true,
     });
     expect(prepareRewardVideoAd).toHaveBeenCalledTimes(2);

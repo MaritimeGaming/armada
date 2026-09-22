@@ -6,20 +6,44 @@ import { AdMob, RewardAdPluginEvents } from '@capacitor-community/admob';
 // meta-data) - one per placement, so each shows up as its own line in the
 // AdMob console's reporting (impressions, fill rate, eCPM) instead of
 // being blended into one. See the "Ad integration" sections of
-// GAME_DESIGN.md for what each placement is.
-const REWARDED_AD_UNIT_IDS = {
+// GAME_DESIGN.md for what each placement is. Only actually used once
+// FORCE_TEST_ADS below is false - see GOOGLE_SAMPLE_REWARDED_AD_UNIT_ID
+// for why testing doesn't just pass isTesting alongside these.
+const REAL_REWARDED_AD_UNIT_IDS = {
   gameTokens: 'ca-app-pub-1765694427918098/5770042821',
   weaponRefill: 'ca-app-pub-1765694427918098/9897472590',
 } as const;
 
-export type RewardedAdPlacement = keyof typeof REWARDED_AD_UNIT_IDS;
+export type RewardedAdPlacement = keyof typeof REAL_REWARDED_AD_UNIT_IDS;
 
 // TODO(publish): flip this to false for the actual Play Store release
-// build. Until then, every request against the real ad unit IDs above is
-// forced to serve a harmless test ad instead of a real one - the
-// supported way to exercise real ad units during development without
-// generating invalid traffic: https://developers.google.com/admob/android/test-ads
+// build. Until then every rewarded placement uses
+// GOOGLE_SAMPLE_REWARDED_AD_UNIT_ID below instead of the real ad units
+// above.
 const FORCE_TEST_ADS = true;
+
+// Google's own published sample rewarded-video ad unit ID - guaranteed to
+// return a real test ad creative on *any* device, no per-device
+// registration needed: https://developers.google.com/admob/android/test-ads#sample_ad_units
+//
+// Passing `isTesting: true` alongside one of the REAL ad unit IDs above
+// (this app's previous approach) does *not* reliably do the same thing -
+// confirmed via logcat during closed testing, where every rewarded-ad
+// attempt logged the Mobile Ads SDK's own
+// "Use RequestConfiguration.Builder().setTestDeviceIds(...) to get test
+// ads on this device" message and then ran a genuine ad auction against
+// the real ad unit rather than returning guaranteed test fill. A brand
+// new AdMob account/app with no serving history returns no-fill for that
+// real auction essentially every time, which showRewardedAd below
+// (correctly) treats as "no reward" - the player never gets an ad to
+// watch at all. Registering every tester's individual device ID doesn't
+// scale to a closed test's whole list, so the fix is Google's sample ad
+// unit instead, which sidesteps device registration entirely.
+const GOOGLE_SAMPLE_REWARDED_AD_UNIT_ID = 'ca-app-pub-3940256099942544/5224354917';
+
+const REWARDED_AD_UNIT_IDS: Record<RewardedAdPlacement, string> = FORCE_TEST_ADS
+  ? { gameTokens: GOOGLE_SAMPLE_REWARDED_AD_UNIT_ID, weaponRefill: GOOGLE_SAMPLE_REWARDED_AD_UNIT_ID }
+  : REAL_REWARDED_AD_UNIT_IDS;
 
 // AdMob.initialize() only needs to run once per app session; every call
 // site awaits this same promise instead of re-initializing.
