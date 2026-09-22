@@ -319,7 +319,10 @@ export const APP_DRONE_STARTING_COUNT = 2;
 // under its per-game quota and has at least one available weapon.
 const APP_WEAPON_USE_CHANCE = 0.25;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
-const OIL_IGNITION_ODDS = 12;
+// 1-in-6 chance a shot into the oil slick ignites it - see spreadOilSlick
+// and resolveTargetingHits below. Was 1-in-12; raised to make igniting the
+// slick a real risk worth timing around, not a rare footnote.
+const OIL_IGNITION_ODDS = 6;
 
 const BASE_SHIPS: ShipDefinition[] = [
   { code: 'A', name: 'Aircraft Carrier', length: 5 },
@@ -559,14 +562,17 @@ function isShipImmuneToWeapon(shipCode: string | undefined, weapon: WeaponType):
  * Deliberately silent itself - callers decide whether the moment needs a
  * sound. A Drone reveal (fireDrone) and a Mine's own passive wander
  * (moveMine) stay fully silent, since both are cost-free background events,
- * not something the player actively fired this turn. But when the player
- * (or the computer) actually fires a real weapon - MOAB, a direct Mine
- * drop, or a Torpedo/Rocket/Harpoon launch or mid-flight pass - straight at
- * an immune ship, total silence reads as "nothing happened, is this
- * broken?" rather than "the game blocked this on purpose." Those call
- * sites add the 'deflect' cue themselves alongside this call, giving that
- * moment its own distinct, audible "that didn't work" beat without
- * touching the immunity rule itself.
+ * not something the player actively fired this turn. MOAB and a direct Mine
+ * drop landing straight on an immune ship add the 'deflect' cue themselves
+ * alongside this call instead - a single, deliberately aimed shot resolving
+ * in total silence reads as "nothing happened, is this broken?" rather than
+ * "the game blocked this on purpose." fireTravelingWeapon (Torpedo/Rocket/
+ * Harpoon) deliberately does not: its launch or any cell it merely crosses
+ * mid-flight stays silent on an immune exposure, since a multi-cell run can
+ * cross more than one immune ship in a single shot, and the run already
+ * has its own splash/explosion/travel cues carrying the moment - a
+ * 'deflect' blip per incidental immune cell it happens to cross read as
+ * clutter, not useful feedback, once real use showed it.
  */
 function exposeCellWithoutDamage(navy: NavyState, cellIndex: number): NavyState {
   const cell = navy.cells[cellIndex];
@@ -899,11 +905,10 @@ export function getWeaponTravelIndexes(cellIndex: number, axis: WeaponTravelAxis
  * ship is immune to weapon (see isShipImmuneToWeapon) is exposed instead of
  * detonated - visible afterward, but left untargeted and passed over the
  * same as an empty cell, rather than ending the run or counting as a hit -
- * except that step's audioSequence still gets the 'deflect' cue (see
- * exposeCellWithoutDamage), whether it's the launch cell itself or one the
- * weapon merely crosses in flight, so a real weapon shrugged off by an
- * immune ship never resolves in total silence. Running off the edge of the
- * board just ends the run early.
+ * and unlike MOAB/Mine, that step's audioSequence stays silent (see
+ * exposeCellWithoutDamage's own doc comment for why), whether it's the
+ * launch cell itself or one the weapon merely crosses in flight. Running
+ * off the edge of the board just ends the run early.
  *
  * The oil slick ticks exactly once for the whole run, not once per hit: the
  * launch and every hit along the way call resolveTargetingHits (the
@@ -929,7 +934,10 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
       cellIndex,
       navy: launchResult.navy,
       isHit: !launchIsImmune && launchCell.occupied,
-      audioSequence: withDeflectCue(launchResult.audioSequence, launchIsImmune),
+      // No 'deflect' cue here, unlike MOAB/Mine's own immune-exposure
+      // handling - see exposeCellWithoutDamage's own doc comment for why a
+      // traveling weapon's run stays silent on this instead.
+      audioSequence: launchResult.audioSequence,
       ignited: launchResult.ignited,
       ignitedCellIndexes: launchResult.ignitedCellIndexes,
     },
@@ -948,7 +956,8 @@ function fireTravelingWeapon(navy: NavyState, cellIndex: number, axis: WeaponTra
         cellIndex: nextIndex,
         navy: currentNavy,
         isHit: false,
-        audioSequence: withDeflectCue([], true),
+        // Silent - see the launch step's own comment above.
+        audioSequence: [],
       });
 
       continue;
@@ -1317,7 +1326,7 @@ export function selectAppTargetIndex(navy: NavyState, rank: ComputerRank): numbe
 
   // The slick is spreading - let it grow to
   // roughly the size of everything else still unexplored before the
-  // computer starts risking shots inside it (a 1-in-12 ignition chance per
+  // computer starts risking shots inside it (a 1-in-6 ignition chance per
   // shot - see OIL_IGNITION_ODDS). "Room to expand" is checked first so a
   // slick that's already boxed in (nowhere left to spread) never gets
   // artificially avoided forever - once it truly can't grow any bigger,

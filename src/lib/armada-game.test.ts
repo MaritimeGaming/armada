@@ -501,11 +501,13 @@ function makeEmptyNavy(shipCells: Record<number, string>): NavyState {
 }
 
 // Regression coverage for the "every MOAB drop on a Submarine feels like a
-// bug" problem: a weapon that's actually fired and finds a ship it's
-// immune to now gets an audible 'deflect' cue instead of resolving in
-// total silence, while a cost-free background reveal (a Drone find, or a
-// Mine's own passive wander) stays silent - see exposeCellWithoutDamage's
-// doc comment in armada-game.ts.
+// bug" problem: a weapon aimed straight at one cell (MOAB, a direct Mine
+// drop) that finds a ship it's immune to gets an audible 'deflect' cue
+// instead of resolving in total silence, while a cost-free background
+// reveal (a Drone find, or a Mine's own passive wander) stays silent - see
+// exposeCellWithoutDamage's doc comment in armada-game.ts. A
+// Torpedo/Rocket/Harpoon's own launch or mid-flight immune exposures are a
+// deliberate exception - see the describe block below.
 describe("Weapon immunity: the 'deflect' audio cue", () => {
   it('plays deflect (not just splash/explosion) when a MOAB finds an immune Submarine', () => {
     // Submarine (S) is immune to the MOAB; centering the blast on it means
@@ -531,27 +533,16 @@ describe("Weapon immunity: the 'deflect' audio cue", () => {
     expect(result.navy.cells[42].effect).toBe('untargeted');
   });
 
-  it('plays deflect on the launch cell when a Torpedo is fired straight at an immune Helicopter', () => {
-    // Helicopter (H) is immune to the Torpedo.
+  it('stays silent on the launch cell when a Torpedo is fired straight at an immune Helicopter', () => {
+    // Helicopter (H) is immune to the Torpedo. Unlike MOAB/Mine above, a
+    // traveling weapon's own launch step never gets the 'deflect' cue - see
+    // the describe block below.
     const navy = makeEmptyNavy({ 40: 'H' });
 
     const result = fireTorpedo(navy, 40);
 
-    expect(result.steps[0].audioSequence).toEqual(['deflect']);
+    expect(result.steps[0].audioSequence).toEqual([]);
     expect(result.steps[0].isHit).toBe(false);
-  });
-
-  it('plays deflect on a mid-flight cell an in-flight Torpedo merely crosses over an immune Ensign', () => {
-    // Launch cell 30 is empty water; the Torpedo travels rightward
-    // (column 0 <= 4) through 31, 32, 33... - Ensign (E) placed at 32 is
-    // passed over, not detonated, but still isn't silent about it.
-    const navy = makeEmptyNavy({ 32: 'E' });
-
-    const result = fireTorpedo(navy, 30);
-    const crossedStep = result.steps.find((step) => step.cellIndex === 32);
-
-    expect(crossedStep?.audioSequence).toEqual(['deflect']);
-    expect(crossedStep?.isHit).toBe(false);
   });
 
   it('stays silent when a Mine\'s own passive wander drifts onto an immune ship', () => {
@@ -566,6 +557,40 @@ describe("Weapon immunity: the 'deflect' audio cue", () => {
       const result = moveMine(navy, 0);
       expect(result.audioSequence).toEqual([]);
     }
+  });
+});
+
+// Reported player feedback: a Torpedo/Rocket/Harpoon run crossing an immune
+// ship played an audible 'deflect' cue (reusing Splash.wav) that read as
+// clutter rather than useful feedback, especially on a run that crosses more
+// than one immune ship in a single shot. Unlike MOAB/Mine (a single,
+// deliberately aimed shot - see the describe block above), a traveling
+// weapon's own immune exposures - launch cell or mid-flight crossing alike -
+// are now silent instead.
+describe('A traveling weapon crossing an immune ship stays silent', () => {
+  it('never adds the deflect cue on a mid-flight cell an in-flight Torpedo merely crosses over an immune Ensign', () => {
+    // Launch cell 30 is empty water; the Torpedo travels rightward
+    // (column 0 <= 4) through 31, 32, 33... - Ensign (E) placed at 32 is
+    // passed over, not detonated, and stays silent about it.
+    const navy = makeEmptyNavy({ 32: 'E' });
+
+    const result = fireTorpedo(navy, 30);
+    const crossedStep = result.steps.find((step) => step.cellIndex === 32);
+
+    expect(crossedStep?.audioSequence).toEqual([]);
+    expect(crossedStep?.isHit).toBe(false);
+  });
+
+  it('never adds the deflect cue even when a single run crosses more than one immune ship', () => {
+    // Both immune to the Torpedo, both in its rightward travel path from
+    // launch cell 30 - the launch cell itself is plain open water, so its
+    // own step still gets an ordinary 'splash' miss cue; what this checks
+    // is that neither immune crossing adds 'deflect' on top of that.
+    const navy = makeEmptyNavy({ 31: 'H', 33: 'E' });
+
+    const result = fireTorpedo(navy, 30);
+
+    expect(result.steps.some((step) => step.audioSequence.includes('deflect'))).toBe(false);
   });
 });
 

@@ -280,9 +280,11 @@ game) is a 3-cell ship. Sinking it triggers an oil slick:
   used to call the ticking `resolveTargetingSequence` per hit, so a Torpedo
   that hit four ships in one flight spread the slick four cells in a single
   turn instead of one.
-- Targeting an oil-covered cell has a **1-in-12 chance to ignite** the slick
-  (`OIL_IGNITION_ODDS`), which chain-detonates every remaining untargeted
-  oil cell at once, then extinguishes the slick.
+- Targeting an oil-covered cell has a **1-in-6 chance to ignite** the slick
+  (`OIL_IGNITION_ODDS`, raised from 1-in-12 after playtesting - igniting was
+  too rare to feel like a real risk worth timing around), which
+  chain-detonates every remaining untargeted oil cell at once, then
+  extinguishes the slick.
 - **The oil slick is visible on both boards regardless of fog-of-war state**
   (`getCellPresentation()` checks oil before the hidden/unknown branch). This
   is intentional, per the core philosophy above — realism would hide it, but
@@ -823,19 +825,31 @@ it. The reveal itself resolves instantly (a synchronous state update), so
 without this the view could start scrolling away to MY NAVY before the
 player has had a moment to actually look at what the Drone just found.
 
-A real weapon the player (or computer) actually fired - MOAB, a direct Mine
-drop, or a Torpedo/Rocket/Harpoon's launch or a cell it merely passes
-through mid-flight - getting deflected by immunity now plays its own
-`'deflect'` audio cue instead, so the moment reads as "that ship dodged it"
-the instant it happens. `withDeflectCue()` in `armada-game.ts` is the single
-seam every real-weapon call site routes through; a MOAB shot needed its own
-distinct cue name rather than reusing `'splash'`, since `playMoabSequence()`
-in `Index.tsx` already strips `'splash'`/`'explosion'` from a MOAB's own
-sequence so they don't compete with its double-boom - reusing `'splash'`
-would have silently un-fixed the exact MOAB case that motivated this. The
-cue's actual sound file is the same `Splash.wav` `'splash'` already uses -
-a "this cell didn't take damage" beat the player already recognizes, now
-also reachable under a name a MOAB's own filter doesn't catch.
+A real weapon aimed straight at one cell - MOAB, or a direct Mine drop -
+getting deflected by immunity plays its own `'deflect'` audio cue instead,
+so the moment reads as "that ship dodged it" the instant it happens.
+`withDeflectCue()` in `armada-game.ts` is the seam both of those call sites
+route through; a MOAB shot needed its own distinct cue name rather than
+reusing `'splash'`, since `playMoabSequence()` in `Index.tsx` already strips
+`'splash'`/`'explosion'` from a MOAB's own sequence so they don't compete
+with its double-boom - reusing `'splash'` would have silently un-fixed the
+exact MOAB case that motivated this. The cue's actual sound file is the
+same `Splash.wav` `'splash'` already uses - a "this cell didn't take
+damage" beat the player already recognizes, now also reachable under a
+name a MOAB's own filter doesn't catch.
+
+**A Torpedo/Rocket/Harpoon's own launch or mid-flight immune exposures stay
+silent instead - no `'deflect'` cue at all.** Reported as a real player
+complaint, not a hypothetical: a multi-cell run can cross more than one
+immune ship in a single shot, and the run already carries its own splash/
+explosion/travel cues, so a `'deflect'` blip on top of that for every
+incidental immune cell it happened to cross read as noise rather than
+useful "that didn't work" feedback - unlike MOAB/Mine, where the player
+aimed a single, deliberate shot directly at that one cell. `fireTravelingWeapon()`
+simply never calls `withDeflectCue()` for either its launch step or a
+mid-flight crossing (see its own doc comment) - the cell is still exposed
+exactly the same way (visible afterward, still fully vulnerable to a future
+shot), only the audio differs.
 
 Immunity is checked per cell, independent of the rest of the shot: MOAB's
 blast can expose a Submarine cell while still detonating every other cell
@@ -1378,7 +1392,7 @@ pair):
 - **Longest Hit Streak (Me / Enemy)** - see "The Hit Streak" below.
 - **Biggest Oil Detonation (Me / Enemy)** - the largest single oil-slick
   chain reaction (`resolveTargetingSequence`'s own `ignited`/
-  `ignitedCellIndexes` - the 1-in-12 chain reaction, not the ordinary
+  `ignitedCellIndexes` - the 1-in-6 chain reaction, not the ordinary
   single-cell oil burn-off every hit on an oiled ship cell already causes
   regardless of that roll) either side has ever triggered, whether from a
   direct shot/weapon or their own Mine's passive wander landing on oil.
@@ -1837,7 +1851,7 @@ shot into oil over open water): the blast is the event.
 ignition already routes through it.
 
 **A launch can ignite the slick without being a hit.** A Torpedo/Rocket/Harpoon
-launched onto oil floating over open water can roll the 1-in-12 ignition and
+launched onto oil floating over open water can roll the 1-in-6 ignition and
 light the whole slick while its launch step still reports `isHit: false` (no
 ship was damaged) and comes back with no audio cues of its own. Ignition is
 therefore treated as its own event, separate from "hit", everywhere a weapon
