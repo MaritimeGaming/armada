@@ -66,7 +66,7 @@ import {
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
 import type { AudioCue, AudioSequence, CellState, ComputerRank, ExposureState, GameState, NavySide, NavyState, RankState, SessionStats, ShipDefinition, ShipSetOptions, ShotOutcome, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
-import { preloadRewardedAd, showRewardedAd } from '@/lib/ads';
+import { areAdsAvailable, preloadRewardedAd, showRewardedAd } from '@/lib/ads';
 import { TitleScreen } from '@/components/TitleScreen';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -2824,7 +2824,14 @@ const Index = () => {
         </DialogContent>
       </Dialog>
 
-      {procuringWeapon ? (
+      {/* Only a stand-in for the (nonexistent) ad outside a native build -
+          see areAdsAvailable's own doc comment. On a native build a real ad
+          is on its way instead, and this banner would just be a fake pause
+          in front of it, so it never renders there at all: the real ad's
+          own full-screen native activity is what the player sees next,
+          whatever real (usually brief, thanks to preloadRewardedAd) prep
+          latency it needs first. */}
+      {procuringWeapon && !areAdsAvailable() ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
             Procuring Weapons
@@ -2875,7 +2882,9 @@ const Index = () => {
         </DialogContent>
       </Dialog>
 
-      {isWatchingAdForNewGame ? (
+      {/* Same reasoning as the "Procuring Weapons" banner above - only a
+          stand-in for the (nonexistent) ad outside a native build. */}
+      {isWatchingAdForNewGame && !areAdsAvailable() ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
             Loading Ad

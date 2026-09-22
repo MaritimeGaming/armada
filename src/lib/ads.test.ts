@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { __resetPreparedAdsForTests, preloadRewardedAd, showRewardedAd } from './ads';
+import { __resetPreparedAdsForTests, areAdsAvailable, preloadRewardedAd, showRewardedAd } from './ads';
 
 const isNativePlatform = vi.fn();
 vi.mock('@capacitor/core', () => ({
@@ -42,6 +42,24 @@ function fireEvent(event: string, ...args: unknown[]) {
 async function flushMicrotasks() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+// The single source of truth Index.tsx's "Loading Ad"/"Procuring Weapons"
+// placeholder banners key off, alongside showRewardedAd/preloadRewardedAd
+// below - see its own doc comment for why those banners must never render
+// in front of a real ad.
+describe('areAdsAvailable', () => {
+  afterEach(() => {
+    isNativePlatform.mockReset();
+  });
+
+  it('mirrors Capacitor.isNativePlatform()', () => {
+    isNativePlatform.mockReturnValue(true);
+    expect(areAdsAvailable()).toBe(true);
+
+    isNativePlatform.mockReturnValue(false);
+    expect(areAdsAvailable()).toBe(false);
+  });
+});
 
 describe('showRewardedAd', () => {
   beforeEach(() => {

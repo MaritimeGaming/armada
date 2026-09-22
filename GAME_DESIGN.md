@@ -1640,23 +1640,18 @@ events directly (rather than trusting `showRewardVideoAd()`'s own returned
 promise, whose resolve/reject behavior on a plain dismiss-without-reward
 isn't documented) - whichever of those three fires first wins, and the
 others are torn down. Loading the ad creative is a real network request
-with real, variable latency, which is what the "Loading Ad" overlay is
-actually waiting on (not a fixed delay) - `preloadRewardedAd` starts that
-fetch the moment a confirmation dialog opens (both
-`setPendingNewGameOptions` and `setPendingWeaponProcurement` call it
-immediately beforehand), rather than waiting until the player actually
-taps "Watch Ad", so by the time they've read the dialog and decided, the
-ad has often already finished loading and `showRewardedAd` can show it
-immediately - `ensurePrepared` in `ads.ts` is what lets `showRewardedAd`
-reuse that preload instead of starting its own prepare step from scratch.
-This shortens the overlay's typical visible duration; it can't eliminate
-it outright, since a player who taps through the dialog instantly, or a
-slow connection, can still catch it mid-load. Outside a native build -
-the desktop dev server,
-the GitHub Pages web build, the vitest suite, none of which can run a real
-AdMob ad at all - it instead resolves `true` after a short simulated
-delay, which is what both this gate and the weapon-refill gate below ran
-on exclusively before the real integration existed. Uses this placement's
+with real, variable latency - `preloadRewardedAd` starts that fetch the
+moment a confirmation dialog opens (both `setPendingNewGameOptions` and
+`setPendingWeaponProcurement` call it immediately beforehand), rather than
+waiting until the player actually taps "Watch Ad", so by the time they've
+read the dialog and decided, the ad has often already finished loading and
+`showRewardedAd` can show it immediately - `ensurePrepared` in `ads.ts` is
+what lets `showRewardedAd` reuse that preload instead of starting its own
+prepare step from scratch. Outside a native build - the desktop dev
+server, the GitHub Pages web build, the vitest suite, none of which can
+run a real AdMob ad at all - it instead resolves `true` after a short
+simulated delay, which is what both this gate and the weapon-refill gate
+below ran on exclusively before the real integration existed. Uses this placement's
 own real, registered ad unit ID, distinct from the weapon-refill gate's
 (`REWARDED_AD_UNIT_IDS` in `src/lib/ads.ts`), under the app's real AdMob
 App ID (also in `AndroidManifest.xml`'s
@@ -1666,6 +1661,30 @@ console's own reporting can tell the two placements apart instead of
 blending them into one line. Every request is still forced to serve a
 test ad regardless of the real ID (`FORCE_TEST_ADS` in `src/lib/ads.ts`) -
 flipping that off is the one remaining step before a release build.
+
+**The "Loading Ad"/"Procuring Weapons" overlays only ever stand in for a
+*missing* ad, never in front of a real one.** `areAdsAvailable()` (`ads.ts`,
+just `Capacitor.isNativePlatform()` under a name that says what it's
+actually gating) is the single check both of these banners key off in
+`Index.tsx` - `isWatchingAdForNewGame ? ... : null` and
+`procuringWeapon ? ... : null` used to render unconditionally for as long
+as `showRewardedAd`'s promise was pending, on *every* platform, both now
+require `!areAdsAvailable()` too. Reported from real closed-testing
+devices: on a native build the banner was visibly showing for a beat
+before the real ad's own full-screen activity took over - reading as an
+unwanted pause bolted in front of a real ad, even though nothing about it
+was actually a fixed delay (see the real prepare-latency discussion
+above). Since a native player is about to see a real, unmissable
+full-screen ad take over the entire screen regardless, a placeholder
+banner in front of it was never buying them anything - it only existed
+because, before the real AdMob integration, the fixed `WEB_FALLBACK_DELAY_MS`
+wait *was* the entire experience, and needed something on screen to fill
+it. That's still true outside a native build (nothing else is coming),
+which is why the banners still render there. `showRewardedAd` and
+`preloadRewardedAd` route their own native/non-native branches through
+this same `areAdsAvailable()` now too, rather than checking
+`Capacitor.isNativePlatform()` directly in three separate places that
+could quietly drift out of agreement.
 
 **Exiting mid-ad can't be used to skip paying for it.** Tokens are only
 ever credited from `showRewardedAd`'s genuine reward-earned outcome -

@@ -16,6 +16,20 @@ const REAL_REWARDED_AD_UNIT_IDS = {
 
 export type RewardedAdPlacement = keyof typeof REAL_REWARDED_AD_UNIT_IDS;
 
+/**
+ * True when a real rewarded ad can actually run (a native Capacitor build -
+ * this app's only native distribution channel is the Google Play closed
+ * test/production track), false in a plain browser (local dev, the GitHub
+ * Pages build, the vitest suite) where the AdMob SDK doesn't run at all.
+ * The single source of truth for that split - showRewardedAd/preloadRewardedAd
+ * below and Index.tsx's "Procuring Weapons"/"Loading Ad" placeholder
+ * overlays all key off this same check, so they can never disagree about
+ * whether a real ad is available.
+ */
+export function areAdsAvailable(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
 // TODO(publish): flip this to false for the actual Play Store release
 // build. Until then every rewarded placement uses
 // GOOGLE_SAMPLE_REWARDED_AD_UNIT_ID below instead of the real ad units
@@ -85,7 +99,7 @@ function ensurePrepared(placement: RewardedAdPlacement): Promise<unknown> {
  * didn't finish in time or didn't succeed.
  */
 export function preloadRewardedAd(placement: RewardedAdPlacement): void {
-  if (!Capacitor.isNativePlatform()) {
+  if (!areAdsAvailable()) {
     return;
   }
   ensurePrepared(placement).catch(() => {
@@ -130,7 +144,7 @@ const WEB_FALLBACK_DELAY_MS = 2000;
  * scratch - see ensurePrepared above.
  */
 export async function showRewardedAd(placement: RewardedAdPlacement): Promise<boolean> {
-  if (!Capacitor.isNativePlatform()) {
+  if (!areAdsAvailable()) {
     return new Promise((resolve) => {
       window.setTimeout(() => resolve(true), WEB_FALLBACK_DELAY_MS);
     });
