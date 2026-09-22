@@ -56,6 +56,13 @@ export type NavyState = {
 export type TurnOwner = 'player' | 'app';
 export type Winner = 'player' | 'app';
 export type WeaponType = 'moab' | 'mine' | 'torpedo' | 'rocket' | 'harpoon' | 'drone';
+/**
+ * How much of the computer's targeting intelligence (selectAppTargetIndex)
+ * is switched on - see GAME_DESIGN.md's "Exception: Rank" writeup. This
+ * never changes ship counts, ship sizes, or any other rule; it only gates
+ * which of that function's strategies the computer actually uses.
+ */
+export type ComputerRank = 'sailor' | 'commander' | 'admiral';
 
 export type GameState = {
   version: number;
@@ -1225,7 +1232,7 @@ function getHuntCandidateIndexes(navy: NavyState, shipCode?: string): number[] {
   return Array.from(candidateIndexes);
 }
 
-export function selectAppTargetIndex(navy: NavyState): number | null {
+export function selectAppTargetIndex(navy: NavyState, rank: ComputerRank): number | null {
   const untargetedIndexes = navy.cells.reduce<number[]>((indexes, cell, index) => {
     if (cell.effect === 'untargeted') {
       indexes.push(index);
@@ -1236,6 +1243,30 @@ export function selectAppTargetIndex(navy: NavyState): number | null {
   if (untargetedIndexes.length === 0) {
     return null;
   }
+
+  // Sailor: no targeting intelligence at all, not even acting on a revealed
+  // cell - a plain random pick among every untargeted cell, same as if
+  // nothing anywhere had ever been hit or found. See GAME_DESIGN.md's
+  // "Exception: Rank" writeup; everything below this is Commander/Admiral
+  // only.
+  if (rank === 'sailor') {
+    return randomItem(untargetedIndexes);
+  }
+
+  // Commander: the general hunt-adjacent-damage and revealed-target
+  // strategies apply, but not the Oil Tanker priority or slick-management
+  // logic further down, which stay Admiral-only.
+  if (rank === 'commander') {
+    const revealedIndexes = getRevealedTargetIndexes(navy);
+    if (revealedIndexes.length > 0) {
+      return randomItem(revealedIndexes);
+    }
+
+    const candidateIndexes = getHuntCandidateIndexes(navy);
+    return randomItem(candidateIndexes.length > 0 ? candidateIndexes : untargetedIndexes);
+  }
+
+  // Admiral: every strategy below, unchanged from before Rank existed.
 
   // Finding (and then sinking) the Oil Tanker is the single top priority
   // for as long as it's still alive - see the "Oil Tanker targeting
@@ -1533,6 +1564,47 @@ export const DEFAULT_SESSION_STATS: SessionStats = {
   biggestOilDetonationApp: 0,
 };
 
+export type RankState = {
+  rank: ComputerRank;
+  /**
+   * How many of the player's wins at the current rank have accumulated
+   * toward the next auto-promotion - see computeRankUpdate. Not a streak: a
+   * loss doesn't reset it, it just doesn't advance it, since the point of
+   * Rank is onboarding a new player up to full strength, not punishing a
+   * rough patch along the way.
+   */
+  winsAtCurrentRank: number;
+  /**
+   * True until the player manually sets Rank in Settings, at which point
+   * it's set false for good and auto-promotion stops entirely - see
+   * computeRankUpdate and GAME_DESIGN.md's "Exception: Rank" writeup for
+   * why a manual change doesn't just reset the counter and keep going.
+   */
+  autoPromoteEnabled: boolean;
+};
+
+export const DEFAULT_RANK_STATE: RankState = {
+  rank: 'sailor',
+  winsAtCurrentRank: 0,
+  autoPromoteEnabled: true,
+};
+
+export const RANK_LABELS: Record<ComputerRank, string> = {
+  sailor: 'Sailor',
+  commander: 'Commander',
+  admiral: 'Admiral',
+};
+
+/** Sailor -> Commander -> Admiral, low to high - what computeRankUpdate promotes along and Settings' Rank submenu lists in order. */
+export const RANK_ORDER: ComputerRank[] = ['sailor', 'commander', 'admiral'];
+
+/** Wins needed at each rank to auto-promote to the next one - Admiral has nowhere further to go. */
+const RANK_PROMOTION_THRESHOLDS: Record<ComputerRank, number> = {
+  sailor: 5,
+  commander: 10,
+  admiral: Infinity,
+};
+
 function pluralize(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
@@ -1704,6 +1776,65 @@ export function computeSessionStatsUpdate(
   }
 
   return { next, updates };
+}
+
+/**
+ * Folds one just-concluded game's winner into RankState, auto-promoting the
+ * computer's Rank once enough wins have accumulated at the current level -
+ * see GAME_DESIGN.md's "Exception: Rank" writeup. Pure and storage-agnostic,
+ * same shape as computeSessionStatsUpdate above: Index.tsx owns persisting
+ * `next` and showing a promotion banner when `promotedTo` isn't null.
+ *
+ * A loss is a no-op (winsAtCurrentRank isn't a streak - see RankState's own
+ * doc comment), and so is any call once autoPromoteEnabled is false: the
+ * player took manual control of Rank, and this function never overrides
+ * that on their behalf.
+ */
+export function computeRankUpdate(
+  previous: RankState,
+  winner: Winner,
+): { next: RankState; promotedTo: ComputerRank | null } {
+  if (winner !== 'player' || !previous.autoPromoteEnabled || previous.rank === 'admiral') {
+    return { next: previous, promotedTo: null };
+  }
+
+  const winsAtCurrentRank = previous.winsAtCurrentRank + 1;
+
+  if (winsAtCurrentRank < RANK_PROMOTION_THRESHOLDS[previous.rank]) {
+    return { next: { ...previous, winsAtCurrentRank }, promotedTo: null };
+  }
+
+  const nextRank = RANK_ORDER[RANK_ORDER.indexOf(previous.rank) + 1];
+  return {
+    next: { ...previous, rank: nextRank, winsAtCurrentRank: 0 },
+    promotedTo: nextRank,
+  };
+}
+
+/**
+ * Backfills a starting Rank for a player who already has SessionStats
+ * wins from before Rank existed, using the same thresholds
+ * computeRankUpdate promotes on (5 wins Sailor->Commander, 10 more
+ * Commander->Admiral) - so an existing player picks up wherever they'd
+ * already be if Rank had been tracking them all along, rather than
+ * resetting an experienced player back to Sailor with zero credit for
+ * wins already on the books. Only meant to be called once, the first time
+ * Rank ever loads with nothing yet saved under its own storage key - see
+ * Index.tsx's loadRankState.
+ */
+export function computeInitialRankState(gamesWon: number): RankState {
+  const sailorThreshold = RANK_PROMOTION_THRESHOLDS.sailor;
+  const commanderThreshold = RANK_PROMOTION_THRESHOLDS.commander;
+
+  if (gamesWon >= sailorThreshold + commanderThreshold) {
+    return { rank: 'admiral', winsAtCurrentRank: 0, autoPromoteEnabled: true };
+  }
+
+  if (gamesWon >= sailorThreshold) {
+    return { rank: 'commander', winsAtCurrentRank: gamesWon - sailorThreshold, autoPromoteEnabled: true };
+  }
+
+  return { rank: 'sailor', winsAtCurrentRank: gamesWon, autoPromoteEnabled: true };
 }
 
 function targetCellInNavy(navy: NavyState, cellIndex: number): TargetingResult {

@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyMineWanderOilDetonation,
   applyShotOutcome,
+  computeInitialRankState,
+  computeRankUpdate,
   computeSessionStatsUpdate,
   createGameState,
+  DEFAULT_RANK_STATE,
   DEFAULT_SESSION_STATS,
   DRONE_SHOT_OUTCOME,
   fireMoab,
@@ -24,6 +27,7 @@ import {
   type GameState,
   type NavyState,
   type PlacedShip,
+  type RankState,
   type SessionStats,
   type ShotOutcome,
   type TargetingResult,
@@ -66,7 +70,7 @@ function makeNavy(cellOverrides: Record<number, Partial<CellState>> = {}): NavyS
 describe('Oil Tanker targeting priority', () => {
   it('picks randomly, not adjacency-biased, while the Oil Tanker has not been found', () => {
     const navy = makeNavy({ 80: { occupied: true, shipCode: 'B', effect: 'targeted' } });
-    const results = Array.from({ length: 200 }, () => selectAppTargetIndex(navy));
+    const results = Array.from({ length: 200 }, () => selectAppTargetIndex(navy, 'admiral'));
     // With no Oil-Tanker-found bias, plain random selection over ~93
     // untargeted cells should still explore far from the one Battleship
     // hit at least once.
@@ -80,7 +84,7 @@ describe('Oil Tanker targeting priority', () => {
     });
 
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      const index = selectAppTargetIndex(navy);
+      const index = selectAppTargetIndex(navy, 'admiral');
       expect([40, 41, 51, 60, 61]).toContain(index); // adjacent to cell 50 (col0,row5), edge-clipped
     }
   });
@@ -91,7 +95,7 @@ describe('Oil Tanker targeting priority', () => {
       51: { occupied: true, shipCode: 'O', effect: 'targeted' },
     });
 
-    expect(selectAppTargetIndex(navy)).toBe(52);
+    expect(selectAppTargetIndex(navy, 'admiral')).toBe(52);
   });
 
   it('prioritizes a revealed Oil Tanker cell over a different ship\'s own revealed cell', () => {
@@ -101,7 +105,7 @@ describe('Oil Tanker targeting priority', () => {
     });
 
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      expect(selectAppTargetIndex(navy)).toBe(50);
+      expect(selectAppTargetIndex(navy, 'admiral')).toBe(50);
     }
   });
 
@@ -113,7 +117,7 @@ describe('Oil Tanker targeting priority', () => {
     // Finding the tanker is the top priority - a free kill on some other
     // ship isn't worth a turn not spent looking for it, so this should
     // read as plain random selection, not always landing on 80.
-    const results = Array.from({ length: 200 }, () => selectAppTargetIndex(navy));
+    const results = Array.from({ length: 200 }, () => selectAppTargetIndex(navy, 'admiral'));
     expect(results.some((index) => index !== 80)).toBe(true);
   });
 
@@ -124,7 +128,7 @@ describe('Oil Tanker targeting priority', () => {
     });
 
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      expect([40, 41, 51, 60, 61]).toContain(selectAppTargetIndex(navy)); // adjacent to the tanker hit at 50
+      expect([40, 41, 51, 60, 61]).toContain(selectAppTargetIndex(navy, 'admiral')); // adjacent to the tanker hit at 50
     }
   });
 
@@ -137,7 +141,7 @@ describe('Oil Tanker targeting priority', () => {
     });
 
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      expect(selectAppTargetIndex(navy)).toBe(80);
+      expect(selectAppTargetIndex(navy, 'admiral')).toBe(80);
     }
   });
 });
@@ -154,7 +158,7 @@ describe('Oil slick management', () => {
     });
 
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const index = selectAppTargetIndex(navy);
+      const index = selectAppTargetIndex(navy, 'admiral');
       expect(index).not.toBeNull();
       expect(navy.cells[index as number].oil).toBe(false);
     }
@@ -180,7 +184,7 @@ describe('Oil slick management', () => {
     }
     const navy = makeNavy(cells);
 
-    const results = Array.from({ length: 100 }, () => selectAppTargetIndex(navy));
+    const results = Array.from({ length: 100 }, () => selectAppTargetIndex(navy, 'admiral'));
     expect(results.some((index) => index !== null && navy.cells[index].oil)).toBe(true);
   });
 
@@ -202,7 +206,7 @@ describe('Oil slick management', () => {
     // Plenty of untargeted-outside cells remain (~91), so this is a weak
     // per-trial signal (~1/92) - run enough trials that a false negative
     // is astronomically unlikely.
-    const results = Array.from({ length: 3000 }, () => selectAppTargetIndex(navy));
+    const results = Array.from({ length: 3000 }, () => selectAppTargetIndex(navy, 'admiral'));
     expect(results.some((index) => index === 61)).toBe(true);
   });
 
@@ -228,7 +232,7 @@ describe('Oil slick management', () => {
     // known kill should always win, regardless of the many oil-free cells
     // elsewhere on the board that slick-avoidance would otherwise prefer.
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      expect(selectAppTargetIndex(navy)).toBe(83);
+      expect(selectAppTargetIndex(navy, 'admiral')).toBe(83);
     }
   });
 
@@ -254,9 +258,144 @@ describe('Oil slick management', () => {
     // available: everything on the board apart from 83 is either sunk,
     // already hit, or plain untargeted water).
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const index = selectAppTargetIndex(navy);
+      const index = selectAppTargetIndex(navy, 'admiral');
       expect(index).not.toBe(83);
     }
+  });
+});
+
+describe('Computer Rank', () => {
+  describe('selectAppTargetIndex at Sailor rank', () => {
+    it("ignores a wounded ship's adjacent cells and picks purely at random", () => {
+      const navy = makeNavy({
+        80: { occupied: true, shipCode: 'B', effect: 'targeted' },
+      });
+      // A Commander/Admiral would restrict itself to the Battleship's own
+      // 8-neighbor adjacency (70, 71, 81, 90, 91); Sailor should land well
+      // outside that set too - no hunting at all.
+      const results = Array.from({ length: 300 }, () => selectAppTargetIndex(navy, 'sailor'));
+      expect(results.some((index) => index !== null && index < 40)).toBe(true);
+    });
+
+    it('ignores a revealed cell entirely', () => {
+      const navy = makeNavy({
+        50: { occupied: true, shipCode: 'O', droneRevealed: true },
+      });
+      const results = Array.from({ length: 300 }, () => selectAppTargetIndex(navy, 'sailor'));
+      expect(results.some((index) => index !== 50)).toBe(true);
+    });
+  });
+
+  describe('selectAppTargetIndex at Commander rank', () => {
+    it('hunts a wounded ship even while the Oil Tanker has not been found (unlike Admiral)', () => {
+      const navy = makeNavy({
+        80: { occupied: true, shipCode: 'B', effect: 'targeted' },
+      });
+      // Contrast with the "Oil Tanker targeting priority" describe block
+      // above, where the same navy makes Admiral ignore the Battleship
+      // entirely and pick at random until the tanker is found.
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        expect([70, 71, 81, 90, 91]).toContain(selectAppTargetIndex(navy, 'commander'));
+      }
+    });
+
+    it('acts on a revealed cell immediately, with no Oil-Tanker-first gate', () => {
+      const navy = makeNavy({
+        80: { occupied: true, shipCode: 'B', droneRevealed: true },
+      });
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        expect(selectAppTargetIndex(navy, 'commander')).toBe(80);
+      }
+    });
+
+    it('does not avoid the oil slick', () => {
+      const navy = makeNavy({
+        50: { occupied: true, shipCode: 'O', effect: 'sunk' },
+        51: { occupied: true, shipCode: 'O', effect: 'sunk' },
+        52: { occupied: true, shipCode: 'O', effect: 'sunk' },
+        60: { oil: true },
+        61: { oil: true },
+        62: { oil: true },
+      });
+      // Admiral would avoid these while the slick is still small relative
+      // to the rest of the board (see "Oil slick management" above);
+      // Commander has no slick-avoidance logic at all.
+      const results = Array.from({ length: 300 }, () => selectAppTargetIndex(navy, 'commander'));
+      expect(results.some((index) => index !== null && navy.cells[index].oil)).toBe(true);
+    });
+  });
+
+  describe('computeRankUpdate', () => {
+    it('does nothing on a loss', () => {
+      const { next, promotedTo } = computeRankUpdate(DEFAULT_RANK_STATE, 'app');
+      expect(next).toEqual(DEFAULT_RANK_STATE);
+      expect(promotedTo).toBeNull();
+    });
+
+    it('accumulates wins at the current rank without promoting below the threshold', () => {
+      let state: RankState = DEFAULT_RANK_STATE;
+      for (let win = 1; win < 5; win += 1) {
+        const { next, promotedTo } = computeRankUpdate(state, 'player');
+        expect(promotedTo).toBeNull();
+        expect(next.rank).toBe('sailor');
+        expect(next.winsAtCurrentRank).toBe(win);
+        state = next;
+      }
+    });
+
+    it('auto-promotes Sailor to Commander on the 5th win', () => {
+      let state: RankState = DEFAULT_RANK_STATE;
+      for (let win = 1; win <= 5; win += 1) {
+        const result = computeRankUpdate(state, 'player');
+        state = result.next;
+        expect(result.promotedTo).toBe(win < 5 ? null : 'commander');
+      }
+      expect(state.rank).toBe('commander');
+      expect(state.winsAtCurrentRank).toBe(0);
+    });
+
+    it('auto-promotes Commander to Admiral on the 10th win', () => {
+      let state: RankState = { rank: 'commander', winsAtCurrentRank: 0, autoPromoteEnabled: true };
+      for (let win = 1; win <= 10; win += 1) {
+        const result = computeRankUpdate(state, 'player');
+        state = result.next;
+        expect(result.promotedTo).toBe(win < 10 ? null : 'admiral');
+      }
+      expect(state.rank).toBe('admiral');
+    });
+
+    it('never promotes further once at Admiral', () => {
+      const admiralState: RankState = { rank: 'admiral', winsAtCurrentRank: 0, autoPromoteEnabled: true };
+      const { next, promotedTo } = computeRankUpdate(admiralState, 'player');
+      expect(next).toEqual(admiralState);
+      expect(promotedTo).toBeNull();
+    });
+
+    it('never auto-promotes once the player has manually set Rank', () => {
+      const manualState: RankState = { rank: 'sailor', winsAtCurrentRank: 4, autoPromoteEnabled: false };
+      const { next, promotedTo } = computeRankUpdate(manualState, 'player');
+      expect(next).toEqual(manualState);
+      expect(promotedTo).toBeNull();
+    });
+  });
+
+  // Backfills a starting Rank for existing players from their pre-Rank
+  // SessionStats.gamesWon - see loadRankState in Index.tsx.
+  describe('computeInitialRankState', () => {
+    it('starts a player with 0-4 wins at Sailor, crediting wins so far', () => {
+      expect(computeInitialRankState(0)).toEqual({ rank: 'sailor', winsAtCurrentRank: 0, autoPromoteEnabled: true });
+      expect(computeInitialRankState(4)).toEqual({ rank: 'sailor', winsAtCurrentRank: 4, autoPromoteEnabled: true });
+    });
+
+    it('starts a player with 5-14 wins at Commander, crediting wins past the Sailor threshold', () => {
+      expect(computeInitialRankState(5)).toEqual({ rank: 'commander', winsAtCurrentRank: 0, autoPromoteEnabled: true });
+      expect(computeInitialRankState(14)).toEqual({ rank: 'commander', winsAtCurrentRank: 9, autoPromoteEnabled: true });
+    });
+
+    it('starts a player with 15+ wins at Admiral', () => {
+      expect(computeInitialRankState(15)).toEqual({ rank: 'admiral', winsAtCurrentRank: 0, autoPromoteEnabled: true });
+      expect(computeInitialRankState(500)).toEqual({ rank: 'admiral', winsAtCurrentRank: 0, autoPromoteEnabled: true });
+    });
   });
 });
 

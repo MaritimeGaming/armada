@@ -53,21 +53,129 @@ XP, unlockable levels, or escalating difficulty tiers as a core structure.
 Variety instead comes from the **variables** below, which change the texture
 of a given round without changing its fundamental difficulty or structure.
 
+### Exception: Rank (an onboarding ramp, not core progression)
+
+The no-leveling stance above was revisited in September 2026 after real
+players — not just internal testing — reported the game as too hard to be
+fun, specifically that the computer opponent felt unbeatable. That reads as
+"broken," not "challenging," to a new player who hasn't learned the board
+yet, and it's a genuine onboarding problem the "evergreen, no progression"
+philosophy has no answer for: Solitaire and Minesweeper don't have an
+opponent actively trying to beat you, so they don't have an equivalent
+"the game feels rigged" failure mode to guard against.
+
+**Rank** (Settings) is the fix, and it's a deliberate, narrow exception to
+this section, not a reversal of it:
+
+- It changes **only** the computer's targeting intelligence (Variable A,
+  below) — never ship counts, ship sizes, board size, weapons, or any other
+  rule. A Sailor-rank round and an Admiral-rank round are otherwise the
+  same game.
+- It's meant to ramp a **new player** up to the game's one real difficulty,
+  not to give an experienced player a permanent way to make the game easier
+  and stay there — see the auto-promotion behavior under Variable A below.
+  Rank trends toward Admiral by default; it's an on-ramp, not a difficulty
+  menu a player is expected to leave parked on easy.
+- It does not add XP, unlockable content, or escalating content tiers. The
+  three levels are a label on the opponent's intelligence, not a
+  progression system with rewards to chase beyond the ramp itself.
+
+This does directly reverse the specific decision below to remove the old
+Level 1/Level 2 selector — see Variable A for why the original reasoning no
+longer covers this case.
+
 ## Variable A: Computer opponent strategy
 
-There is a single computer opponent behavior, not a selectable difficulty.
-An earlier version of this game offered two levels — Level 1 (pure random
-targeting) and Level 2 (the shrewd play described below) — chosen in
-Settings and persisted to localStorage. That selector was removed: there's
-no real point in offering a deliberately weaker mode to play against, and
-a dropdown that mostly exists to let a player choose to lose more often
-doesn't add anything. The direction instead is to keep improving this one
-opponent so it's genuinely competitive with a human player, and let
-board-layout randomness (Variable C's ship-set toggle, where ships happen
-to land) supply game-to-game variance rather than a manually-picked
-handicap. `selectAppTargetIndex()` in `armada-game.ts` no longer takes a
-difficulty argument at all — what used to be Level 2's logic is simply
-what the computer always does.
+**Update, September 2026: this section's original "single opponent, no
+selectable difficulty" stance is reversed by the Rank setting** — see
+"Exception: Rank" above for the full reasoning. The short version: an
+earlier version of this game offered two levels (Level 1 pure-random,
+Level 2 the shrewd play described below), chosen in Settings. That selector
+was removed on the reasoning that "there's no real point in offering a
+deliberately weaker mode to play against, and a dropdown that mostly exists
+to let a player choose to lose more often doesn't add anything." Real-player
+feedback has since shown that reasoning doesn't hold for a new player who
+hasn't yet learned the board — for them, the single fixed opponent below
+plays as unfairly, un-funly hard, not as a satisfying challenge.
+
+**Rank** (Settings, three levels — **Sailor**, **Commander**, **Admiral**)
+now selects how much of the targeting logic described below the computer
+actually uses:
+
+- **Sailor**: plain-shot target selection is a pure random pick among
+  untargeted cells — no adjacency hunting, no Oil Tanker priority, no
+  revealed-target priority. Special-weapon *choice and targeting* (blast-zone
+  maximization, etc.) still follow the normal rules described later in this
+  section; only the plain-shot target cell is randomized.
+- **Commander**: the general hunt-adjacent-damage logic below applies (find
+  a wounded ship's neighbors and follow up), but the Oil Tanker targeting
+  priority and the slick-management logic under Variable B do not — those
+  stay off at this level.
+- **Admiral**: everything below applies, unchanged from what shipped before
+  Rank existed — this is the original "single computer opponent behavior"
+  this section used to describe unconditionally.
+
+New players start at Sailor. Winning 5 games at Sailor auto-promotes to
+Commander; winning 10 games at Commander auto-promotes to Admiral, each
+with an in-app congratulatory banner. Admiral is sticky — there is no
+further auto-promotion once there. A player can manually set Rank to any
+level at any time in Settings; doing so hands control of the setting to the
+player and **turns off auto-promotion for good**, rather than resetting the
+win counter and re-arming it. That was a deliberate choice over a
+resettable counter: a counter that silently restarts after a manual change
+is invisible state the player has no way to reason about ("why was I
+promoted again, I didn't ask"), whereas "you're driving this setting now"
+is a rule the player can actually hold in their head.
+
+The complaint that motivated the original removal — "a dropdown that
+mostly exists to let a player choose to lose more often doesn't add
+anything" — doesn't apply here: Rank trends upward by default via
+auto-promotion, and its purpose is onboarding a player up to the game's one
+real difficulty, not handing a permanent, parked-on-easy option to a player
+who already knows how to play.
+
+**Implemented, September 2026.** `selectAppTargetIndex()` now takes a
+`ComputerRank` argument and branches on it before any of the logic
+described below ever runs:
+
+- **Sailor** returns immediately with a plain random pick among untargeted
+  cells — it doesn't even act on a revealed cell (a Drone find, or an
+  immune ship's exposure): `getRevealedTargetIndexes()` is never consulted
+  at this rank, so a revealed cell just sits there like any other
+  untargeted one until random chance lands on it.
+- **Commander** checks `getRevealedTargetIndexes()` first (unconditionally
+  — no Oil-Tanker-found gate the way Admiral has), then falls through to
+  the general `getHuntCandidateIndexes()` hunt (unrestricted, i.e. every
+  wounded ship, not just the Oil Tanker), then a plain random pick. It
+  never runs the Oil Tanker priority block or the slick-management restriction
+  below — both stay Admiral-only, so Commander neither special-cases finding
+  the tanker nor avoids firing into the slick.
+- **Admiral** falls through to the rest of this section unchanged — every
+  strategy described below, exactly as it worked before Rank existed.
+
+The forced-null weapon choice in `Index.tsx` (skip a weapon entirely when a
+revealed cell is sitting there unclaimed — see the Drone's own writeup
+under Variable D) is gated the same way: `rank !== 'sailor'`, since a
+Sailor-rank computer doesn't act on a revealed cell for its plain shot
+either, so there's nothing for that guard to protect at that rank.
+
+RankState itself — the current rank, wins accumulated toward the next
+auto-promotion, and whether auto-promotion is still active — is a standing
+player setting (`armada:rank-state` in localStorage), not part of
+`GameState`: it survives New Game the same way sound effects or weapon
+inventories do, and a manual change in Settings takes effect on the
+computer's very next turn without needing a new game (Rank never affects
+ship placement or board setup, only targeting choices made turn-by-turn).
+`computeRankUpdate()` folds one just-concluded game's winner into it,
+mirroring `computeSessionStatsUpdate()`'s own pure, storage-agnostic shape;
+Index.tsx owns persisting the result and showing the Victory dialog's
+promotion banner when a win auto-promotes the rank. A player who already
+had SessionStats wins from before Rank existed gets backfilled a starting
+rank via `computeInitialRankState()` (0-4 wins → Sailor, 5-14 → Commander,
+15+ → Admiral, crediting wins past the last threshold toward the next
+auto-promotion) the first time Rank loads with nothing yet saved under its
+own storage key — so upgrading the app never resets an experienced player
+back to Sailor.
 
 **Implemented today** (`selectAppTargetIndex()` in `armada-game.ts`): if a
 ship has exactly one hit that isn't yet sunk, target its (8-neighbor,

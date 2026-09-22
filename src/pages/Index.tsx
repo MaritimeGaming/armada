@@ -27,8 +27,11 @@ import {
   applyMineWanderOilDetonation,
   applyShotOutcome,
   areAllShipsSunk,
+  computeInitialRankState,
+  computeRankUpdate,
   computeSessionStatsUpdate,
   createGameState,
+  DEFAULT_RANK_STATE,
   DEFAULT_SESSION_STATS,
   DEFAULT_SHIP_SET_OPTIONS,
   DRONE_SHOT_OUTCOME,
@@ -47,6 +50,8 @@ import {
   getShips,
   GRID_SIZE,
   moveMine,
+  RANK_LABELS,
+  RANK_ORDER,
   resolveMineHit,
   resolveMineIndexAfterDrop,
   resolveTargetingSequence,
@@ -60,7 +65,7 @@ import {
   setCellTargeting,
   WEAPON_TYPE_USE_CAP,
 } from '@/lib/armada-game';
-import type { AudioCue, AudioSequence, CellState, ExposureState, GameState, NavySide, NavyState, SessionStats, ShipDefinition, ShipSetOptions, ShotOutcome, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
+import type { AudioCue, AudioSequence, CellState, ComputerRank, ExposureState, GameState, NavySide, NavyState, RankState, SessionStats, ShipDefinition, ShipSetOptions, ShotOutcome, TurnOwner, WeaponTravelStep, WeaponType, Winner } from '@/lib/armada-game';
 import { preloadRewardedAd, showRewardedAd } from '@/lib/ads';
 import { TitleScreen } from '@/components/TitleScreen';
 import { Button } from '@/components/ui/button';
@@ -71,7 +76,12 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -165,6 +175,10 @@ const GAME_TOKENS_AD_REWARD = 2;
 const GAMES_PLAYED_STORAGE_KEY = 'armada:games-played';
 const GAMES_WON_STORAGE_KEY = 'armada:games-won';
 const SESSION_STATS_STORAGE_KEY = 'armada:session-stats';
+// Not part of GameState - a standing player setting, same as sound effects
+// or vibration, that survives New Game and browser restarts. See
+// GAME_DESIGN.md's "Exception: Rank" writeup.
+const RANK_STATE_STORAGE_KEY = 'armada:rank-state';
 const DESKTOP_LAYOUT_QUERY = '(min-width: 1024px)';
 
 // Wide enough to show both navies side by side (laptop/desktop) instead of
@@ -232,6 +246,27 @@ function loadSessionStats(): SessionStats {
     gamesPlayed: readStoredCount(GAMES_PLAYED_STORAGE_KEY, 0),
     gamesWon: readStoredCount(GAMES_WON_STORAGE_KEY, 0),
   };
+}
+
+// gamesWon is the caller's already-loaded SessionStats.gamesWon - passed in
+// rather than read here so this stays a plain localStorage read, matching
+// every other loader in this file.
+function loadRankState(gamesWon: number): RankState {
+  const stored = window.localStorage.getItem(RANK_STATE_STORAGE_KEY);
+
+  if (!stored) {
+    // Nothing saved under Rank's own key yet - either a brand-new player
+    // (gamesWon is 0, so this is just DEFAULT_RANK_STATE), or an existing
+    // one from before Rank existed, backfilled from their real win count.
+    // See computeInitialRankState.
+    return computeInitialRankState(gamesWon);
+  }
+
+  try {
+    return { ...DEFAULT_RANK_STATE, ...(JSON.parse(stored) as Partial<RankState>) };
+  } catch {
+    return DEFAULT_RANK_STATE;
+  }
 }
 
 // A Torpedo or Rocket can now hit more than one ship in a single run, so
@@ -362,6 +397,14 @@ const Index = () => {
   // concludeGame) - a plain-English line per record set or streak
   // extended/broken, cleared on the next New Game.
   const [gameOverRecordUpdates, setGameOverRecordUpdates] = useState<string[]>([]);
+  // How much of the computer's targeting intelligence is switched on - see
+  // GAME_DESIGN.md's "Exception: Rank" writeup. A standing player setting,
+  // not part of GameState, read directly by the AI-turn effect below.
+  const [rankState, setRankState] = useState<RankState>(() => loadRankState(loadSessionStats().gamesWon));
+  // Set by concludeGame whenever this game's win auto-promotes the
+  // computer's Rank, so the Victory dialog can show the "fanfare" banner -
+  // cleared on the next New Game, same as gameOverRecordUpdates above.
+  const [promotedRank, setPromotedRank] = useState<ComputerRank | null>(null);
   // A Torpedo's or Rocket's travel can take several seconds; turn ownership
   // deliberately doesn't pass to the computer until it fully resolves (see
   // handleEnemyCellPressEnd's torpedo/rocket branches), so this blocks the
@@ -816,6 +859,7 @@ const Index = () => {
     setInstantViewSwitch(true);
     setGameOver({ isOpen: false, winner: null });
     setGameOverRecordUpdates([]);
+    setPromotedRank(null);
   };
 
   /**
@@ -943,6 +987,19 @@ const Index = () => {
   const handleVibrationToggle = (enabled: boolean) => {
     window.localStorage.setItem(VIBRATION_STORAGE_KEY, String(enabled));
     setVibrationEnabled(enabled);
+  };
+
+  // Manually setting Rank hands control of the setting to the player and
+  // turns off auto-promotion for good, rather than resetting the win
+  // counter and re-arming it - see GAME_DESIGN.md's "Exception: Rank"
+  // writeup. Unlike Singles, this never starts a new game: Rank only ever
+  // gates the AI-turn effect's own targeting calls, so there's nothing
+  // about the current game that needs to change for it to take effect on
+  // the computer's very next turn.
+  const handleRankChange = (rank: ComputerRank) => {
+    const nextRankState: RankState = { rank, winsAtCurrentRank: 0, autoPromoteEnabled: false };
+    window.localStorage.setItem(RANK_STATE_STORAGE_KEY, JSON.stringify(nextRankState));
+    setRankState(nextRankState);
   };
 
   const handleResetStatistics = () => {
@@ -1093,6 +1150,11 @@ const Index = () => {
     window.localStorage.setItem(SESSION_STATS_STORAGE_KEY, JSON.stringify(nextSessionStats));
     setSessionStats(nextSessionStats);
     setGameOverRecordUpdates(updates);
+
+    const { next: nextRankState, promotedTo } = computeRankUpdate(rankState, winner);
+    window.localStorage.setItem(RANK_STATE_STORAGE_KEY, JSON.stringify(nextRankState));
+    setRankState(nextRankState);
+    setPromotedRank(promotedTo);
 
     // Give the losing navy's final explosion (audio + animation, already
     // queued by whatever shot or weapon just resolved) two full seconds to
@@ -1756,7 +1818,10 @@ const Index = () => {
       // instead would be wasting a sure thing, so this skips weapon choice
       // entirely and falls through to a plain shot, which selectAppTargetIndex
       // will then aim at that revealed cell (see its own top-priority check).
-      const hasRevealedTarget = getRevealedTargetIndexes(gameState.player).length > 0;
+      // Gated on rank !== 'sailor': a Sailor-rank computer doesn't act on
+      // revealed cells at all (see selectAppTargetIndex), so there's nothing
+      // for this to protect at that rank either.
+      const hasRevealedTarget = rankState.rank !== 'sailor' && getRevealedTargetIndexes(gameState.player).length > 0;
 
       appWeaponChoiceRef.current = hasRevealedTarget
         ? null
@@ -1780,7 +1845,7 @@ const Index = () => {
     const previewIndex = appPreviewIndexRef.current ?? (
       weaponChoice
         ? selectAppWeaponTargetIndex(gameState.player, weaponChoice)
-        : selectAppTargetIndex(gameState.player)
+        : selectAppTargetIndex(gameState.player, rankState.rank)
     );
 
     if (previewIndex === null) {
@@ -2382,6 +2447,8 @@ const Index = () => {
       onSoundEffectsToggle={handleSoundEffectsToggle}
       vibrationEnabled={vibrationEnabled}
       onVibrationToggle={handleVibrationToggle}
+      rank={rankState.rank}
+      onRankChange={handleRankChange}
       onNewGame={() => requestNewGame()}
       onShowStatistics={() => setInfoDialog('statistics')}
       onShowHowToPlay={() => setInfoDialog('howToPlay')}
@@ -2596,6 +2663,12 @@ const Index = () => {
                 : 'You lost! Click OK to play again.'}
             </DialogDescription>
           </DialogHeader>
+          {promotedRank ? (
+            <div className="rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-500/20 to-amber-300/10 p-3 text-center">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">Promoted!</p>
+              <p className="text-lg font-bold text-amber-100">You are now a {RANK_LABELS[promotedRank]}</p>
+            </div>
+          ) : null}
           {winsLabel || gameOverRecordUpdates.length > 0 ? (
             <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-3 text-sm">
               {winsLabel ? <p className="font-semibold text-cyan-100">{winsLabel}</p> : null}
@@ -3028,6 +3101,8 @@ type NavyPanelProps = {
   onSoundEffectsToggle: (enabled: boolean) => void;
   vibrationEnabled: boolean;
   onVibrationToggle: (enabled: boolean) => void;
+  rank: ComputerRank;
+  onRankChange: (rank: ComputerRank) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
   onShowHowToPlay: () => void;
@@ -3060,6 +3135,8 @@ type SettingsMenuProps = {
   onSoundEffectsToggle: (enabled: boolean) => void;
   vibrationEnabled: boolean;
   onVibrationToggle: (enabled: boolean) => void;
+  rank: ComputerRank;
+  onRankChange: (rank: ComputerRank) => void;
   onNewGame: () => void;
   onShowStatistics: () => void;
   onShowHowToPlay: () => void;
@@ -3075,6 +3152,8 @@ function SettingsMenu({
   onSoundEffectsToggle,
   vibrationEnabled,
   onVibrationToggle,
+  rank,
+  onRankChange,
   onNewGame,
   onShowStatistics,
   onShowHowToPlay,
@@ -3118,6 +3197,18 @@ function SettingsMenu({
         >
           Vibration
         </DropdownMenuCheckboxItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>Rank: {RANK_LABELS[rank]}</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuRadioGroup value={rank} onValueChange={(value) => onRankChange(value as ComputerRank)}>
+              {RANK_ORDER.map((rankOption) => (
+                <DropdownMenuRadioItem key={rankOption} value={rankOption}>
+                  {RANK_LABELS[rankOption]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onShowStatistics}>Statistics</DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -3139,6 +3230,8 @@ function NavyPanel({
   onSoundEffectsToggle,
   vibrationEnabled,
   onVibrationToggle,
+  rank,
+  onRankChange,
   onNewGame,
   onShowStatistics,
   onShowHowToPlay,
@@ -3312,6 +3405,8 @@ function NavyPanel({
               onSoundEffectsToggle={onSoundEffectsToggle}
               vibrationEnabled={vibrationEnabled}
               onVibrationToggle={onVibrationToggle}
+              rank={rank}
+              onRankChange={onRankChange}
               onNewGame={onNewGame}
               onShowStatistics={onShowStatistics}
               onShowHowToPlay={onShowHowToPlay}
