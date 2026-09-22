@@ -6,7 +6,10 @@ Play Console walkthrough with pre-filled answers for every policy form.
 
 ---
 
-## 0. Status checklist (updated 2026-09-18)
+## 0. Status checklist (updated 2026-09-21)
+
+**Closed testing is live.** About half the tester list has opted in as of
+2026-09-21; still waiting on the rest before the 14-day clock starts.
 
 **Done**
 - [x] Package renamed to `com.maritimegaming.armada` (permanent ID, set before first upload)
@@ -18,30 +21,39 @@ Play Console walkthrough with pre-filled answers for every policy form.
 - [x] Account type confirmed: individual → closed testing required
 - [x] App entry created in Play Console (§5)
 - [x] Content ratings (IARC questionnaire) complete — result: **Everyone 10+ (ESRB)** (§6.3)
-- [x] "Set up your app" / App content — all forms complete, Console shows "You're all caught up" (§6)
-- [x] 6 phone screenshots captured on-device, all in `store-assets/` (§4) — all graphic assets are now ready to upload
-
+- [x] "Set up your app" / App content — all forms complete (§6)
+- [x] 6 phone screenshots captured on-device, all in `store-assets/` (§4)
 - [x] Main store listing complete (§7.1)
-- [x] Signed release AAB built (§7.4) — `android/app/build/outputs/bundle/release/app-release.aab`,
-  verified genuinely signed (`jarsigner -verify` → `jar verified`), `FORCE_TEST_ADS` still `true` for
-  this build. Built with a **regenerated** upload keystore — the original from an earlier session had
-  its password lost before ever being used to upload anything, so it was discarded with zero
-  consequence (nothing had been submitted to Google yet) and replaced. `android/keystore.properties`
-  and `armada-upload.jks` are git-ignored, local-only; the password lives only in that file and
-  whatever password manager it was saved to — back it up.
-- [x] **AAB rebuilt 2026-09-18 from `ee9f5f8`** (10.5 MB, `jar verified`, still `versionCode 1` /
-  `versionName "1.0"`, `FORCE_TEST_ADS` still `true`). The 09-16 build was stale — it predated the
-  How to Play dialog, the Lifeboat→Pirate swap (6 `Pirate-*.wav` clips), the hit-buzz `VIBRATE`
-  permission, and the hit-streak change. Rebuild whenever gameplay code changes before an upload.
-- [x] Store settings + contact details (§7.2) — completed in Console
+- [x] Store settings + contact details (§7.2)
+- [x] Release keystore generated — `android/keystore.properties` + `armada-upload.jks`, both
+  git-ignored/local-only. Back up the password (it's not recoverable if lost).
+- [x] **Closed testing track created and rolled out** — countries, tester email list, feedback
+  email all set in Console (§7.5).
 
-**Blocking the closed test (do these first — nothing below matters until the 12/14 clock is running)**
+**Ad-serving bug found and fixed 2026-09-21** — testers got 3 free games, then the "Watch an ad to
+start a new game?" gate opened, but tapping Watch Ad always silently failed and looped back to the
+Defeat dialog forever. Diagnosed by connecting a tester's device to this machine via `adb` (USB
+debugging) and capturing `adb logcat` while reproducing it live. The dialog loop itself was never a
+bug — `showRewardedAd` correctly grants nothing when an ad fails, by design (see §"Ad integration" in
+GAME_DESIGN.md). The real bug: `isTesting: true` passed alongside the app's **real** ad unit IDs
+does not reliably force guaranteed test-ad serving — the log showed the SDK explicitly warning
+`Use RequestConfiguration.Builder().setTestDeviceIds(...) to get test ads on this device` and then
+running a genuine ad auction, which a brand-new AdMob account with no serving history loses every
+time (no fill). Fixed in `src/lib/ads.ts`: while `FORCE_TEST_ADS` is `true`, every placement now
+uses **Google's own published sample rewarded ad unit ID** (`ca-app-pub-3940256099942544/5224354917`),
+which guarantees test fill on any device with zero per-device registration — the real per-placement
+IDs are kept for when `FORCE_TEST_ADS` flips to `false` before production. `versionCode` bumped to
+3 for this fix (1 and 2 were already consumed by earlier uploads — Play never lets a code be reused).
+**Upload this new AAB as a fresh release to the closed testing track and have testers update.**
+
+**Blocking the closed test — do these next**
+- [ ] Upload the `versionCode 3` AAB (with the ads fix) to the closed testing track; existing
+  opted-in testers need to update to get it
 - [ ] Edit the Console **full description**: it was pasted before the Lifeboat→Pirate swap, so it
   still says "Ensign, Helicopter, and Lifeboat" — change to "Pirate" (§3 already has the fix)
 - [ ] Decide whether the `Pirate-*.wav` voice clips are AI-generated; if so, update the Console
   **AI-generated content** declaration (it currently reflects only the title-screen art)
-- [ ] Closed testing track: countries, tester email list, feedback email, upload the AAB, roll out (§7.5)
-- [ ] Send the opt-in link once the release is live; get **all** testers opted in fast (clock starts at 12)
+- [ ] Finish getting the remaining testers opted in — get **all** of them in fast (clock starts at 12)
 - [ ] 14 continuous days at ≥12 opted-in testers (recruit 14–15 for a buffer)
 
 **Before production (not gating the closed test)**
