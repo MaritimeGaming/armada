@@ -221,8 +221,8 @@ Fast naval strategy: hunt the enemy fleet, manage the oil slick, drop a MOAB.
 ### Full description (≤4000)
 ```
 Armada is Battleship stripped of the busywork and rebuilt around the good part:
-the hunt. No ship-placement chores, no leveling grind, no story to sit through —
-just you against a genuinely sharp opponent, one grid at a time. It's the kind of
+the hunt. No ship-placement chores, no unlocks to grind, no story to sit through —
+just you against a smart opponent, one grid at a time. It's the kind of
 game you keep on your phone for the rest of your life, next to Solitaire and
 Minesweeper.
 
@@ -231,9 +231,11 @@ WHAT'S DIFFERENT
 • No setup. Both fleets are placed instantly. You're taking your first shot two
   seconds after tapping New Game.
 
-• A real opponent. One computer player, always playing its best — it hunts
-  wounded ships intelligently, presses its advantage, and manages the oil slick
-  just like you do. There's no "easy mode" to pad your win rate against.
+• An opponent that grows with you. New players start against a Sailor who fires
+  at random; win enough games and your opponent is promoted through Commander to
+  Admiral — a shrewd hunter that finishes wounded ships, presses its advantage,
+  and manages the oil slick just like you do. Prefer to pick your own challenge?
+  Set the rank yourself in Settings.
 
 • The oil slick. Sink the Oil Tanker and its cargo spreads across the board, one
   cell a turn. Every shot into the slick might ignite it and take out everything
