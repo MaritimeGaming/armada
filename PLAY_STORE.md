@@ -639,6 +639,34 @@ everything else:**
 7. After 14 days at ≥12: **Apply for production access**, fill in the
    form, wait for review.
 
+#### Release mechanics learned the hard way (2026-09)
+
+- **Two different links.** The closed-track opt-in link is
+  `https://play.google.com/apps/testing/com.maritimegaming.armada` (Testing →
+  Closed testing → Testers tab → "Join on the web"). The Internal testing
+  track has its *own* link (`/apps/internaltest/<id>`) — an early batch of
+  testers was sent that one by mistake. Hand testers only the closed link and
+  have them tap **Become a tester**; check the "testers currently opted-in"
+  count on the Dashboard climbs toward 12.
+- **One bundle library for the whole app.** A version code can be uploaded
+  once, ever, across every track; re-uploading the same file to a second
+  track fails with "Version code N has already been used". To put an existing
+  build on another track use **Create new release → Add from library**, or
+  **Promote release** (Internal → Closed → Production). Stale bundles left in
+  a draft release cause "shadowed by higher version codes" warnings — remove
+  the older one from that release.
+- **Play serves a tester the highest version code across the tracks they're
+  on.** Keep the Internal track no older than Closed (currently both on 4),
+  or ignore Internal once everyone has joined Closed.
+- **Versioning scheme.** `versionCode`: +1 on every upload (edit
+  `android/app/build.gradle` *before* building). `versionName`: `0.9.x`
+  while testing (`0.9.4` set 2026-09-23, first effective with the next
+  upload), `1.0.0` for the first production release. Release name: keep
+  Play's auto-fill (`<code> (<name>)`), optionally with a short suffix.
+- **Debugging a tester's device:** enable Developer options → USB debugging,
+  plug into this PC, `adb logcat` while reproducing (that's how the ad-serving
+  bug was found).
+
 ### 7.6 Production release (after closed-testing access is granted)
 - Promote the tested build: **Testing → Closed testing → Promote release
   → Production**, or create a fresh Production release with a new
