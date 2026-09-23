@@ -252,7 +252,7 @@ WHAT'S DIFFERENT
   Knowing what beats what is its own layer of strategy.
 
 • Optional single-cell ships. Turn the Ensign, Helicopter, and Pirate on for a
-  brutal pure-luck endgame, or leave them off for a cleaner match.
+  brutal pure-luck endgame, or leave them off for a cleaner contest.
 
 • Lifetime stats and a Daily Win Streak to chase.
 
