@@ -360,12 +360,11 @@ const ORIENTATIONS: Orientation[] = [
 // time (see getAudioFileForCue). To add another take, save it in
 // public/audio and add its path here; nothing else needs to change.
 const PIRATE_AUDIO_FILES = [
-  `${import.meta.env.BASE_URL}audio/Pirate-1.wav`,
-  `${import.meta.env.BASE_URL}audio/Pirate-2.wav`,
-  `${import.meta.env.BASE_URL}audio/Pirate-3.wav`,
-  `${import.meta.env.BASE_URL}audio/Pirate-4.wav`,
-  `${import.meta.env.BASE_URL}audio/Pirate-5.wav`,
-  `${import.meta.env.BASE_URL}audio/Pirate-6.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-Abandon-Ship.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-All-Hands-On-Deck.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-Fire-In-The-Hole.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-Hoist-The-Jolly-Roger.wav`,
+  `${import.meta.env.BASE_URL}audio/Pirate-Shiver-Me-Timbers.wav`,
 ];
 
 // A cue maps to one file, or to a list of interchangeable clips to choose
