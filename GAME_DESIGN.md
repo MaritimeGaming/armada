@@ -658,12 +658,24 @@ shrink toward zero from a number the player doesn't already know offhand
   urgency for what's meant to be a much quieter "there's a live ship under
   this, FYI" cue.
 
+  **Standard vs. sunk blue (September 2026).** A standard untargeted/miss
+  cell is `#3355FF` and a sunk ship is `#000080` (previously `#0000FF` and
+  `#0000B2`, only ~1.5:1 apart). Playing outdoors in bright sunlight, the
+  two were nearly indistinguishable, since glare washes out brightness
+  differences between dark blues. Both moved: the standard blue lightened
+  to a royal blue (staying well clear of the `#00FFFF` targeting cyan) and
+  the sunk blue darkened to navy (staying clear of the `#202020`/`#404040`
+  Oil Tanker and oil grays), for roughly 3:1. If this still isn't enough
+  in direct sun, the next step is a non-color cue on sunk cells (e.g. a
+  diagonal hatch), since a shape difference survives glare where a shade
+  difference doesn't.
+
   **Two shades, not one** (`exposedBackgroundClassName` /
   `exposedOilBackgroundClassName` in `cell-presentation.ts`): a plain
   exposed cell gets `border-[#0B7A5C] bg-[#0B7A5C]`, a noticeably green
   teal; an exposed cell that's *also* oil-covered gets the more muted
   `border-[#0B5D73] bg-[#0B5D73]` instead - both a real, noticeable step
-  away from the ordinary `#0000FF` blue without leaving the blue family
+  away from the ordinary `#3355FF` blue without leaving the blue family
   the way the vivid end-of-game green would, but the oil case is pulled
   back toward blue specifically so it doesn't compete for attention with
   oil's own `#404040` gray sitting right next to it on the board. Bold

@@ -76,7 +76,7 @@ describe('getCellPresentation - exposed (droneRevealed) ship styling', () => {
     const presentation = getCellPresentation(cell, false);
     expect(presentation.className).not.toContain('#0B7A5C');
     expect(presentation.className).not.toContain('#0B5D73');
-    expect(presentation.className).toContain('bg-[#0000FF]');
+    expect(presentation.className).toContain('bg-[#3355FF]');
     expect(presentation.className).toContain('text-white');
   });
 
