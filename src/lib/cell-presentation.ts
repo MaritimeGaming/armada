@@ -76,7 +76,7 @@ function computeBaseCellPresentation(cell: CellState): CellPresentation {
   // survived to the end of the game), and reusing it here would carry the
   // same urgency for what's meant to be a much quieter "there's a live
   // ship under this, FYI" cue. `#0B5D73` (a muted teal) is used when the
-  // cell is also oil-covered - a real step away from the ordinary `#3355FF` blue
+  // cell is also oil-covered - a real step away from the ordinary `#1A3AFF` blue
   // without leaving the blue family, subtle enough to sit on top of oil's
   // own gray without the two competing. `#0B7A5C` - the same idea, pushed
   // noticeably greener - is used everywhere else, since without oil
@@ -125,7 +125,7 @@ function computeBaseCellPresentation(cell: CellState): CellPresentation {
     }
 
     return {
-      className: 'border-[#3355FF] bg-[#3355FF] text-white',
+      className: 'border-[#1A3AFF] bg-[#1A3AFF] text-white',
       value,
       label: 'empty and targeted',
     };
@@ -180,7 +180,7 @@ function computeBaseCellPresentation(cell: CellState): CellPresentation {
   }
 
   return {
-    className: 'border-[#3355FF] bg-[#3355FF] text-white',
+    className: 'border-[#1A3AFF] bg-[#1A3AFF] text-white',
     value,
     label: cell.occupied ? 'occupied and untargeted' : 'empty and untargeted',
   };
