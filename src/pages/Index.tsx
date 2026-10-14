@@ -3089,7 +3089,7 @@ function WeaponButton({ icon, label, count, useCount, isArmed, isPending, disabl
       )}
     >
       <span
-        className="absolute -bottom-1 -right-1 flex items-center gap-0.5"
+        className="absolute -bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-0.5"
         role="img"
         aria-label={`${WEAPON_TYPE_USE_CAP - useCount} of ${WEAPON_TYPE_USE_CAP} uses remaining this game`}
       >

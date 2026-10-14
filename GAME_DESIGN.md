@@ -1135,8 +1135,10 @@ per-cell targetability check) disables once either cap is hit — the
 charges left, and a row of `SPECIAL_WEAPON_QUOTA` (5) dots in a "My
 Weapons" bar tracks the total — solid green per unused shot, turning red
 as each is spent, no text needed. Every button also carries its own
-`WEAPON_TYPE_USE_CAP` (2) corner dots, same green/red idiom, one turning
-red per use of that specific type — a smaller-scale echo of the quota row,
+`WEAPON_TYPE_USE_CAP` (2) dots, centered on its bottom edge right under
+the weapon's name (they started in the bottom-right corner, where they
+read as detached from the weapon they count), same green/red idiom, one
+turning red per use of that specific type — a smaller-scale echo of the quota row,
 giving "1 more shot left" advance warning per weapon type instead of only
 finding out the moment a button disables. (An earlier pass judged this
 per-type indicator not worth the complexity once every type shared one
