@@ -487,6 +487,12 @@ const Index = () => {
   // just closes this dialog: no charge, no ad, and the weapon stays
   // unarmed, same as before the click.
   const [pendingWeaponProcurement, setPendingWeaponProcurement] = useState<WeaponType | null>(null);
+  // True from the instant the player taps "Watch Ad" until the ad's outcome
+  // is known. The game is frozen for that whole span: on a native build the
+  // real ad can take a second or so to load before its full-screen activity
+  // appears, and without this the player could keep firing on the enemy
+  // grid (and the computer keep taking its turns) underneath it.
+  const isAdInProgress = procuringWeapon !== null || isWatchingAdForNewGame;
   const [infoDialog, setInfoDialog] = useState<'ships' | 'weapons' | 'statistics' | 'howToPlay' | null>(null);
 
   // A callback ref, not an effect: the swipe viewport only exists once
@@ -1010,7 +1016,7 @@ const Index = () => {
   };
 
   const handleWeaponButtonClick = (weapon: WeaponType) => {
-    if (!gameState || gameState.currentTurn !== 'player' || isGameConcluded || isWeaponInFlight) {
+    if (!gameState || gameState.currentTurn !== 'player' || isGameConcluded || isWeaponInFlight || isAdInProgress) {
       return;
     }
 
@@ -1203,7 +1209,7 @@ const Index = () => {
   ): GameState => applyMineWanderOilDetonation(applyShotOutcome(baseState, side, outcome), side, mineWanderOilDetonationSize);
 
   const handleEnemyCellPressStart = (cellIndex: number) => {
-    if (activeView !== 'enemy' || isWeaponInFlight) {
+    if (activeView !== 'enemy' || isWeaponInFlight || isAdInProgress) {
       return;
     }
 
@@ -1234,7 +1240,7 @@ const Index = () => {
   };
 
   const handleEnemyCellPressEnd = (cellIndex: number) => {
-    if (isWeaponInFlight) {
+    if (isWeaponInFlight || isAdInProgress) {
       return;
     }
 
@@ -1806,6 +1812,14 @@ const Index = () => {
       return;
     }
 
+    // Paused, not abandoned, while an ad is loading/playing (see
+    // isAdInProgress): the cleanup below has already cancelled any pending
+    // turn timers, and the refs are left intact so the turn simply resumes
+    // once the ad closes.
+    if (isAdInProgress) {
+      return;
+    }
+
     if (!gameState || isGameConcluded || gameState.currentTurn !== 'app') {
       appPreviewIndexRef.current = null;
       appWeaponChoiceRef.current = undefined;
@@ -2370,7 +2384,7 @@ const Index = () => {
       window.clearTimeout(previewDelay);
       window.clearTimeout(executeTargetingDelay);
     };
-  }, [isGameConcluded, gameState, shipSetOptions]);
+  }, [isGameConcluded, gameState, shipSetOptions, isAdInProgress]);
 
   // Safety net: an armed weapon only ever makes sense while it's the
   // player's move. If the turn moves on (or a new game starts) without it
@@ -2830,13 +2844,26 @@ const Index = () => {
           in front of it, so it never renders there at all: the real ad's
           own full-screen native activity is what the player sees next,
           whatever real (usually brief, thanks to preloadRewardedAd) prep
-          latency it needs first. */}
+          latency it needs first. That latency still needs covering,
+          though - see the invisible tap shield just below. */}
       {procuringWeapon && !areAdsAvailable() ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
           <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-center text-sm font-semibold uppercase tracking-[0.2em] text-cyan-100 shadow-2xl">
             Procuring Weapons
           </div>
         </div>
+      ) : null}
+
+      {/* On a native build, an invisible full-screen tap shield covering
+          the real ad's load latency for either placement, until its own
+          full-screen activity takes over - nothing visible, so it can't
+          read as a pause bolted in front of the ad, but every tap in that
+          window lands here instead of on the grid. isAdInProgress's own
+          guards (enemy-cell handlers, weapon buttons, the AI-turn effect)
+          are what actually freeze the game; this just keeps the taps
+          from reaching anything at all. */}
+      {isAdInProgress && areAdsAvailable() ? (
+        <div className="fixed inset-0 z-50" data-testid="ad-tap-shield" aria-hidden="true" />
       ) : null}
 
       {/* Can never render while showTitleScreen is true - that branch

@@ -1712,6 +1712,19 @@ this same `areAdsAvailable()` now too, rather than checking
 `Capacitor.isNativePlatform()` directly in three separate places that
 could quietly drift out of agreement.
 
+**The game freezes the instant "Watch Ad" is tapped.** Dropping the
+native banner above left that real load latency (often about a second)
+completely uncovered - reported from a device: taps on the enemy grid
+were still accepted as shots in that window, and the computer could take
+its turn, before the ad finally appeared. `isAdInProgress` (true while
+`procuringWeapon` or `isWatchingAdForNewGame` is set, i.e. until
+`showRewardedAd` resolves) now gates the enemy-cell press handlers, the
+weapon buttons, and the AI-turn effect - which pauses rather than
+abandons its turn, resuming once the ad closes - and on a native build
+an *invisible* full-screen tap shield swallows every tap in that window.
+Invisible on purpose: it freezes the game without reintroducing the
+visible "pause bolted in front of the ad" the banner fix above removed.
+
 **Exiting mid-ad can't be used to skip paying for it.** Tokens are only
 ever credited from `showRewardedAd`'s genuine reward-earned outcome -
 never optimistically, never on a timer that fires regardless of outcome.
