@@ -535,6 +535,77 @@ describe('Hit haptics', () => {
   });
 });
 
+// The end-of-game cue (concludeGame in Index.tsx): WinGame.wav when the
+// player wins, LoseGame.wav when the computer does. Each test seeds a game
+// one shot from over, so that shot is the one that ends it.
+describe('End-of-game sound', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    __resetTitleScreenSessionFlagForTests();
+    vi.stubGlobal('Audio', FakeAudio);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  // Every ship on `side` already sunk except one, which is down to its last
+  // untargeted cell - whose index is returned. Every other cell is already
+  // targeted, so that's the only place the computer's shot can go. The
+  // computer keeps to plain shots so its turn stays simple.
+  function seedOneShotFromOver(side: 'player' | 'enemy', currentTurn: GameState['currentTurn']) {
+    const state = createGameState();
+    state.currentTurn = currentTurn;
+    state.appWeaponsUsed = SPECIAL_WEAPON_QUOTA;
+    const targetIndex = state[side].cells.findIndex((cell) => cell.occupied);
+    const lastShipCode = state[side].cells[targetIndex].shipCode;
+    state[side].cells = state[side].cells.map((cell, index) => {
+      if (index === targetIndex) {
+        return cell;
+      }
+      if (!cell.occupied || cell.shipCode === lastShipCode) {
+        return { ...cell, effect: 'targeted' };
+      }
+      return { ...cell, effect: 'sunk' };
+    });
+    window.localStorage.setItem('armada:game-state', JSON.stringify(state));
+    return targetIndex;
+  }
+
+  const playedSources = () => FakeAudio.instances.map((audio) => audio.src);
+
+  it('plays LoseGame.wav, not WinGame.wav, when the computer wins', async () => {
+    seedOneShotFromOver('player', 'app');
+    render(<App />);
+    dismissTitleScreen();
+    // Drop the audio-prewarming effect's one-per-file Audio objects so only
+    // cues actually played are left.
+    FakeAudio.instances = [];
+
+    await waitFor(() => expect(playedSources().some((src) => src.endsWith('LoseGame.wav'))).toBe(true), {
+      timeout: 8000,
+    });
+    expect(playedSources().some((src) => src.endsWith('WinGame.wav'))).toBe(false);
+  }, 10000);
+
+  it('plays WinGame.wav, not LoseGame.wav, when the player wins', async () => {
+    const targetIndex = seedOneShotFromOver('enemy', 'player');
+    render(<App />);
+    dismissTitleScreen();
+    FakeAudio.instances = [];
+
+    const cell = within(screen.getByLabelText('Enemy Navy grid')).getAllByRole('button')[targetIndex];
+    fireEvent.mouseDown(cell);
+    fireEvent.mouseUp(cell);
+
+    await waitFor(() => expect(playedSources().some((src) => src.endsWith('WinGame.wav'))).toBe(true), {
+      timeout: 8000,
+    });
+    expect(playedSources().some((src) => src.endsWith('LoseGame.wav'))).toBe(false);
+  }, 10000);
+});
+
 // Regression coverage for a reported bug: toggling Singles while at 0 game
 // tokens correctly opened the New Game ad-confirmation dialog, but
 // shipSetOptions itself was already persisted and applied (handleSinglesToggle

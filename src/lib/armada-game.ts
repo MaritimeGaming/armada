@@ -119,7 +119,7 @@ export type GameState = {
   appOilDetonationPeak: number;
 };
 
-export type AudioCue = 'splash' | 'sink' | 'pirate' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'deflect' | 'camera';
+export type AudioCue = 'splash' | 'sink' | 'pirate' | 'ensign' | 'helicopter' | 'explosion' | 'wingame' | 'losegame' | 'deflect' | 'camera';
 export type AudioSequence = AudioCue[];
 export type ShipSetOptions = {
   includeSingles: boolean;
@@ -379,6 +379,7 @@ export const AUDIO_FILES: Record<AudioCue, string | string[]> = {
   helicopter: `${import.meta.env.BASE_URL}audio/Helicopter.wav`,
   explosion: `${import.meta.env.BASE_URL}audio/Explosion.wav`,
   wingame: `${import.meta.env.BASE_URL}audio/WinGame.wav`,
+  losegame: `${import.meta.env.BASE_URL}audio/LoseGame.wav`,
   // Reuses Splash.wav under its own cue name rather than a new asset - see
   // the "deflect" cue's own doc comment on AudioCue-adjacent call sites
   // (isShipImmuneToWeapon) for why this needs to be a distinct cue rather

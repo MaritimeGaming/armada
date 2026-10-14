@@ -455,6 +455,7 @@ const Index = () => {
     helicopter: [],
     explosion: [],
     wingame: [],
+    losegame: [],
     deflect: [],
     camera: [],
   });
@@ -1189,9 +1190,7 @@ const Index = () => {
       setGameState(revealedState);
       setActiveView(winningSide);
 
-      if (winner === 'player') {
-        playAudioCue('wingame');
-      }
+      playAudioCue(winner === 'player' ? 'wingame' : 'losegame');
 
       setGameOver({ isOpen: true, winner });
     }, 2000);

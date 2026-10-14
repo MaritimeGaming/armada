@@ -986,8 +986,8 @@ popping the win/lose dialog immediately:
    on screen always specifically means "this survived to the end of the
    game," never "a Drone found this."
 4. The view then switches to the **winning** side to show that reveal,
-   the win/lose dialog opens, and (if the player won) the `wingame` cue
-   plays.
+   the win/lose dialog opens, and the matching cue plays - `wingame` if
+   the player won, `losegame` if the computer did.
 
 Winner and winning-navy-owner are the same side - "the winning navy" means
 the fleet that belongs to whoever won, not the fleet they defeated. When
@@ -1838,7 +1838,7 @@ simply had charges to begin with.
 A single Settings > Sound Effects checkbox (`soundEffectsEnabled` /
 `armada:sound-effects-enabled` in `Index.tsx`), enabled by default, mutes
 every audio cue in the game with one gate rather than threading a mute
-check through each of splash/sink/explosion/wingame/deflect/camera's own
+check through each of splash/sink/explosion/wingame/losegame/deflect/camera's own
 call sites: `playAudioCue` itself - the single low-level function every
 one of those cues, and every higher-level helper built on it
 (`playAudioSequence`, `playIgnitionSequence`, `playMoabSequence`), always
