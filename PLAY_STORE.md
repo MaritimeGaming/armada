@@ -62,8 +62,28 @@ closed test" note below). Bundles everything since versionCode 3:
   Special Weapons panel's 3 weapon buttons (icon, label, count badge, use-dots) overlapping on a
   phone for lack of width.
 
+**versionCode 5 built 2026-10-14** — `android/app/build/outputs/bundle/release/app-release.aab`,
+versionName `0.9.4`, signed with the release upload key (verified with `jarsigner`),
+`FORCE_TEST_ADS` still `true` — closed-testing only, same as versionCode 4. Supersedes the
+versionCode 4 AAB whether or not that one was uploaded. Bundles everything since versionCode 4:
+- Game freezes while a rewarded ad is loading - reported from a device: taps on the enemy grid
+  still landed as shots, and the computer could take its turn, in the second or so before the
+  real ad appeared.
+- Switching Singles before the player's first shot no longer spends a game token (or asks for an
+  ad at 0 tokens) - nothing has been played yet, so it's just choosing the setup.
+- The computer fires a special weapon on 1 in 2 eligible turns instead of 1 in 4, so it actually
+  spends its arsenal over a game.
+- New `LoseGame.wav` cue when the computer wins, mirroring `WinGame.wav`; later swapped for a
+  quieter take, along with a quieter `Splash.wav`.
+- Pirate sink cue: five named voice lines replace the old numbered takes, and the two Pirates in
+  one game never shout the same line.
+- Standard vs. sunk cell blues sharpened for outdoor play, then the standard blue darkened again
+  (`#3355FF` → `#1A3AFF`).
+- Each weapon button's two use-dots moved from the bottom-right corner to centered under the
+  weapon's name.
+
 **Blocking the closed test — do these next**
-- [ ] Upload the `versionCode 4` AAB (see above) to the closed testing track; existing
+- [ ] Upload the `versionCode 5` AAB (see above) to the closed testing track; existing
   opted-in testers need to update to get it
 - [ ] Edit the Console **full description**: it was pasted before the Lifeboat→Pirate swap, so it
   still says "Ensign, Helicopter, and Lifeboat" — change to "Pirate" (§3 already has the fix)
