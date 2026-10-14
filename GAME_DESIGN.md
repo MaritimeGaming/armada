@@ -1183,13 +1183,20 @@ bar shows the computer's own counts and its own quota dots
 The computer's side of actually *firing* weapons is implemented
 (`selectAppWeaponChoice()` in `armada-game.ts`): once a target cell is
 chosen for its turn, if it hasn't hit `SPECIAL_WEAPON_QUOTA` yet, there's
-a flat 25% chance (`APP_WEAPON_USE_CHANCE`) it fires a special weapon
+a flat 50% chance (`APP_WEAPON_USE_CHANCE`) it fires a special weapon
 instead of a plain shot, picked from whatever's currently active,
 in-charge, and (for Mine) not already placed. Within that pool, MOAB gets
 a soft priority (see below) rather than a purely uniform pick; every other
 type is still uniform random. *Where* it fires is always the weapon-aware
 target that maximizes the weapon's blast zone (see Variable A's
 "weapon-aware play").
+
+That chance was originally 25% (1 in 4) and was raised to 50% (1 in 2):
+at 1 in 4 the computer spent its arsenal so slowly that it often finished
+a game still sitting on unused weapons, which reads as passive and leaves
+the player facing less of the weapon play the game is built around. The
+per-game `SPECIAL_WEAPON_QUOTA` still bounds the total, so this only
+changes how early in a game the weapons come out, not how many.
 
 ### Loosening the MOAB cap, and MOAB-aware computer play
 
@@ -1208,7 +1215,7 @@ same two-dot indicator described above, generalizing rather than dropping
 the affordance.
 
 Separately, the computer is now mildly "MOAB-aware": whenever it's already
-decided to fire *some* weapon this turn (the 25% roll above) and MOAB
+decided to fire *some* weapon this turn (the 50% roll above) and MOAB
 happens to be in that turn's eligible pool, there's a further 50%
 (`APP_MOAB_PRIORITY_CHANCE`) chance it fires MOAB outright rather than
 falling into the uniform pick among whatever else is available. This
@@ -1216,7 +1223,7 @@ mirrors the expectation that a deliberate human player would rarely sit on
 an available MOAB — but it's a soft bias, not a guarantee: the computer's
 first weapon use of a game isn't reliably MOAB, and there's no scenario
 where MOAB is forced to fire the instant it's available. This is a
-"which weapon" decision inside the existing 25% "fire at all" roll,
+"which weapon" decision inside the existing 50% "fire at all" roll,
 entirely separate from — and unaffected by — the blast-zone-maximizing
 "where to fire" logic used once a weapon's already chosen.
 

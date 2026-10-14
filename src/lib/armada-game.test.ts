@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyMineWanderOilDetonation,
   applyShotOutcome,
+  APP_WEAPON_USE_CHANCE,
   computeInitialRankState,
   computeRankUpdate,
   computeSessionStatsUpdate,
@@ -21,6 +22,8 @@ import {
   resolveMineHit,
   resolveMineIndexAfterDrop,
   selectAppTargetIndex,
+  selectAppWeaponChoice,
+  SPECIAL_WEAPON_QUOTA,
   shotOutcomeFromTargetingResult,
   shotOutcomeFromTravelSteps,
   type CellState,
@@ -1148,5 +1151,38 @@ describe('resolveMineIndexAfterDrop', () => {
     const hitOutcome = makeShotOutcome({ dealtDamage: true });
     expect(resolveMineIndexAfterDrop(hitOutcome, null, 42)).toBeNull();
     expect(resolveMineIndexAfterDrop(hitOutcome, 7, 42)).toBe(7);
+  });
+});
+
+describe('selectAppWeaponChoice', () => {
+  // A non-MOAB pool, so the roll under test is the only "fire at all" roll
+  // (MOAB's own priority roll would consume a second Math.random call).
+  const options = {
+    appWeaponsUsed: 0,
+    activeWeaponTypes: ['torpedo' as const],
+    appMoabCount: 0,
+    appMineCount: 0,
+    appMineIndex: null,
+    appTorpedoCount: 2,
+    appRocketCount: 0,
+    appHarpoonCount: 0,
+    appDroneCount: 0,
+  };
+
+  it('fires a special weapon on a 1-in-2 chance per turn', () => {
+    expect(APP_WEAPON_USE_CHANCE).toBe(0.5);
+
+    const spy = vi.spyOn(Math, 'random');
+    spy.mockReturnValue(0.49);
+    expect(selectAppWeaponChoice(options)).toBe('torpedo');
+    spy.mockReturnValue(0.5);
+    expect(selectAppWeaponChoice(options)).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('never fires once the per-game quota is spent, whatever the roll', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    expect(selectAppWeaponChoice({ ...options, appWeaponsUsed: SPECIAL_WEAPON_QUOTA })).toBeNull();
+    spy.mockRestore();
   });
 });

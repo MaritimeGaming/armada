@@ -316,8 +316,10 @@ export const APP_HARPOON_STARTING_COUNT = 2;
 export const APP_DRONE_STARTING_COUNT = 2;
 // Chance, per computer turn (once a target cell is chosen), that it fires a
 // special weapon instead of a plain shot - checked only while it's still
-// under its per-game quota and has at least one available weapon.
-const APP_WEAPON_USE_CHANCE = 0.25;
+// under its per-game quota and has at least one available weapon. Was 1 in
+// 4; raised to 1 in 2 so the computer actually spends its arsenal over a
+// game rather than often finishing with weapons still unused.
+export const APP_WEAPON_USE_CHANCE = 0.5;
 const MAX_PLACEMENT_ATTEMPTS = 5000;
 // 1-in-6 chance a shot into the oil slick ignites it - see spreadOilSlick
 // and resolveTargetingHits below. Was 1-in-12; raised to make igniting the
