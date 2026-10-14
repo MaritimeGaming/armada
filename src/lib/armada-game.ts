@@ -359,7 +359,8 @@ const ORIENTATIONS: Orientation[] = [
 ];
 
 // Every clip the Pirate's sink cue can play - one is picked at random each
-// time (see getAudioFileForCue). To add another take, save it in
+// time (see getAudioFileForCue), never repeating a clip already played this
+// game while another is left (see playAudioCue in Index.tsx). To add another take, save it in
 // public/audio and add its path here; nothing else needs to change.
 const PIRATE_AUDIO_FILES = [
   `${import.meta.env.BASE_URL}audio/Pirate-Abandon-Ship.wav`,
@@ -410,11 +411,20 @@ export const AUDIO_FILES: Record<AudioCue, string | string[]> = {
  * exception - see its own doc comment for why it calls resolveTargetingHits
  * directly instead, ticking the slick itself exactly once for the whole run.
  */
-/** The single file to play for cue - a random pick when the cue has several clips. */
-export function getAudioFileForCue(cue: AudioCue): string {
+/**
+ * The single file to play for cue - a random pick when the cue has several
+ * clips, skipping any in `exclude` (clips already played) unless that would
+ * leave nothing to pick.
+ */
+export function getAudioFileForCue(cue: AudioCue, exclude: readonly string[] = []): string {
   const files = AUDIO_FILES[cue];
 
-  return typeof files === 'string' ? files : randomItem(files);
+  if (typeof files === 'string') {
+    return files;
+  }
+
+  const unplayed = files.filter((file) => !exclude.includes(file));
+  return randomItem(unplayed.length > 0 ? unplayed : files);
 }
 
 /** Every distinct file a cue can play, for preloading. */

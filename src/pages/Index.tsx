@@ -94,6 +94,11 @@ type GameOverState = {
 };
 
 const STORAGE_KEY = 'armada:game-state';
+// Pirate clips already played this game (see playAudioCue), so the second
+// Pirate to sink in a game - one per side - never repeats the first one's
+// line. Stored beside the game itself so a mid-game app restart still
+// remembers it; cleared by handleNewGame.
+const PIRATE_CLIPS_PLAYED_STORAGE_KEY = 'armada:pirate-clips-played';
 const navyViewOrder: NavySide[] = ['player', 'enemy'];
 const SHIP_SET_STORAGE_KEY = 'armada:ship-set-options';
 const SOUND_EFFECTS_STORAGE_KEY = 'armada:sound-effects-enabled';
@@ -207,6 +212,15 @@ function readStoredCount(storageKey: string, fallback: number): number {
 
   const parsedCount = Number(storedCount);
   return Number.isFinite(parsedCount) ? parsedCount : fallback;
+}
+
+function readStoredStringList(storageKey: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 function readStoredBoolean(storageKey: string, fallback: boolean): boolean {
@@ -623,7 +637,13 @@ const Index = () => {
       return;
     }
 
-    const audio = new Audio(getAudioFileForCue(cue));
+    const playedPirateClips = cue === 'pirate' ? readStoredStringList(PIRATE_CLIPS_PLAYED_STORAGE_KEY) : [];
+    const file = getAudioFileForCue(cue, playedPirateClips);
+    if (cue === 'pirate') {
+      window.localStorage.setItem(PIRATE_CLIPS_PLAYED_STORAGE_KEY, JSON.stringify([...playedPirateClips, file]));
+    }
+
+    const audio = new Audio(file);
     audio.preload = 'auto';
     audioRef.current[cue].push(audio);
 
@@ -861,6 +881,7 @@ const Index = () => {
       setOilIgnitionHighlightCells({ player: [], enemy: [] });
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
       setGameState(nextState);
+      window.localStorage.removeItem(PIRATE_CLIPS_PLAYED_STORAGE_KEY);
 
     setActiveView(nextState.currentTurn === 'app' ? 'player' : 'enemy');
     setInstantViewSwitch(true);

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 import { __resetTitleScreenSessionFlagForTests } from '@/pages/Index';
-import { createGameState, getMoabTargetIndexes, SPECIAL_WEAPON_QUOTA, type GameState } from '@/lib/armada-game';
+import { AUDIO_FILES, createGameState, getMoabTargetIndexes, SPECIAL_WEAPON_QUOTA, type GameState } from '@/lib/armada-game';
 
 // Regression coverage for a reported bug: on mobile, clicking New Game could
 // leave the swipe carousel between "My Navy" and "Enemy Navy" showing a
@@ -604,6 +604,89 @@ describe('End-of-game sound', () => {
     });
     expect(playedSources().some((src) => src.endsWith('LoseGame.wav'))).toBe(false);
   }, 10000);
+});
+
+// The Pirate's sink cue picks one of several clips at random, but never one
+// already played this game (playAudioCue in Index.tsx), so both sides'
+// Pirates going down in one game shout two different lines.
+describe('Pirate sink clips', () => {
+  const clips = AUDIO_FILES.pirate as string[];
+  const playedKey = 'armada:pirate-clips-played';
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    __resetTitleScreenSessionFlagForTests();
+    vi.stubGlobal('Audio', FakeAudio);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  // The player's turn, with the enemy's Pirate (a single cell, so one shot
+  // sinks it) at the returned index. The computer keeps to plain shots so
+  // its turn stays simple.
+  function seedEnemyPirate() {
+    const state = createGameState({ includeSingles: true });
+    state.currentTurn = 'player';
+    state.appWeaponsUsed = SPECIAL_WEAPON_QUOTA;
+    window.localStorage.setItem('armada:game-state', JSON.stringify(state));
+    return state.enemy.cells.findIndex((cell) => cell.shipCode === 'P');
+  }
+
+  function fireAt(cellIndex: number) {
+    const cell = within(screen.getByLabelText('Enemy Navy grid')).getAllByRole('button')[cellIndex];
+    fireEvent.mouseDown(cell);
+    fireEvent.mouseUp(cell);
+  }
+
+  const playedPirateSources = () =>
+    FakeAudio.instances.map((audio) => audio.src).filter((src) => clips.includes(src));
+
+  it("skips the clip the other side's Pirate already played this game", () => {
+    const pirateIndex = seedEnemyPirate();
+    // The player's own Pirate already went down earlier this game, playing
+    // the first clip.
+    window.localStorage.setItem(playedKey, JSON.stringify([clips[0]]));
+    render(<App />);
+    dismissTitleScreen();
+    FakeAudio.instances = [];
+
+    // A roll of 0 would pick the first clip again if it weren't excluded.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    fireAt(pirateIndex);
+
+    expect(playedPirateSources()).toEqual([clips[1]]);
+    expect(JSON.parse(window.localStorage.getItem(playedKey) ?? '[]')).toEqual([clips[0], clips[1]]);
+  });
+
+  it('records the clip a sunk Pirate played', () => {
+    const pirateIndex = seedEnemyPirate();
+    render(<App />);
+    dismissTitleScreen();
+    FakeAudio.instances = [];
+
+    fireAt(pirateIndex);
+
+    const played = playedPirateSources();
+    expect(played).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem(playedKey) ?? '[]')).toEqual(played);
+  });
+
+  it('forgets the played clips when a new game starts', async () => {
+    seedEnemyPirate();
+    window.localStorage.setItem(playedKey, JSON.stringify([clips[0]]));
+    render(<App />);
+    dismissTitleScreen();
+
+    // See the Sound Effects tests above for why ctrlKey has to be set.
+    fireEvent.pointerDown(screen.getAllByLabelText('Open settings')[0], { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'New Game' }));
+
+    expect(window.localStorage.getItem(playedKey)).toBeNull();
+  });
 });
 
 // Regression coverage for a reported bug: toggling Singles while at 0 game

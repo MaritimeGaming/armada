@@ -386,7 +386,11 @@ diagonal). See `AudioCue`'s `'pirate'` entry (`armada-game.ts`) and the
 `Pirate-*.wav` assets (`public/audio/`) for the actual cue. Each sink
 picks one clip at random from `PIRATE_AUDIO_FILES` (add a take by dropping
 the file in `public/audio/` and adding its path to that list), played on
-top of the standard sink sound. To revert, swap the
+top of the standard sink sound. Within one game the pick never repeats a
+clip already played, so when both sides' Pirates go down they shout two
+different lines - hearing the same line twice in a game would make five
+takes sound like one. The played list (`armada:pirate-clips-played`)
+survives an app restart mid-game and is cleared when a new game starts. To revert, swap the
 `AUDIO_FILES.pirate` entry and `SINGLE_SHIPS`'s `'P'` entry back to
 `'lifeboat'`/`LifeBoat.wav` (still kept in `public/audio/`) to revert if
 the new cue doesn't land.

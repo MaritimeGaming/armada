@@ -432,6 +432,29 @@ describe('Pirate sink audio', () => {
     expect(picked[1]).toBe(clips[clips.length - 1]);
   });
 
+  it('never picks a clip already played while another is left, whatever the roll', () => {
+    const clips = AUDIO_FILES.pirate as string[];
+    const spy = vi.spyOn(Math, 'random');
+    [0, 0.5, 0.999].forEach((roll) => {
+      spy.mockReturnValueOnce(roll);
+      expect(getAudioFileForCue('pirate', [clips[0]])).not.toBe(clips[0]);
+    });
+    // A roll of 0 would pick clips[0] with nothing excluded - the first clip
+    // still left takes its place.
+    spy.mockReturnValueOnce(0);
+    expect(getAudioFileForCue('pirate', [clips[0]])).toBe(clips[1]);
+    spy.mockRestore();
+  });
+
+  it('falls back to every clip once all of them have been played', () => {
+    const clips = AUDIO_FILES.pirate as string[];
+    expect(clips).toContain(getAudioFileForCue('pirate', clips));
+  });
+
+  it('ignores the exclude list for single-file cues', () => {
+    expect(getAudioFileForCue('sink', [AUDIO_FILES.sink as string])).toBe(AUDIO_FILES.sink);
+  });
+
   it('resolves single-file cues without any randomness, and preloads every clip', () => {
     const spy = vi.spyOn(Math, 'random');
     expect(getAudioFileForCue('sink')).toBe(AUDIO_FILES.sink);
