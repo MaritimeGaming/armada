@@ -883,7 +883,10 @@ const Index = () => {
    * Deliberately spends the token on every single one of those, with no
    * exception for the first-ever game: a free unlimited first game (or a
    * free replay via toggling Singles back and forth) would just be a hole
-   * in the same economy this exists to enforce.
+   * in the same economy this exists to enforce. The one exemption lives
+   * upstream in handleSinglesToggle: toggling Singles before the player has
+   * fired any shot never reaches this gate at all, since nothing has been
+   * played yet to replay.
    */
   const requestNewGame = (nextOptions: ShipSetOptions = shipSetOptions) => {
     if (gameTokens > 0) {
@@ -979,6 +982,18 @@ const Index = () => {
     // it genuinely starts; declining a required ad leaves both the
     // current game and the setting exactly as they were.
     const nextOptions: ShipSetOptions = { includeSingles };
+
+    // Before the player has fired a single shot, the current game hasn't
+    // actually been played yet - switching Singles then is just choosing
+    // the setup for the game they were about to play, not starting another
+    // one, so it rebuilds the game without spending a token (or asking for
+    // an ad). Once they've fired even once, it goes through the gate like
+    // any other new game - see requestNewGame's own doc comment.
+    if (gameState && gameState.playerTurnsTaken === 0) {
+      handleNewGame(nextOptions);
+      return;
+    }
+
     requestNewGame(nextOptions);
   };
 

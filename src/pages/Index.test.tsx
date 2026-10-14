@@ -565,11 +565,29 @@ describe('Singles toggle vs. the New Game ad gate', () => {
     fireEvent.pointerDown(settingsButton, { button: 0, ctrlKey: false });
   }
 
+  // Seeds a saved game (see the game-state-loading effect in Index.tsx) with
+  // the given number of player shots already fired, so the Singles toggle's
+  // free-before-the-first-shot exemption (handleSinglesToggle) is known up
+  // front. Loading a saved game never spends a token itself.
+  function seedGame(playerTurnsTaken: number) {
+    const state = createGameState();
+    state.currentTurn = 'player';
+    state.playerTurnsTaken = playerTurnsTaken;
+    window.localStorage.setItem('armada:game-state', JSON.stringify(state));
+  }
+
+  async function toggleSingles() {
+    openSettingsMenu();
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Singles (E H P)' }));
+  }
+
   it('leaves the persisted Singles setting unchanged if a required ad is declined', async () => {
-    // Forces the very first game (created on mount) to immediately need an
-    // ad for the *next* one, same as a returning player who already spent
-    // their tokens in an earlier session.
+    // A game already underway (so the toggle isn't free - see below) with no
+    // tokens left, same as a returning player who already spent their
+    // tokens in an earlier session.
+    seedGame(3);
     window.localStorage.setItem('armada:game-tokens', '0');
+    window.localStorage.setItem('armada:ship-set-options', JSON.stringify({ includeSingles: true }));
     render(<App />);
     dismissTitleScreen();
 
@@ -595,5 +613,42 @@ describe('Singles toggle vs. the New Game ad gate', () => {
       'aria-checked',
       'true',
     );
+  });
+
+  it('switches Singles without spending a token before the player has fired a shot', async () => {
+    seedGame(0);
+    window.localStorage.setItem('armada:game-tokens', '2');
+    render(<App />);
+    dismissTitleScreen();
+
+    await toggleSingles();
+
+    expect(JSON.parse(window.localStorage.getItem('armada:ship-set-options') ?? '{}').includeSingles).toBe(false);
+    expect(window.localStorage.getItem('armada:game-tokens')).toBe('2');
+  });
+
+  it('switches Singles without asking for an ad at 0 tokens before the player has fired a shot', async () => {
+    seedGame(0);
+    window.localStorage.setItem('armada:game-tokens', '0');
+    render(<App />);
+    dismissTitleScreen();
+
+    await toggleSingles();
+
+    expect(screen.queryByRole('button', { name: 'No' })).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem('armada:ship-set-options') ?? '{}').includeSingles).toBe(false);
+    expect(window.localStorage.getItem('armada:game-tokens')).toBe('0');
+  });
+
+  it('still spends a token switching Singles once the player has fired a shot', async () => {
+    seedGame(1);
+    window.localStorage.setItem('armada:game-tokens', '2');
+    render(<App />);
+    dismissTitleScreen();
+
+    await toggleSingles();
+
+    expect(JSON.parse(window.localStorage.getItem('armada:ship-set-options') ?? '{}').includeSingles).toBe(false);
+    expect(window.localStorage.getItem('armada:game-tokens')).toBe('1');
   });
 });

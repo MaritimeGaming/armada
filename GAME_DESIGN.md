@@ -1588,7 +1588,12 @@ Every new game spends exactly one, with **no exception for the first
 game** a fresh install creates, or for switching the Singles setting
 (which silently starts a new game under the hood) - a free unlimited
 first game, or a free replay by toggling Singles back and forth, would
-just be a hole in the same economy this exists to enforce. Once the
+just be a hole in the same economy this exists to enforce. The one
+exemption: switching Singles **before the player has fired any shot**
+this game (`playerTurnsTaken === 0`) rebuilds the game for free. Nothing
+has been played yet, so it's choosing the setup for the game about to be
+played rather than starting another one - and it can't be farmed into a
+free replay, since the first shot closes it. Once the
 balance hits 0, the next new-game request opens a Yes/No confirmation
 dialog ("Watch an ad to start a new game?") rather than launching the ad
 outright - see "Explicit opt-in is required, not just good timing" below
